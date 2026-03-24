@@ -874,7 +874,7 @@ const CoordinatorStudents = () => {
 
       {/* ── Progress Modal ── */}
       {showProgressModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-md flex items-center justify-center z-9999 p-4">
           <div className="bg-white w-full max-w-3xl rounded-3xl shadow-2xl relative overflow-hidden">
             <div
               className="h-2 w-full"
