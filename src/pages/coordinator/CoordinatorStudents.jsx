@@ -345,8 +345,8 @@ const StudentModal = ({ mode, student, courses, onClose, onSave }) => {
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+      <div className="fixed inset-0 z-9998 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 pointer-events-none">
         <div
           className="pointer-events-auto w-full max-w-lg bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]"
           style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out forwards' }}
