@@ -135,8 +135,8 @@ const AssignCompanyModal = ({ student, companies, loadingCompanies, selectedComp
   const hasCompany = Boolean(student?.company);
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-200" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+      <div className="fixed inset-0 z-9998 bg-black/40 backdrop-blur-sm transition-opacity duration-200" onClick={onClose} />
+      <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 pointer-events-none">
         <div
           className="pointer-events-auto w-full max-w-md bg-white rounded-2xl shadow-xl"
           style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out forwards' }}
