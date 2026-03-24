@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+:root {
+  /* ── Full primary scale ─────────────────────────────────────────
+     Default: green. Overridden at runtime by themes.js.
+     All components reference --primary-N or the semantic aliases
+     below — never hardcoded colour values.
+  ─────────────────────────────────────────────────────────────── */
+  --primary-50:  240 253 244;   /* green-50   #f0fdf4 */
+  --primary-100: 220 252 231;   /* green-100  #dcfce7 */
+  --primary-200: 187 247 208;   /* green-200  #bbf7d0 */
+  --primary-300: 134 239 172;   /* green-300  #86efac */
+  --primary-400: 74  222 128;   /* green-400  #4ade80 */
+  --primary-500: 34  197  94;   /* green-500  #22c55e */
+  --primary-600: 22  163  74;   /* green-600  #16a34a */
+  --primary-700: 21  128  61;   /* green-700  #15803d */
+  --primary-800: 22  101  52;   /* green-800  #166534 */
+
+  /* ── Semantic aliases ───────────────────────────────────────────
+     These derive from the numbered scale via var() so a single
+     theme switch (--primary-N) updates every component.
+     themes.js sets both --primary-N and these aliases explicitly.
+  ─────────────────────────────────────────────────────────────── */
+  --primary:        var(--primary-700);
+  --primary-dark:   var(--primary-800);
+  --primary-medium: var(--primary-600);
+  --primary-light:  var(--primary-400);
+  --primary-text:   var(--primary-700);
+  --avatar-bg:      var(--primary-100);
+  --avatar-icon:    var(--primary-600);
+}
