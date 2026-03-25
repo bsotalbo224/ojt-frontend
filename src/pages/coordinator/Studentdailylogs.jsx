@@ -36,7 +36,7 @@ const isImage = (file) => {
 
 const loadAttachment = async (file) => {
   const token = localStorage.getItem('token');
-  const res = await fetch(`/api/logs/attachments/${file.attachment_id}`, {
+  const res = await fetch(`${BASE_URL}/api/logs/attachments/${file.attachment_id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Failed to load attachment');
@@ -45,7 +45,7 @@ const loadAttachment = async (file) => {
 
 const downloadAttachment = async (file) => {
   const token = localStorage.getItem('token');
-  const res = await fetch(`/api/logs/attachments/${file.attachment_id}`, {
+  const res = await fetch(`${BASE_URL}/api/logs/attachments/${file.attachment_id}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Download failed');
