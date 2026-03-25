@@ -4,13 +4,11 @@ import api from "../../api/axios";
 import {
   FileText, Eye, Edit3, Calendar, MessageSquare,
   ChevronRight, Inbox, CheckCircle2,
-  Clock, RotateCcw, BookOpen, AlertCircle, X, FileCheck
+  Clock, RotateCcw, BookOpen, AlertCircle, X, FileCheck,
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────
    Paper size config
-   Note: minHeight removed from here — applied
-   contextually in the modal vs. print export.
 ───────────────────────────────────────────*/
 const PAPER_SIZES = {
   A4:     { label: "A4",     maxWidth: "794px" },
@@ -19,10 +17,9 @@ const PAPER_SIZES = {
 };
 
 /* ─────────────────────────────────────────
-   Read a CSS variable as a hex string for
-   use inside injected <style> blocks and
-   print windows that can't access :root vars.
-   Returns e.g. "rgb(22, 163, 74)".
+   Read a CSS variable as an rgb() string.
+   Used inside injected <style> / print windows
+   that cannot access :root CSS vars directly.
 ───────────────────────────────────────────*/
 const cssVarRgb = (name, fallback = "22 163 74") => {
   const raw = getComputedStyle(document.documentElement)
@@ -30,18 +27,12 @@ const cssVarRgb = (name, fallback = "22 163 74") => {
   const [r, g, b] = raw.split(/\s+/).map(Number);
   return `rgb(${r}, ${g}, ${b})`;
 };
-const cssVarRgba = (name, alpha, fallback = "22 163 74") => {
-  const raw = getComputedStyle(document.documentElement)
-    .getPropertyValue(name).trim() || fallback;
-  const [r, g, b] = raw.split(/\s+/).map(Number);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
 
 /* ─────────────────────────────────────────
-   Build PREVIEW_STYLES at inject-time so
-   the CSS picks up the active theme vars.
-   Includes overflow/word-break fixes and
-   improved image, table, pre/code support.
+   Build preview styles at inject-time so CSS
+   picks up the active theme variables.
+   Images use max-width:100% — Cloudinary URLs
+   render directly; no blob conversion needed.
 ───────────────────────────────────────────*/
 const buildPreviewStyles = () => `
 .narrative-preview {
@@ -51,109 +42,63 @@ const buildPreviewStyles = () => `
   overflow-wrap: break-word;
 }
 .narrative-preview h1 {
-  font-size: 21px;
-  font-weight: 700;
-  margin-bottom: 12px;
+  font-size: 21px; font-weight: 700; margin-bottom: 12px;
   border-bottom: 2px solid ${cssVarRgb("--primary-100")};
-  padding-bottom: 6px;
-  color: #0f172a;
+  padding-bottom: 6px; color: #0f172a;
 }
 .narrative-preview h2 {
-  font-size: 17px;
-  font-weight: 700;
-  margin: 20px 0 8px;
+  font-size: 17px; font-weight: 700; margin: 20px 0 8px;
   border-bottom: 1px solid ${cssVarRgb("--primary-200")};
   color: ${cssVarRgb("--primary-800")};
 }
 .narrative-preview h3 {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 16px 0 6px;
-  color: #1e293b;
+  font-size: 15px; font-weight: 700; margin: 16px 0 6px; color: #1e293b;
 }
 .narrative-preview p {
-  margin-bottom: 14px;
-  text-align: justify;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  margin-bottom: 14px; text-align: justify;
+  word-break: break-word; overflow-wrap: break-word;
 }
 .narrative-preview ul,
-.narrative-preview ol {
-  padding-left: 24px;
-  margin-bottom: 14px;
-}
-.narrative-preview li {
-  margin-bottom: 5px;
-  word-break: break-word;
-}
+.narrative-preview ol { padding-left: 24px; margin-bottom: 14px; }
+.narrative-preview li  { margin-bottom: 5px; word-break: break-word; }
 .narrative-preview strong { color: #0f172a; }
-.narrative-preview em { color: #374151; }
+.narrative-preview em    { color: #374151; }
 .narrative-preview img {
-  max-width: 100%;
-  width: auto;
-  height: auto;
-  display: block;
-  border-radius: 6px;
-  margin: 12px auto;
+  /* Cloudinary images render directly — no fetch needed */
+  max-width: 100%; width: auto; height: auto;
+  display: block; border-radius: 6px; margin: 12px auto;
 }
 .narrative-preview blockquote {
   border-left: 3px solid ${cssVarRgb("--primary-600")};
-  padding-left: 16px;
-  margin: 16px 0;
-  color: #475569;
-  font-style: italic;
-  word-break: break-word;
+  padding-left: 16px; margin: 16px 0;
+  color: #475569; font-style: italic; word-break: break-word;
 }
 .narrative-preview a {
   color: ${cssVarRgb("--primary-700")};
-  text-decoration: underline;
-  word-break: break-all;
+  text-decoration: underline; word-break: break-all;
 }
 .narrative-preview table {
-  width: 100%;
-  display: block;
-  overflow-x: auto;
-  border-collapse: collapse;
-  margin-bottom: 14px;
-  font-size: 14px;
+  width: 100%; display: block; overflow-x: auto;
+  border-collapse: collapse; margin-bottom: 14px; font-size: 14px;
 }
 .narrative-preview th,
 .narrative-preview td {
-  border: 1px solid #e2e8f0;
-  padding: 8px 12px;
-  text-align: left;
-  word-break: break-word;
+  border: 1px solid #e2e8f0; padding: 8px 12px;
+  text-align: left; word-break: break-word;
 }
-.narrative-preview th {
-  background: #f8fafc;
-  font-weight: 700;
-  color: #374151;
-}
+.narrative-preview th { background: #f8fafc; font-weight: 700; color: #374151; }
 .narrative-preview pre {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  padding: 12px 16px;
-  margin-bottom: 14px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: break-word;
-  overflow-x: hidden;
-  font-size: 13px;
-  color: #1e293b;
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+  padding: 12px 16px; margin-bottom: 14px;
+  white-space: pre-wrap; word-break: break-word;
+  overflow-wrap: break-word; overflow-x: hidden;
+  font-size: 13px; color: #1e293b;
 }
 .narrative-preview code {
-  background: #f1f5f9;
-  border-radius: 3px;
-  padding: 1px 5px;
-  font-size: 13px;
-  white-space: pre-wrap;
-  word-break: break-word;
+  background: #f1f5f9; border-radius: 3px; padding: 1px 5px;
+  font-size: 13px; white-space: pre-wrap; word-break: break-word;
 }
-.narrative-preview pre code {
-  background: transparent;
-  padding: 0;
-}
+.narrative-preview pre code { background: transparent; padding: 0; }
 `;
 
 /* ─────────────────────────────────────────
@@ -164,27 +109,23 @@ const statusConfig = {
     label: 'Draft',
     bg: 'bg-slate-100', text: 'text-slate-700',
     border: 'border-slate-200', dot: 'bg-slate-400',
-    icon: Edit3,
-    inlineStyle: null,
+    icon: Edit3, inlineStyle: null,
   },
   submitted: {
     label: 'Submitted',
     bg: '', text: '', border: '', dot: '',
-    icon: Clock,
-    inlineStyle: true,
+    icon: Clock, inlineStyle: true,
   },
   revision: {
     label: 'Revision',
     bg: 'bg-amber-50', text: 'text-amber-800',
     border: 'border-amber-200', dot: 'bg-amber-500',
-    icon: RotateCcw,
-    inlineStyle: null,
+    icon: RotateCcw, inlineStyle: null,
   },
   approved: {
     label: 'Approved',
     bg: '', text: '', border: '', dot: '',
-    icon: CheckCircle2,
-    inlineStyle: true,
+    icon: CheckCircle2, inlineStyle: true,
   },
 };
 
@@ -249,10 +190,10 @@ const SkeletonRow = () => (
 );
 
 /* ─────────────────────────────────────────
-   exportNarrative — reads CSS vars at call
+   exportNarrative — reads CSS vars at call-
    time so the print window matches the theme.
-   Print layout is unchanged — uses A4 fixed
-   dimensions as before.
+   Images in narrative.content are Cloudinary
+   URLs and render directly in the print window.
 ───────────────────────────────────────────*/
 function exportNarrative(narrative) {
   const p50  = cssVarRgb("--primary-50");
@@ -283,7 +224,11 @@ function exportNarrative(narrative) {
   <title>OJT Narrative Report — ${formattedDate}</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Georgia', serif; font-size: 13pt; line-height: 1.75; color: #1a1a1a; background: #fff; padding: 56px 72px; max-width: 794px; margin: 0 auto; }
+    body {
+      font-family: 'Georgia', serif; font-size: 13pt;
+      line-height: 1.75; color: #1a1a1a; background: #fff;
+      padding: 56px 72px; max-width: 794px; margin: 0 auto;
+    }
     .report-header { border-bottom: 3px solid ${p600}; padding-bottom: 20px; margin-bottom: 28px; }
     .report-header .label { font-size: 9pt; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: ${p600}; margin-bottom: 6px; }
     .report-header h1 { font-size: 22pt; font-weight: 700; color: #0f172a; margin-bottom: 14px; line-height: 1.2; }
@@ -300,11 +245,12 @@ function exportNarrative(narrative) {
     .content-body { margin-bottom: 36px; text-align: justify; word-break: break-word; overflow-wrap: break-word; }
     .content-body h1 { font-size: 16pt; font-weight: 700; color: #0f172a; margin: 0 0 10px; border-bottom: 2px solid ${p200}; padding-bottom: 6px; }
     .content-body h2 { font-size: 13pt; font-weight: 700; color: ${p800}; margin: 20px 0 8px; }
-    .content-body p { margin-bottom: 12px; word-break: break-word; }
+    .content-body p  { margin-bottom: 12px; word-break: break-word; }
     .content-body ul { padding-left: 22px; margin-bottom: 12px; }
     .content-body li { margin-bottom: 5px; }
     .content-body strong { color: #0f172a; }
-    .content-body em { color: #374151; }
+    .content-body em     { color: #374151; }
+    /* Cloudinary images render directly in the print window */
     .content-body img { max-width: 100%; height: auto; display: block; border-radius: 6px; margin: 12px auto; }
     .content-body table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
     .content-body th, .content-body td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; font-size: 11pt; }
@@ -367,12 +313,13 @@ const PaperSizeSelector = ({ value, onChange }) => (
 
 /* ─────────────────────────────────────────
    Narrative Preview Modal
-   
-   Layout fixes applied:
-   - Modal body is the ONLY scroll container
-   - Paper uses auto height (not fixed A4 px)
-   - Paper content has overflow:hidden + word-break
-   - Smooth scrolling on body
+
+   CLOUDINARY ALIGNMENT:
+   - narrative.content HTML is injected via dangerouslySetInnerHTML
+   - <img> tags inside the HTML already contain Cloudinary URLs
+     (set at write-time by TipTap FloatImage / handleImageUpload)
+   - No backend fetch, no blob conversion — images render instantly
+   - buildPreviewStyles sets img { max-width: 100% } for safe rendering
 ───────────────────────────────────────────*/
 const NarrativeModal = ({ narrative, onClose, onConsult }) => {
   const [paperSize, setPaperSize] = useState('A4');
@@ -383,6 +330,7 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
     return () => document.removeEventListener('keydown', handleKey);
   }, [onClose]);
 
+  // Inject preview styles on open, clean up on close
   useEffect(() => {
     const styleId = 'narrative-preview-styles';
     const existing = document.getElementById(styleId);
@@ -391,7 +339,6 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
     style.id = styleId;
     style.textContent = buildPreviewStyles();
     document.head.appendChild(style);
-    // Cleanup on unmount
     return () => {
       const el = document.getElementById(styleId);
       if (el) el.remove();
@@ -400,23 +347,18 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
 
   if (!narrative) return null;
 
-  const date   = formatDate(narrative.narrative_date);
-  const config = statusConfig[narrative.status] || statusConfig.draft;
+  const date      = formatDate(narrative.narrative_date);
+  const config    = statusConfig[narrative.status] || statusConfig.draft;
   const isRevision = narrative.status === 'revision';
-  const paper  = PAPER_SIZES[paperSize];
+  const paper     = PAPER_SIZES[paperSize];
 
   const handleBackdropClick = (e) => { if (e.target === e.currentTarget) onClose(); };
 
   const dateIconStyle = config.inlineStyle
-    ? {
-        backgroundColor: `rgb(var(--primary-50))`,
-        borderColor:     `rgb(var(--primary-200))`,
-      }
+    ? { backgroundColor: `rgb(var(--primary-50))`, borderColor: `rgb(var(--primary-200))` }
     : {};
   const dateIconTextClass = config.inlineStyle ? '' : `${config.text}`;
-  const dateIconTextStyle = config.inlineStyle
-    ? { color: `rgb(var(--primary-700))` }
-    : {};
+  const dateIconTextStyle = config.inlineStyle ? { color: `rgb(var(--primary-700))` } : {};
 
   return (
     <div
@@ -451,13 +393,14 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
             <button
               onClick={onClose}
               className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors duration-150"
+              aria-label="Close preview"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* ── Modal Body — SOLE scroll container ── */}
+        {/* ── Modal Body — sole scroll container ── */}
         <div className="flex-1 overflow-y-auto scroll-smooth">
 
           {/* Revision notice banner */}
@@ -466,7 +409,10 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
               <MessageSquare className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
               <div className="text-sm text-blue-800">
                 This narrative requires revision. Review the coordinator remarks below and continue the discussion in the{' '}
-                <button onClick={onConsult} className="font-semibold underline underline-offset-2 hover:text-blue-600 transition-colors">
+                <button
+                  onClick={onConsult}
+                  className="font-semibold underline underline-offset-2 hover:text-blue-600 transition-colors"
+                >
                   Consultation Hub
                 </button>.
               </div>
@@ -474,24 +420,23 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
           )}
 
           {/* ── Paper area ──
-              - bg-slate-100 "desk" behind the paper
-              - Paper: auto height, overflow hidden, word-break
-              - maxWidth controls paper size switching
-              - No fixed minHeight — lets content dictate height
-          */}
+              - maxWidth controls paper size
+              - Height is auto — content drives it, no fixed px
+              - overflow:hidden + word-break prevent bleed
+              - Images inside the HTML render directly from
+                Cloudinary URLs — no fetch or blob conversion
+          ── */}
           <div className="bg-slate-100 mx-6 my-4 rounded-xl p-4">
             <div
               className="bg-white mx-auto shadow-lg rounded-sm transition-all duration-300"
               style={{
                 maxWidth: paper.maxWidth,
-                // height is auto — grows with content, no overflow
                 width: '100%',
                 padding: '56px 64px',
                 fontFamily: 'Georgia, "Times New Roman", serif',
                 fontSize: '15.5px',
                 lineHeight: '1.85',
                 color: '#1e293b',
-                // Prevent paper itself from overflowing its wrapper
                 overflow: 'hidden',
                 wordBreak: 'break-word',
                 overflowWrap: 'break-word',
@@ -518,14 +463,16 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
           <div className="mx-6 mb-5 pt-4 border-t border-slate-100">
             <div className="flex items-center gap-2 mb-2">
               <MessageSquare className="w-3.5 h-3.5" style={{ color: `rgb(var(--primary-600))` }} />
-              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Coordinator Remarks</span>
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                Coordinator Remarks
+              </span>
             </div>
             {narrative.coordinator_remarks?.trim() ? (
               <div
                 className="rounded-xl px-4 py-3"
                 style={{
                   backgroundColor: `rgb(var(--primary-50))`,
-                  border: `1px solid rgb(var(--primary-200))`,
+                  border:          `1px solid rgb(var(--primary-200))`,
                 }}
               >
                 <p className="text-sm leading-relaxed" style={{ color: `rgb(var(--primary-800))` }}>
@@ -543,7 +490,6 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
             )}
           </div>
         </div>
-        {/* ── end modal body ── */}
 
         {/* Modal Footer — fixed, never scrolls */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0 flex-wrap gap-2">
@@ -579,16 +525,16 @@ const NarrativeModal = ({ narrative, onClose, onConsult }) => {
 };
 
 /* ─────────────────────────────────────────
-   Main Component — unchanged from original
+   Main Component
 ───────────────────────────────────────────*/
 const NarrativesHistory = () => {
   const [narratives, setNarratives] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [hoveredId, setHoveredId] = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [hoveredId,  setHoveredId]  = useState(null);
   const [viewNarrative, setViewNarrative] = useState(null);
   const navigate = useNavigate();
 
-  const location  = useLocation();
+  const location   = useLocation();
   const revisionId = new URLSearchParams(location.search).get('revision');
 
   const loadNarratives = () => {
@@ -722,14 +668,18 @@ const NarrativesHistory = () => {
         {/* ── Table Card ── */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
 
+          {/* Desktop header row */}
           <div className="hidden sm:grid grid-cols-[1fr_140px_1fr_220px] gap-4 px-6 py-3.5 bg-slate-50 border-b border-slate-200">
             {[
-              { label: 'Date',                 icon: <Calendar className="w-3.5 h-3.5" /> },
-              { label: 'Status',               icon: null },
-              { label: 'Coordinator Remarks',  icon: <MessageSquare className="w-3.5 h-3.5" /> },
-              { label: 'Action',               icon: null, right: true },
+              { label: 'Date',                icon: <Calendar className="w-3.5 h-3.5" /> },
+              { label: 'Status',              icon: null },
+              { label: 'Coordinator Remarks', icon: <MessageSquare className="w-3.5 h-3.5" /> },
+              { label: 'Action',              icon: null, right: true },
             ].map(({ label, icon, right }) => (
-              <span key={label} className={`text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 ${right ? 'justify-end' : ''}`}>
+              <span
+                key={label}
+                className={`text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 ${right ? 'justify-end' : ''}`}
+              >
                 {icon}{label}
               </span>
             ))}
@@ -753,11 +703,11 @@ const NarrativesHistory = () => {
           )}
 
           {!loading && narratives.map((narrative) => {
-            const date      = formatDate(narrative.narrative_date);
-            const isHovered = hoveredId === narrative.narrative_id;
-            const editable  = canEdit(narrative.status);
+            const date       = formatDate(narrative.narrative_date);
+            const isHovered  = hoveredId === narrative.narrative_id;
+            const editable   = canEdit(narrative.status);
             const isRevision = narrative.status === 'revision';
-            const config    = statusConfig[narrative.status] || statusConfig.draft;
+            const config     = statusConfig[narrative.status] || statusConfig.draft;
 
             const dateIconStyle = config.inlineStyle
               ? { backgroundColor: `rgb(var(--primary-50))`, borderColor: `rgb(var(--primary-200))` }
@@ -768,7 +718,9 @@ const NarrativesHistory = () => {
             return (
               <div
                 key={narrative.narrative_id}
-                className={`group border-b border-slate-100 last:border-b-0 transition-colors duration-150 ${isRevision ? 'border-l-4 border-l-amber-400' : ''} ${isHovered ? 'bg-slate-50/80' : 'bg-white'}`}
+                className={`group border-b border-slate-100 last:border-b-0 transition-colors duration-150
+                  ${isRevision ? 'border-l-4 border-l-amber-400' : ''}
+                  ${isHovered  ? 'bg-slate-50/80' : 'bg-white'}`}
                 onMouseEnter={() => setHoveredId(narrative.narrative_id)}
                 onMouseLeave={() => setHoveredId(null)}
               >
@@ -844,11 +796,8 @@ const NarrativesHistory = () => {
                         }
                       }}
                       className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm text-white
-                        ${editable ? 'bg-amber-500 hover:bg-amber-600 hover:shadow-amber-200 hover:shadow-md' : ''}
-                      `}
-                      style={!editable ? {
-                        backgroundColor: `rgb(var(--primary-500))`,
-                      } : {}}
+                        ${editable ? 'bg-amber-500 hover:bg-amber-600 hover:shadow-amber-200 hover:shadow-md' : ''}`}
+                      style={!editable ? { backgroundColor: `rgb(var(--primary-500))` } : {}}
                       onMouseEnter={e => { if (!editable) e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`; }}
                       onMouseLeave={e => { if (!editable) e.currentTarget.style.backgroundColor = `rgb(var(--primary-500))`; }}
                     >

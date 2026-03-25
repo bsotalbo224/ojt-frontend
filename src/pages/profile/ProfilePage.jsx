@@ -5,6 +5,8 @@ import {
 } from "lucide-react";
 import api from "../../api/axios";
 
+const isCloudinary = photo?.startsWith("http");
+
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const ROLE_LABELS = {
@@ -51,7 +53,7 @@ function Avatar({ photo, name, size = "lg", onUpload }) {
     <div className="relative inline-block">
       {hasPhoto ? (
         <img
-          src={`${BASE_URL}${photo}?t=${cacheKey}`}
+          src={isCloudinary ? `${photo}?t=${cacheKey}` : `${BASE_URL}${photo}?t=${cacheKey}`}
           alt={name}
           onError={() => setImgError(true)}
           className={`${sizeClasses} rounded-full object-cover shadow`}

@@ -14,7 +14,6 @@ const relativeTime = (dateStr) => {
   return new Date(dateStr).toLocaleDateString();
 };
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const TopBar = ({ onMenuClick, user }) => {
   const [unread, setUnread] = useState(0);
@@ -58,7 +57,7 @@ const TopBar = ({ onMenuClick, user }) => {
     const loadUnread = () => {
       getUnreadCount()
         .then((res) => { if (res.data?.success) setUnread(res.data.count || 0); })
-        .catch(() => {});
+        .catch(() => { });
     };
     loadUnread();
     const interval = setInterval(loadUnread, 15000);
@@ -278,7 +277,7 @@ const TopBar = ({ onMenuClick, user }) => {
             >
               <Avatar
                 name={fullName}
-                src={user?.photo ? `${BASE_URL}${user.photo}` : ""}
+                src={user?.photo || ""}
                 size="md"
               />
             </button>

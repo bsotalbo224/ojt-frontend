@@ -6,11 +6,11 @@ import {
   AlignLeft, AlignCenter, AlignRight, Image as ImageIcon,
   Minus, Bold, Italic, List, Paperclip, X, File,
   CheckCircle2, Clock, RotateCcw, Lock, ChevronDown,
-  Upload, Loader2
+  Upload, Loader2,
 } from "lucide-react";
 import {
   useEditor, EditorContent,
-  NodeViewWrapper, ReactNodeViewRenderer
+  NodeViewWrapper, ReactNodeViewRenderer,
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import TextAlign from "@tiptap/extension-text-align";
@@ -25,9 +25,9 @@ const todayISO = () => new Date().toISOString().split("T")[0];
    Paper size config
 ───────────────────────────────────────────*/
 const PAPER_SIZES = {
-  A4: { label: "A4", maxWidth: "794px", minHeight: undefined },
+  A4:     { label: "A4",     maxWidth: "794px", minHeight: undefined },
   Letter: { label: "Letter", maxWidth: "816px", minHeight: undefined },
-  Legal: { label: "Legal", maxWidth: "816px", minHeight: "1344px" },
+  Legal:  { label: "Legal",  maxWidth: "816px", minHeight: "1344px" },
 };
 
 /* ─────────────────────────────────────────
@@ -66,9 +66,9 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
     window.addEventListener("mouseup", onMouseUp);
   }, [width, updateAttributes]);
 
-  const accentColor = "rgb(var(--p600))";
+  const accentColor  = "rgb(var(--p600))";
   const accentDarker = "rgb(var(--p700))";
-  const accentGlow = "rgb(var(--p500) / 0.15)";
+  const accentGlow   = "rgb(var(--p500) / 0.15)";
 
   return (
     <NodeViewWrapper as="span" style={{ display: "contents" }} data-drag-handle>
@@ -93,6 +93,7 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
             transition: "all 0.15s ease",
           }}
         >
+          {/* Image renders directly from Cloudinary URL */}
           <img
             src={src}
             alt={alt || ""}
@@ -156,8 +157,8 @@ const FloatImage = Node.create({
 
   addAttributes() {
     return {
-      src: { default: null },
-      alt: { default: "" },
+      src:   { default: null },
+      alt:   { default: "" },
       float: { default: "none" },
       width: { default: "260" },
     };
@@ -166,8 +167,8 @@ const FloatImage = Node.create({
     return [{
       tag: "img[src]",
       getAttrs: (el) => ({
-        src: el.getAttribute("src"),
-        alt: el.getAttribute("alt") || "",
+        src:   el.getAttribute("src"),
+        alt:   el.getAttribute("alt") || "",
         float: el.style.float || "none",
         width: el.style.width
           ? el.style.width.replace("px", "")
@@ -280,22 +281,20 @@ const TB = ({ active, onClick, title, disabled, children }) => (
     style={
       active
         ? { backgroundColor: `rgb(var(--p600))`, color: "white", borderColor: `rgb(var(--p600))` }
-        : disabled
-          ? {}
-          : undefined
+        : disabled ? {} : undefined
     }
     onMouseEnter={e => {
       if (!active && !disabled) {
         e.currentTarget.style.backgroundColor = `rgb(var(--p50))`;
-        e.currentTarget.style.color = `rgb(var(--p700))`;
-        e.currentTarget.style.borderColor = `rgb(var(--p200))`;
+        e.currentTarget.style.color           = `rgb(var(--p700))`;
+        e.currentTarget.style.borderColor     = `rgb(var(--p200))`;
       }
     }}
     onMouseLeave={e => {
       if (!active && !disabled) {
         e.currentTarget.style.backgroundColor = "";
-        e.currentTarget.style.color = "";
-        e.currentTarget.style.borderColor = "";
+        e.currentTarget.style.color           = "";
+        e.currentTarget.style.borderColor     = "";
       }
     }}
   >
@@ -309,18 +308,24 @@ const Divider = () => (
 
 /* ─────────────────────────────────────────
    File icon helper
+   Uses file_type (MIME) first, falls back to extension.
 ───────────────────────────────────────────*/
-const FileTypeIcon = ({ name }) => {
-  const ext = name.split(".").pop().toLowerCase();
+const FileTypeIcon = ({ name, mimeType }) => {
+  const isImage = mimeType?.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/i.test(name ?? "");
+  const ext = (name ?? "").split(".").pop().toLowerCase();
   const colors = {
     pdf: "text-red-500", docx: "text-blue-500", doc: "text-blue-500",
     jpg: "text-purple-500", jpeg: "text-purple-500", png: "text-purple-500",
+    gif: "text-purple-500", webp: "text-purple-500", svg: "text-purple-500",
   };
+  if (isImage) return <ImageIcon className={`w-4 h-4 ${colors[ext] || "text-purple-400"}`} />;
   return <File className={`w-4 h-4 ${colors[ext] || "text-slate-400"}`} />;
 };
 
 /* ─────────────────────────────────────────
    PaperEditor
+   FIX: handleImageUpload now uses res.data.url
+        directly (Cloudinary URL) — no BASE_URL prefix.
 ───────────────────────────────────────────*/
 const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
   const editor = useEditor({
@@ -344,8 +349,10 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
 
   if (!editor) return null;
 
-  // FIX: Use VITE_BASE_URL so uploaded images resolve to /uploads/...
-  // instead of /api/uploads/... which would happen with VITE_API_URL
+  /* ── IMAGE UPLOAD ──
+     res.data.url is already a full Cloudinary URL.
+     Never prepend VITE_BASE_URL or any local path.
+  ── */
   const handleImageUpload = async (file) => {
     try {
       const formData = new FormData();
@@ -353,13 +360,18 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
       const res = await api.post("/upload/narrative-image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const baseURL = import.meta.env.VITE_BASE_URL;
-      const fullUrl = `${baseURL}${res.data.url}`;
+
+      // Use the Cloudinary URL directly — no prefix needed
+      const imageUrl = res.data.url;
+
       editor
         .chain()
         .focus()
         .insertContent([
-          { type: "floatImage", attrs: { src: fullUrl, float: "none", width: "260" } },
+          {
+            type: "floatImage",
+            attrs: { src: imageUrl, float: "none", width: "260" },
+          },
           { type: "paragraph" },
         ])
         .run();
@@ -368,12 +380,12 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
     }
   };
 
-  const selNode = editor.state.selection.node;
+  const selNode     = editor.state.selection.node;
   const isImgSelected = selNode?.type?.name === "floatImage";
-  const currentFloat = isImgSelected ? selNode.attrs.float : null;
+  const currentFloat  = isImgSelected ? selNode.attrs.float : null;
 
   const paperStyle = {
-    maxWidth: PAPER_SIZES[paperSize]?.maxWidth ?? "794px",
+    maxWidth:  PAPER_SIZES[paperSize]?.maxWidth  ?? "794px",
     minHeight: PAPER_SIZES[paperSize]?.minHeight,
   };
 
@@ -426,54 +438,86 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
       {/* Toolbar */}
       {editable && (
         <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex flex-wrap gap-0.5 items-center sticky top-0 z-10">
-          <TB active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} title="Bold">
+          <TB
+            active={editor.isActive("bold")}
+            onClick={() => editor.chain().focus().toggleBold().run()}
+            title="Bold"
+          >
             <Bold className="w-3.5 h-3.5" />
           </TB>
-          <TB active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} title="Italic">
+          <TB
+            active={editor.isActive("italic")}
+            onClick={() => editor.chain().focus().toggleItalic().run()}
+            title="Italic"
+          >
             <Italic className="w-3.5 h-3.5" />
           </TB>
 
           <Divider />
 
-          <TB active={editor.isActive("heading", { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} title="Heading 1">
+          <TB
+            active={editor.isActive("heading", { level: 1 })}
+            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+            title="Heading 1"
+          >
             <span className="font-bold text-xs">H1</span>
           </TB>
-          <TB active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="Heading 2">
+          <TB
+            active={editor.isActive("heading", { level: 2 })}
+            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+            title="Heading 2"
+          >
             <span className="font-bold text-xs">H2</span>
           </TB>
 
           <Divider />
 
-          <TB active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Bullet list">
+          <TB
+            active={editor.isActive("bulletList")}
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            title="Bullet list"
+          >
             <List className="w-3.5 h-3.5" />
           </TB>
 
           <Divider />
 
-          <TB active={editor.isActive({ textAlign: "left" })} onClick={() => editor.chain().focus().setTextAlign("left").run()} title="Align left">
+          <TB
+            active={editor.isActive({ textAlign: "left" })}
+            onClick={() => editor.chain().focus().setTextAlign("left").run()}
+            title="Align left"
+          >
             <AlignLeft className="w-3.5 h-3.5" />
           </TB>
-          <TB active={editor.isActive({ textAlign: "center" })} onClick={() => editor.chain().focus().setTextAlign("center").run()} title="Align center">
+          <TB
+            active={editor.isActive({ textAlign: "center" })}
+            onClick={() => editor.chain().focus().setTextAlign("center").run()}
+            title="Align center"
+          >
             <AlignCenter className="w-3.5 h-3.5" />
           </TB>
-          <TB active={editor.isActive({ textAlign: "right" })} onClick={() => editor.chain().focus().setTextAlign("right").run()} title="Align right">
+          <TB
+            active={editor.isActive({ textAlign: "right" })}
+            onClick={() => editor.chain().focus().setTextAlign("right").run()}
+            title="Align right"
+          >
             <AlignRight className="w-3.5 h-3.5" />
           </TB>
 
           <Divider />
 
-          {/* Image upload */}
+          {/* Image upload — triggers handleImageUpload on file select */}
           <label
             className="h-8 px-2.5 rounded-md text-sm font-medium transition-all duration-100 flex items-center gap-1.5 border border-transparent text-slate-600 cursor-pointer"
             onMouseEnter={e => {
               e.currentTarget.style.backgroundColor = `rgb(var(--p50))`;
-              e.currentTarget.style.color = `rgb(var(--p700))`;
-              e.currentTarget.style.borderColor = `rgb(var(--p200))`;
+              e.currentTarget.style.color           = `rgb(var(--p700))`;
+              e.currentTarget.style.borderColor     = `rgb(var(--p200))`;
             }}
             onMouseLeave={e => {
               e.currentTarget.style.backgroundColor = "";
-              e.currentTarget.style.color = "";
-              e.currentTarget.style.borderColor = "";
+              e.currentTarget.style.color           = "";
+              e.currentTarget.style.borderColor     = "";
             }}
           >
             <ImageIcon className="w-3.5 h-3.5" />
@@ -495,13 +539,28 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest self-center mr-1">
             Wrap:
           </span>
-          <TB active={isImgSelected && currentFloat === "left"} onClick={() => setSelectedImageFloat(editor, "left")} title="Float left" disabled={!isImgSelected}>
+          <TB
+            active={isImgSelected && currentFloat === "left"}
+            onClick={() => setSelectedImageFloat(editor, "left")}
+            title="Float left"
+            disabled={!isImgSelected}
+          >
             <AlignLeft className="w-3.5 h-3.5" /><span className="text-xs">Left</span>
           </TB>
-          <TB active={isImgSelected && currentFloat === "right"} onClick={() => setSelectedImageFloat(editor, "right")} title="Float right" disabled={!isImgSelected}>
+          <TB
+            active={isImgSelected && currentFloat === "right"}
+            onClick={() => setSelectedImageFloat(editor, "right")}
+            title="Float right"
+            disabled={!isImgSelected}
+          >
             <AlignRight className="w-3.5 h-3.5" /><span className="text-xs">Right</span>
           </TB>
-          <TB active={isImgSelected && currentFloat === "none"} onClick={() => setSelectedImageFloat(editor, "none")} title="Inline" disabled={!isImgSelected}>
+          <TB
+            active={isImgSelected && currentFloat === "none"}
+            onClick={() => setSelectedImageFloat(editor, "none")}
+            title="Inline"
+            disabled={!isImgSelected}
+          >
             <Minus className="w-3.5 h-3.5" /><span className="text-xs">Inline</span>
           </TB>
 
@@ -536,17 +595,44 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
 
 /* ─────────────────────────────────────────
    AttachmentUploader
+   IMPROVEMENTS:
+   - Image preview via URL.createObjectURL
+   - Accurate icon via file.type (MIME)
+   - File size display
+   - No duplicate entries (uses stable id)
 ───────────────────────────────────────────*/
 const AttachmentUploader = ({ attachments, setAttachments, editable }) => {
-  const dropRef = useRef(null);
+  const dropRef  = useRef(null);
   const [dragging, setDragging] = useState(false);
+  // Track object URLs so we can revoke them on unmount / removal
+  const objectUrlsRef = useRef({});
 
   const addFiles = (files) => {
-    const newItems = Array.from(files).map((f) => ({
-      id: crypto.randomUUID(), file: f, name: f.name, size: f.size,
-    }));
+    const newItems = Array.from(files).map((f) => {
+      const id      = crypto.randomUUID();
+      const preview = f.type.startsWith("image/") ? URL.createObjectURL(f) : null;
+      if (preview) objectUrlsRef.current[id] = preview;
+      return { id, file: f, name: f.name, size: f.size, mimeType: f.type, preview };
+    });
     setAttachments((prev) => [...prev, ...newItems]);
   };
+
+  const removeFile = (id) => {
+    // Revoke object URL to free memory
+    if (objectUrlsRef.current[id]) {
+      URL.revokeObjectURL(objectUrlsRef.current[id]);
+      delete objectUrlsRef.current[id];
+    }
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  };
+
+  // Revoke all on unmount
+  useEffect(() => {
+    const urls = objectUrlsRef.current;
+    return () => {
+      Object.values(urls).forEach(URL.revokeObjectURL);
+    };
+  }, []);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -587,18 +673,18 @@ const AttachmentUploader = ({ attachments, setAttachments, editable }) => {
             onDrop={handleDrop}
             className="relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 cursor-pointer"
             style={{
-              borderColor: dragging ? `rgb(var(--p400))` : `rgb(var(--p200) / 0.8)`,
+              borderColor:     dragging ? `rgb(var(--p400))` : `rgb(var(--p200) / 0.8)`,
               backgroundColor: dragging ? `rgb(var(--p50))` : "white",
             }}
             onMouseEnter={e => {
               if (!dragging) {
-                e.currentTarget.style.borderColor = `rgb(var(--p300))`;
+                e.currentTarget.style.borderColor     = `rgb(var(--p300))`;
                 e.currentTarget.style.backgroundColor = `rgb(var(--p50) / 0.4)`;
               }
             }}
             onMouseLeave={e => {
               if (!dragging) {
-                e.currentTarget.style.borderColor = `rgb(var(--p200) / 0.8)`;
+                e.currentTarget.style.borderColor     = `rgb(var(--p200) / 0.8)`;
                 e.currentTarget.style.backgroundColor = "white";
               }
             }}
@@ -631,29 +717,48 @@ const AttachmentUploader = ({ attachments, setAttachments, editable }) => {
 
         {attachments.length > 0 && (
           <ul className="space-y-2">
-            {attachments.map((att) => (
-              <li
-                key={att.id}
-                className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 bg-slate-50 group hover:border-slate-200 transition-colors"
-              >
-                <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm shrink-0">
-                  <FileTypeIcon name={att.name} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-700 truncate">{att.name}</p>
-                  {att.size && <p className="text-xs text-slate-400">{formatSize(att.size)}</p>}
-                </div>
-                {editable && (
-                  <button
-                    onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== att.id))}
-                    className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-400 transition-all shrink-0"
-                    title="Remove"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </li>
-            ))}
+            {attachments.map((att) => {
+              const isImage = att.mimeType?.startsWith("image/") ||
+                /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name ?? "");
+
+              return (
+                <li
+                  key={att.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 bg-slate-50 group hover:border-slate-200 transition-colors"
+                >
+                  {/* Thumbnail for images, icon for others */}
+                  <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm shrink-0 overflow-hidden">
+                    {isImage && att.preview ? (
+                      <img
+                        src={att.preview}
+                        alt={att.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <FileTypeIcon name={att.name} mimeType={att.mimeType} />
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-700 truncate">{att.name}</p>
+                    {att.size != null && (
+                      <p className="text-xs text-slate-400">{formatSize(att.size)}</p>
+                    )}
+                  </div>
+
+                  {editable && (
+                    <button
+                      onClick={() => removeFile(att.id)}
+                      className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-400 transition-all shrink-0"
+                      title="Remove"
+                      aria-label={`Remove ${att.name}`}
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
 
@@ -668,7 +773,10 @@ const AttachmentUploader = ({ attachments, setAttachments, editable }) => {
 /* ─────────────────────────────────────────
    ConfirmModal
 ───────────────────────────────────────────*/
-const ConfirmModal = ({ open, title, message, confirmLabel = "Confirm", onConfirm, onCancel, loading = false }) => {
+const ConfirmModal = ({
+  open, title, message, confirmLabel = "Confirm",
+  onConfirm, onCancel, loading = false,
+}) => {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -709,11 +817,10 @@ const ConfirmModal = ({ open, title, message, confirmLabel = "Confirm", onConfir
             onMouseEnter={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p600)), rgb(var(--p700)))`}
             onMouseLeave={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`}
           >
-            {loading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" />Submitting…</>
-            ) : (
-              <><Send className="w-4 h-4" />{confirmLabel}</>
-            )}
+            {loading
+              ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting…</>
+              : <><Send className="w-4 h-4" />{confirmLabel}</>
+            }
           </button>
         </div>
       </div>
@@ -757,25 +864,25 @@ const AlertModal = ({ open, title, message, onClose }) => {
    NarrativeComposer (main component)
 ───────────────────────────────────────────*/
 const NarrativeComposer = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const navigate  = useNavigate();
+  const location  = useLocation();
 
   const revisionId =
     location.state?.narrativeId ||
     new URLSearchParams(location.search).get("revision");
 
-  const [narrativeId, setNarrativeId] = useState(null);
-  const [narrativeDate, setNarrativeDate] = useState(null);
-  const [status, setStatus] = useState("draft");
+  const [narrativeId,         setNarrativeId]         = useState(null);
+  const [narrativeDate,       setNarrativeDate]       = useState(null);
+  const [status,              setStatus]              = useState("draft");
   const [coordinatorFeedback, setCoordinatorFeedback] = useState("");
-  const [content, setContent] = useState("");
-  const [attachments, setAttachments] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
-  const [paperSize, setPaperSize] = useState("A4");
-  const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
-  const [alertModal, setAlertModal] = useState({ open: false, title: "", message: "" });
+  const [content,             setContent]             = useState("");
+  const [attachments,         setAttachments]         = useState([]);
+  const [saving,              setSaving]              = useState(false);
+  const [submitting,          setSubmitting]          = useState(false);
+  const [lastSaved,           setLastSaved]           = useState(null);
+  const [paperSize,           setPaperSize]           = useState("A4");
+  const [showSubmitConfirm,   setShowSubmitConfirm]   = useState(false);
+  const [alertModal,          setAlertModal]          = useState({ open: false, title: "", message: "" });
 
   const showAlert = (title, message) => setAlertModal({ open: true, title, message });
 
@@ -810,21 +917,27 @@ const NarrativeComposer = () => {
           setCoordinatorFeedback(todayNarrative.coordinator_remarks || "");
           setNarrativeDate((todayNarrative.narrative_date || "").split("T")[0]);
         } else {
-          setNarrativeId(null); setContent(""); setStatus("draft");
-          setCoordinatorFeedback(""); setNarrativeDate(todayISO());
+          setNarrativeId(null);
+          setContent("");
+          setStatus("draft");
+          setCoordinatorFeedback("");
+          setNarrativeDate(todayISO());
         }
       } catch (err) {
         console.error("Failed to check today's narrative:", err);
-        setNarrativeId(null); setContent(""); setStatus("draft");
-        setCoordinatorFeedback(""); setNarrativeDate(todayISO());
+        setNarrativeId(null);
+        setContent("");
+        setStatus("draft");
+        setCoordinatorFeedback("");
+        setNarrativeDate(todayISO());
       }
     };
     loadNarrative();
   }, [revisionId, navigate]);
 
   /* ── SAVE DRAFT ──
-     Sends multipart/form-data so multer (upload.array("attachments"))
-     can parse both text fields and file uploads in one request.
+     Sends multipart/form-data. Only new files (att.file exists) are
+     appended — existing saved attachments are skipped to avoid duplicates.
   ── */
   const handleSaveDraft = async () => {
     setSaving(true);
@@ -833,14 +946,11 @@ const NarrativeComposer = () => {
       formData.append("narrative_date", narrativeDate);
       formData.append("content", content);
       formData.append("status", "draft");
-      if (narrativeId) {
-        formData.append("narrative_id", narrativeId);
-      }
-      // Append each attachment file under the key "attachments"
+      if (narrativeId) formData.append("narrative_id", narrativeId);
+
+      // Only append files that are new (have a .file property)
       attachments.forEach((att) => {
-        if (att.file) {
-          formData.append("attachments", att.file);
-        }
+        if (att.file) formData.append("attachments", att.file);
       });
 
       const res = await api.post("/narratives/student", formData, {
@@ -852,21 +962,19 @@ const NarrativeComposer = () => {
       }
       setStatus("draft");
       setLastSaved(new Date());
-    } catch (err) {
+    } catch {
       showAlert("Save Failed", "Failed to save draft.");
     } finally {
       setSaving(false);
     }
   };
 
-  /* ── SUBMIT ── */
+  /* ── SUBMIT VALIDATION ── */
   const handleSubmitClick = () => {
-    const isEmptyContent = (html) => {
-      return !html || html.replace(/<[^>]*>/g, "").trim() === "";
-    };
+    const isEmptyContent = (html) =>
+      !html || html.replace(/<[^>]*>/g, "").trim() === "";
 
-    // FIX: Allow submission when content exists OR attachments exist
-    const hasContent = !isEmptyContent(content);
+    const hasContent     = !isEmptyContent(content);
     const hasAttachments = attachments.length > 0;
 
     if (!hasContent && !hasAttachments) {
@@ -880,8 +988,8 @@ const NarrativeComposer = () => {
   };
 
   /* ── SUBMIT CONFIRM ──
-     Sends multipart/form-data so multer (upload.array("attachments"))
-     can parse both text fields and file uploads in one request.
+     Same multipart pattern as save draft.
+     Only new files appended — no duplicate uploads.
   ── */
   const handleSubmitConfirm = async () => {
     setSubmitting(true);
@@ -890,14 +998,10 @@ const NarrativeComposer = () => {
       formData.append("narrative_date", narrativeDate);
       formData.append("content", content);
       formData.append("status", "submitted");
-      if (narrativeId) {
-        formData.append("narrative_id", narrativeId);
-      }
-      // Append each attachment file under the key "attachments"
+      if (narrativeId) formData.append("narrative_id", narrativeId);
+
       attachments.forEach((att) => {
-        if (att.file) {
-          formData.append("attachments", att.file);
-        }
+        if (att.file) formData.append("attachments", att.file);
       });
 
       const res = await api.post("/narratives/student", formData, {
@@ -909,7 +1013,7 @@ const NarrativeComposer = () => {
       }
       setStatus("submitted");
       setShowSubmitConfirm(false);
-    } catch (err) {
+    } catch {
       showAlert("Submission Failed", "Failed to submit narrative.");
     } finally {
       setSubmitting(false);
@@ -917,7 +1021,7 @@ const NarrativeComposer = () => {
   };
 
   const isEditable = status === "draft" || status === "revision";
-  const canSubmit = status === "draft" || status === "revision";
+  const canSubmit  = status === "draft" || status === "revision";
 
   return (
     <div
@@ -983,8 +1087,8 @@ const NarrativeComposer = () => {
                   value={paperSize}
                   onChange={(e) => setPaperSize(e.target.value)}
                   className="appearance-none text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg pl-3 pr-7 py-1.5 cursor-pointer transition-colors outline-none"
-                  onFocus={e => e.target.style.boxShadow = `0 0 0 2px rgb(var(--p400))`}
-                  onBlur={e => e.target.style.boxShadow = "none"}
+                  onFocus={e  => e.target.style.boxShadow = `0 0 0 2px rgb(var(--p400))`}
+                  onBlur={e   => e.target.style.boxShadow = "none"}
                 >
                   {Object.entries(PAPER_SIZES).map(([key, { label }]) => (
                     <option key={key} value={key}>{label}</option>
@@ -1011,9 +1115,9 @@ const NarrativeComposer = () => {
             <div
               className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full"
               style={{
-                color: `rgb(var(--p700))`,
+                color:           `rgb(var(--p700))`,
                 backgroundColor: `rgb(var(--p50))`,
-                border: `1px solid rgb(var(--p200))`,
+                border:          `1px solid rgb(var(--p200))`,
               }}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1048,10 +1152,19 @@ const NarrativeComposer = () => {
         )}
 
         {/* Editor */}
-        <PaperEditor value={content} onChange={setContent} editable={isEditable} paperSize={paperSize} />
+        <PaperEditor
+          value={content}
+          onChange={setContent}
+          editable={isEditable}
+          paperSize={paperSize}
+        />
 
         {/* Attachments */}
-        <AttachmentUploader attachments={attachments} setAttachments={setAttachments} editable={isEditable} />
+        <AttachmentUploader
+          attachments={attachments}
+          setAttachments={setAttachments}
+          editable={isEditable}
+        />
 
         {/* Action bar */}
         {canSubmit && (
@@ -1065,7 +1178,6 @@ const NarrativeComposer = () => {
             </p>
 
             <div className="flex gap-3">
-              {/* Save Draft */}
               <button
                 onClick={handleSaveDraft}
                 disabled={saving || submitting}
@@ -1075,28 +1187,27 @@ const NarrativeComposer = () => {
                 style={{ border: `2px solid rgb(var(--p400))`, color: `rgb(var(--p700))` }}
                 onMouseEnter={e => {
                   e.currentTarget.style.backgroundColor = `rgb(var(--p50))`;
-                  e.currentTarget.style.borderColor = `rgb(var(--p500))`;
-                  e.currentTarget.style.color = `rgb(var(--p800))`;
+                  e.currentTarget.style.borderColor     = `rgb(var(--p500))`;
+                  e.currentTarget.style.color           = `rgb(var(--p800))`;
                 }}
                 onMouseLeave={e => {
                   e.currentTarget.style.backgroundColor = "white";
-                  e.currentTarget.style.borderColor = `rgb(var(--p400))`;
-                  e.currentTarget.style.color = `rgb(var(--p700))`;
+                  e.currentTarget.style.borderColor     = `rgb(var(--p400))`;
+                  e.currentTarget.style.color           = `rgb(var(--p700))`;
                 }}
               >
                 {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                 {saving ? "Saving…" : "Save Draft"}
               </button>
 
-              {/* Submit Narrative */}
               <button
                 onClick={handleSubmitClick}
                 disabled={submitting || saving}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white
                   disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150"
                 style={{
-                  background: `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`,
-                  boxShadow: `0 4px 14px rgb(var(--p500) / 0.3)`,
+                  background:  `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`,
+                  boxShadow:   `0 4px 14px rgb(var(--p500) / 0.3)`,
                 }}
                 onMouseEnter={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p600)), rgb(var(--p700)))`}
                 onMouseLeave={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`}

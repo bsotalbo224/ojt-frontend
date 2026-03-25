@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { User } from "lucide-react";
+
+const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const SIZE_MAP = {
   sm: { box: "w-8 h-8", icon: 14 },
@@ -15,19 +17,36 @@ const getInitials = (name) => {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
 
-export default function Avatar({ name = "", src = "", size = "md", className = "" }) {
+export default function Avatar({
+  name = "",
+  src = "",
+  size = "md",
+  className = ""
+}) {
   const [imgError, setImgError] = useState(false);
 
   const { box, icon } = SIZE_MAP[size] ?? SIZE_MAP.md;
   const initials = getInitials(name);
-  const showImage = src && !imgError;
+
+  // SMART URL HANDLING (Cloudinary-safe)
+  const resolvedSrc = useMemo(() => {
+    if (!src) return "";
+
+    // Cloudinary or external URL
+    if (src.startsWith("http")) return src;
+
+    // Local fallback (just in case)
+    return `${BASE_URL}${src}`;
+  }, [src]);
+
+  const showImage = resolvedSrc && !imgError;
 
   const base = `${box} rounded-full flex-shrink-0 overflow-hidden ${className}`;
 
   if (showImage) {
     return (
       <img
-        src={src}
+        src={resolvedSrc}
         alt={name || "Avatar"}
         onError={() => setImgError(true)}
         className={`${base} object-cover object-center`}
