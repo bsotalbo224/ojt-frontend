@@ -10,53 +10,53 @@ const StudentDashboard = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [assignment, setAssignment] = useState(null);
 
-const fetchAttendance = async () => {
-  try {
-    setAttendanceLoading(true);
-    const data = await getStudentAttendanceHistory();
-    if (data.success) {
-      setAttendance(data.today || null);
-    } else {
+  const fetchAttendance = async () => {
+    try {
+      setAttendanceLoading(true);
+      const data = await getStudentAttendanceHistory();
+      if (data.success) {
+        setAttendance(data.today || null);
+      } else {
+        setAttendance(null);
+      }
+      setAttendanceError(null);
+    } catch (err) {
+      setAttendanceError(err.message || "Failed to load attendance");
       setAttendance(null);
+    } finally {
+      setAttendanceLoading(false);
     }
-    setAttendanceError(null);
-  } catch (err) {
-    setAttendanceError(err.message || "Failed to load attendance");
-    setAttendance(null);
-  } finally {
-    setAttendanceLoading(false);
-  }
-};
+  };
 
   useEffect(() => {
     fetchAttendance();
   }, []);
 
   const handleTimeIn = () => {
-  if (actionLoading) return;
-  setActionLoading(true);
-  navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      try {
-        const { latitude, longitude } = pos.coords;
-        const data = await timeIn(latitude, longitude);
-        if (data.success === false) {
-          setAttendanceError(data.message);
-          return;
+    if (actionLoading) return;
+    setActionLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const data = await timeIn(latitude, longitude);
+          if (data.success === false) {
+            setAttendanceError(data.message);
+            return;
+          }
+          await fetchAttendance();
+        } catch (err) {
+          setAttendanceError("Time-in failed");
+        } finally {
+          setActionLoading(false);
         }
-        await fetchAttendance();
-      } catch (err) {
-        setAttendanceError("Time-in failed");
-      } finally {
+      },
+      () => {
+        setAttendanceError("Location permission required for attendance.");
         setActionLoading(false);
       }
-    },
-    () => {
-      setAttendanceError("Location permission required for attendance.");
-      setActionLoading(false);
-    }
-  );
-};
+    );
+  };
 
   const handleTimeOut = async () => {
     if (actionLoading) return;
@@ -76,16 +76,20 @@ const fetchAttendance = async () => {
   };
 
   const formatTime = (timeString) => {
-  if (!timeString) return "—";
-  const [h, m] = timeString.split(":").map(Number);
-  const date = new Date();
-  date.setHours(h, m, 0, 0);
-  return date.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true
-  });
-};
+    if (!timeString) return "—";
+
+    const [h, m] = timeString.split(":").map(Number);
+
+    // Create UTC date
+    const date = new Date(Date.UTC(1970, 0, 1, h, m));
+
+    return date.toLocaleTimeString("en-PH", {
+      timeZone: "Asia/Manila",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
 
   const formatDate = () => {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
@@ -97,18 +101,18 @@ const fetchAttendance = async () => {
   const isCompleted = attendance?.timeIn && attendance?.timeOut;
 
   const fetchAssignment = async () => {
-  try {
-    const res = await getStudentAssignment();
-    if (res.success) setAssignment(res.data);
-  } catch {
-    console.error("Assignment load failed");
-  }
-};
+    try {
+      const res = await getStudentAssignment();
+      if (res.success) setAssignment(res.data);
+    } catch {
+      console.error("Assignment load failed");
+    }
+  };
 
-useEffect(() => {
-  fetchAttendance();
-  fetchAssignment();
-}, []);
+  useEffect(() => {
+    fetchAttendance();
+    fetchAssignment();
+  }, []);
 
   return (
     <div className="h-full" style={{ background: 'linear-gradient(to bottom, rgb(var(--primary-50)), white, rgb(var(--primary-50)))' }}>
@@ -231,8 +235,8 @@ useEffect(() => {
                   onClick={handleTimeOut}
                   disabled={!canTimeOut || actionLoading || isCompleted}
                   className={`flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-lg font-semibold text-sm transition-all shadow-sm ${canTimeOut && !actionLoading && !isCompleted
-                      ? "bg-gray-700 text-white hover:bg-gray-800 hover:shadow-md active:scale-[0.98]"
-                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    ? "bg-gray-700 text-white hover:bg-gray-800 hover:shadow-md active:scale-[0.98]"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
                     }`}
                 >
                   <LogOut className="w-4 h-4" />
