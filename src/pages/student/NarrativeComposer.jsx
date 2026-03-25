@@ -852,8 +852,13 @@ const NarrativeComposer = () => {
       return !html || html.replace(/<[^>]*>/g, "").trim() === "";
     };
 
-    if (isEmptyContent(content)) {
-      showAlert("Empty Narrative", "Please write your narrative before submitting.");
+    const hasAttachments = attachments.length > 0;
+
+    if (isEmptyContent(content) && !hasAttachments) {
+      showAlert(
+        "Empty Submission",
+        "Please write a narrative or upload at least one attachment before submitting."
+      );
       return;
     }
     setShowSubmitConfirm(true);
