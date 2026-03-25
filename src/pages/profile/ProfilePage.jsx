@@ -5,10 +5,6 @@ import {
 } from "lucide-react";
 import api from "../../api/axios";
 
-const isCloudinary = photo?.startsWith("http");
-
-const BASE_URL = import.meta.env.VITE_BASE_URL;
-
 const ROLE_LABELS = {
   student:     "Student",
   coordinator: "Coordinator",
@@ -45,6 +41,7 @@ function Avatar({ photo, name, size = "lg", onUpload }) {
 
   useEffect(() => { setImgError(false); setCacheKey(Date.now()); }, [photo]);
 
+  const isCloudinary = photo?.startsWith("http");
   const sizeClasses = size === "lg" ? "w-24 h-24 text-4xl" : "w-10 h-10 text-base";
   const iconSize    = size === "lg" ? 40 : 18;
   const hasPhoto    = photo?.length > 0 && !imgError;
