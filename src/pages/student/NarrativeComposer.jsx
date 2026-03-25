@@ -66,7 +66,6 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
     window.addEventListener("mouseup", onMouseUp);
   }, [width, updateAttributes]);
 
-  // CSS-var-based accent colours resolved at runtime
   const accentColor = "rgb(var(--p600))";
   const accentDarker = "rgb(var(--p700))";
   const accentGlow = "rgb(var(--p500) / 0.15)";
@@ -103,7 +102,6 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
 
           {selected && (
             <>
-              {/* Float badge */}
               <span style={{
                 position: "absolute", top: -12, left: 0,
                 background: accentColor, color: "#fff",
@@ -114,7 +112,6 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
                 {float === "none" ? "Inline" : `Float ${float}`}
               </span>
 
-              {/* Drag hint */}
               <span style={{
                 position: "absolute", top: -12, right: 0,
                 background: accentDarker, color: "#fff",
@@ -123,7 +120,6 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
                 userSelect: "none", zIndex: 20,
               }} title="Drag to reposition">⠿ drag</span>
 
-              {/* Resize handle */}
               <span
                 onMouseDown={handleResizeMouseDown}
                 title="Drag to resize"
@@ -222,9 +218,8 @@ const STATUS_CONFIG = {
   submitted: {
     label: "Submitted",
     icon: Send,
-    // uses CSS var via inline style below — see StatusBadge
     className: "border",
-    dot: null, // handled inline
+    dot: null,
   },
   revision: {
     label: "For Revision",
@@ -235,20 +230,17 @@ const STATUS_CONFIG = {
   approved: {
     label: "Approved",
     icon: CheckCircle2,
-    // uses CSS var via inline style below
     className: "border",
     dot: null,
   },
 };
 
 /* ─────────────────────────────────────────
-   StatusBadge — primary-themed statuses use CSS vars
+   StatusBadge
 ───────────────────────────────────────────*/
 const StatusBadge = ({ status }) => {
   const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.draft;
   const Icon = cfg.icon;
-
-  // submitted & approved use the primary theme
   const isPrimary = status === "submitted" || status === "approved";
 
   return (
@@ -344,7 +336,6 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
 
   useEffect(() => {
     if (!editor) return;
-
     const current = editor.getHTML();
     if (value !== current) {
       editor.commands.setContent(value || "", false);
@@ -353,6 +344,8 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
 
   if (!editor) return null;
 
+  // FIX: Use VITE_BASE_URL so uploaded images resolve to /uploads/...
+  // instead of /api/uploads/... which would happen with VITE_API_URL
   const handleImageUpload = async (file) => {
     try {
       const formData = new FormData();
@@ -360,7 +353,7 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
       const res = await api.post("/upload/narrative-image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      const baseURL = import.meta.env.VITE_API_URL;
+      const baseURL = import.meta.env.VITE_BASE_URL;
       const fullUrl = `${baseURL}${res.data.url}`;
       editor
         .chain()
@@ -829,14 +822,34 @@ const NarrativeComposer = () => {
     loadNarrative();
   }, [revisionId, navigate]);
 
-  /* ── SAVE DRAFT ── */
+  /* ── SAVE DRAFT ──
+     Sends multipart/form-data so multer (upload.array("attachments"))
+     can parse both text fields and file uploads in one request.
+  ── */
   const handleSaveDraft = async () => {
     setSaving(true);
     try {
-      const res = await api.post("/narratives/student", {
-        narrative_date: narrativeDate, content, status: "draft",
+      const formData = new FormData();
+      formData.append("narrative_date", narrativeDate);
+      formData.append("content", content);
+      formData.append("status", "draft");
+      if (narrativeId) {
+        formData.append("narrative_id", narrativeId);
+      }
+      // Append each attachment file under the key "attachments"
+      attachments.forEach((att) => {
+        if (att.file) {
+          formData.append("attachments", att.file);
+        }
       });
-      if (!narrativeId && res.data?.narrative_id) setNarrativeId(res.data.narrative_id);
+
+      const res = await api.post("/narratives/student", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (!narrativeId && res.data?.narrative_id) {
+        setNarrativeId(res.data.narrative_id);
+      }
       setStatus("draft");
       setLastSaved(new Date());
     } catch (err) {
@@ -852,9 +865,11 @@ const NarrativeComposer = () => {
       return !html || html.replace(/<[^>]*>/g, "").trim() === "";
     };
 
+    // FIX: Allow submission when content exists OR attachments exist
+    const hasContent = !isEmptyContent(content);
     const hasAttachments = attachments.length > 0;
 
-    if (isEmptyContent(content) && !hasAttachments) {
+    if (!hasContent && !hasAttachments) {
       showAlert(
         "Empty Submission",
         "Please write a narrative or upload at least one attachment before submitting."
@@ -864,14 +879,34 @@ const NarrativeComposer = () => {
     setShowSubmitConfirm(true);
   };
 
+  /* ── SUBMIT CONFIRM ──
+     Sends multipart/form-data so multer (upload.array("attachments"))
+     can parse both text fields and file uploads in one request.
+  ── */
   const handleSubmitConfirm = async () => {
     setSubmitting(true);
     try {
-      const res = await api.post("/narratives/student", {
-        narrative_id: narrativeId, narrative_date: narrativeDate,
-        content, status: "submitted",
+      const formData = new FormData();
+      formData.append("narrative_date", narrativeDate);
+      formData.append("content", content);
+      formData.append("status", "submitted");
+      if (narrativeId) {
+        formData.append("narrative_id", narrativeId);
+      }
+      // Append each attachment file under the key "attachments"
+      attachments.forEach((att) => {
+        if (att.file) {
+          formData.append("attachments", att.file);
+        }
       });
-      if (!narrativeId && res.data?.narrative_id) setNarrativeId(res.data.narrative_id);
+
+      const res = await api.post("/narratives/student", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      if (!narrativeId && res.data?.narrative_id) {
+        setNarrativeId(res.data.narrative_id);
+      }
       setStatus("submitted");
       setShowSubmitConfirm(false);
     } catch (err) {
@@ -948,7 +983,6 @@ const NarrativeComposer = () => {
                   value={paperSize}
                   onChange={(e) => setPaperSize(e.target.value)}
                   className="appearance-none text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg pl-3 pr-7 py-1.5 cursor-pointer transition-colors outline-none"
-                  style={{ '--tw-ring-color': `rgb(var(--p400))` }}
                   onFocus={e => e.target.style.boxShadow = `0 0 0 2px rgb(var(--p400))`}
                   onBlur={e => e.target.style.boxShadow = "none"}
                 >
