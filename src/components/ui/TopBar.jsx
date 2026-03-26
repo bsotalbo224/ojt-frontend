@@ -38,10 +38,12 @@ const TopBar = ({ onMenuClick, user }) => {
   const isMultiRole = Array.isArray(user?.roles) && user.roles.length > 1;
 
   useEffect(() => {
-    if (roles.length > 0 && !localStorage.getItem("activeRole")) {
-      localStorage.setItem("activeRole", roles[0]);
+  if (Array.isArray(user?.roles) && user.roles.length > 0) {
+    if (!localStorage.getItem("activeRole")) {
+      localStorage.setItem("activeRole", user.roles[0]);
     }
-  }, [roles]);
+  }
+}, [user]);
 
   const safeNavigate = useCallback((path) => {
     const role = getRole(user);
