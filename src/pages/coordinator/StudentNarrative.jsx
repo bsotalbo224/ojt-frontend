@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, FileText, BookOpen, CheckCircle, AlertCircle,
@@ -47,47 +47,76 @@ const detectFileType = (url = '') => {
 const getFilename = (url = '') =>
   decodeURIComponent(url.split('?')[0].split('/').pop()) || 'File';
 
+// ─── ImagePreviewModal ────────────────────────────────────────────────────────
+
+const ImagePreviewModal = ({ src, alt, onClose }) => {
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-99999 flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+      >
+        <X className="w-5 h-5 text-white" />
+      </button>
+      <img
+        src={src}
+        alt={alt || 'Preview'}
+        className="max-w-full max-h-[90vh] rounded-xl shadow-2xl object-contain"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>
+  );
+};
+
 // ─── AttachmentItem ───────────────────────────────────────────────────────────
 
-const AttachmentItem = ({ url, idx }) => {
+const AttachmentItem = ({ url, idx, onImageClick }) => {
   const [imgError, setImgError] = useState(false);
   const type     = detectFileType(url);
   const filename = getFilename(url);
 
+  // FIX: Full image, no crop — object-contain + auto height, max capped
   if (type === 'image' && !imgError) {
     return (
       <div
-        className="rounded-xl overflow-hidden shadow-sm group relative"
-        style={{ border: `1px solid rgb(var(--primary-100))` }}
+        className="rounded-xl overflow-hidden shadow-sm group relative bg-black/5 flex items-center justify-center cursor-zoom-in"
+        style={{ border: `1px solid rgb(var(--primary-100))`, minHeight: '80px', maxHeight: '220px' }}
+        onClick={() => onImageClick(url)}
       >
         <img
           src={url}
           alt={`Attachment ${idx + 1}`}
           loading="lazy"
-          className="w-full h-28 object-cover"
+          className="w-full object-contain rounded-xl transition-transform duration-200 group-hover:scale-[1.02]"
+          style={{ maxHeight: '220px' }}
           onError={() => setImgError(true)}
         />
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="absolute inset-0 bg-black/0 group-hover:bg-black/30 flex items-center justify-center transition-all duration-200"
-        >
-          <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-semibold bg-black/50 px-2 py-1 rounded-lg transition-opacity flex items-center gap-1">
-            <ExternalLink className="w-3 h-3" /> View
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/25 flex items-center justify-center transition-all duration-200 rounded-xl pointer-events-none">
+          <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-semibold bg-black/50 px-2.5 py-1 rounded-lg transition-opacity flex items-center gap-1">
+            <ExternalLink className="w-3 h-3" /> View Full
           </span>
-        </a>
+        </div>
       </div>
     );
   }
 
+  // FIX: PDF — responsive height using clamp instead of fixed px
   if (type === 'pdf') {
     return (
       <div
         className="rounded-xl overflow-hidden col-span-2 sm:col-span-3"
         style={{ border: `1px solid rgb(var(--primary-100))` }}
       >
-        <div className="w-full" style={{ height: '320px', backgroundColor: '#f8f8f8' }}>
+        <div className="w-full" style={{ height: 'clamp(320px, 65vh, 700px)', backgroundColor: '#f8f8f8' }}>
           <iframe
             src={`${url}#toolbar=0`}
             title={filename}
@@ -109,7 +138,7 @@ const AttachmentItem = ({ url, idx }) => {
             >
               <FileType className="w-3.5 h-3.5" style={{ color: `rgb(var(--primary-700))` }} />
             </div>
-            <span className="text-xs font-medium truncate max-w-40" style={{ color: `rgb(var(--primary-800))` }}>
+            <span className="text-xs font-medium truncate max-w-45" style={{ color: `rgb(var(--primary-800))` }}>
               {filename}
             </span>
           </div>
@@ -118,7 +147,7 @@ const AttachmentItem = ({ url, idx }) => {
             download
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition"
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition shrink-0"
             style={{ backgroundColor: `rgb(var(--primary-100))`, color: `rgb(var(--primary-700))` }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-200))`}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`}
@@ -130,25 +159,31 @@ const AttachmentItem = ({ url, idx }) => {
     );
   }
 
+  // FIX: DOC/DOCX — proper layout, no button overlap, truncation handled
   if (type === 'doc') {
     return (
       <div
-        className="flex items-center gap-3 px-3 py-3 rounded-xl"
+        className="flex items-center gap-3 px-3 py-3 rounded-xl col-span-2 sm:col-span-3"
         style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
       >
+        {/* Icon */}
         <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: '#dbeafe', border: '1px solid #bfdbfe' }}>
           <FileType className="w-4 h-4 text-blue-600" />
         </div>
-        <div className="min-w-0 flex-1">
+
+        {/* Filename + label — takes remaining space, truncates */}
+        <div className="min-w-0 flex-1 overflow-hidden">
           <p className="text-xs font-semibold truncate" style={{ color: `rgb(var(--primary-800))` }}>{filename}</p>
           <p className="text-[10px]" style={{ color: `rgb(var(--primary-500))` }}>Word Document</p>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+
+        {/* Buttons — always on the right, never pushed off */}
+        <div className="flex items-center gap-1.5 shrink-0 ml-2">
           <a
             href={url}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition whitespace-nowrap"
             style={{ backgroundColor: `rgb(var(--primary-100))`, color: `rgb(var(--primary-700))` }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-200))`}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`}
@@ -160,7 +195,7 @@ const AttachmentItem = ({ url, idx }) => {
             download
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition whitespace-nowrap"
             style={{ backgroundColor: `rgb(var(--primary-200))`, color: `rgb(var(--primary-700))` }}
             onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-300))`}
             onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-200))`}
@@ -186,8 +221,8 @@ const AttachmentItem = ({ url, idx }) => {
       <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `rgb(var(--primary-200))` }}>
         <File className="w-4 h-4" style={{ color: `rgb(var(--primary-700))` }} />
       </div>
-      <div className="min-w-0">
-        <p className="text-xs font-semibold truncate max-w-35" style={{ color: `rgb(var(--primary-800))` }}>{filename}</p>
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <p className="text-xs font-semibold truncate" style={{ color: `rgb(var(--primary-800))` }}>{filename}</p>
         <p className="text-[10px]" style={{ color: `rgb(var(--primary-500))` }}>Click to download</p>
       </div>
       <Download className="w-3.5 h-3.5 ml-auto shrink-0" style={{ color: `rgb(var(--primary-400))` }} />
@@ -241,10 +276,12 @@ const SectionLabel = ({ icon: Icon, label }) => (
 // ─── ReviewModal ──────────────────────────────────────────────────────────────
 
 const ReviewModal = ({ narrative, onClose, onSave }) => {
-  const [status,   setStatus]   = useState(narrative.status);
-  const [feedback, setFeedback] = useState(narrative.coordinator_remarks ?? '');
-  const [saving,   setSaving]   = useState(false);
-  const [saved,    setSaved]    = useState(false);
+  const [status,     setStatus]     = useState(narrative.status);
+  const [feedback,   setFeedback]   = useState(narrative.coordinator_remarks ?? '');
+  const [saving,     setSaving]     = useState(false);
+  const [saved,      setSaved]      = useState(false);
+  // Image fullscreen preview state
+  const [previewImg, setPreviewImg] = useState(null);
 
   const hasContent  = narrative.content?.trim().length > 0;
   const attachments = useMemo(() => {
@@ -253,6 +290,19 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
     if (narrative.attachment_url) return [narrative.attachment_url];
     return [];
   }, [narrative]);
+
+  // Event delegation for images inside dangerouslySetInnerHTML content
+  const narrativeBodyRef = useRef(null);
+  useEffect(() => {
+    const container = narrativeBodyRef.current;
+    if (!container) return;
+    const handleClick = (e) => {
+      const img = e.target.closest('img');
+      if (img && img.src) setPreviewImg(img.src);
+    };
+    container.addEventListener('click', handleClick);
+    return () => container.removeEventListener('click', handleClick);
+  }, [narrative.content]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -263,232 +313,244 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+    <>
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col overflow-hidden"
-        style={{ border: `1px solid rgb(var(--primary-100))`, maxHeight: '90vh' }}
+        className="fixed inset-0 z-9999 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        onClick={(e) => e.target === e.currentTarget && onClose()}
       >
-        {/* ── Modal Header ── */}
         <div
-          className="flex items-center justify-between px-6 py-4 shrink-0"
-          style={{ borderBottom: `1px solid rgb(var(--primary-100))`, background: `linear-gradient(to right, rgb(var(--primary-50)), white)` }}
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col overflow-hidden"
+          style={{ border: `1px solid rgb(var(--primary-100))`, maxHeight: '90vh' }}
         >
-          <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center shadow-sm shrink-0"
-              style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-400)), rgb(var(--primary-600)))` }}
-            >
-              <BookOpen className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h2 className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>Narrative Details</h2>
-              <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
-                {formatDate(narrative.created_at)}
-                {narrative.course ? ` · ${narrative.course}` : ''}
-                {narrative.company ? ` · ${narrative.company}` : ''}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
-            style={{ color: `rgb(var(--primary-400))` }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; e.currentTarget.style.color = `rgb(var(--primary-600))`; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = `rgb(var(--primary-400))`; }}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* ── Modal Body ── */}
-        <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
-
-          {/* Left — Narrative Content + Attachments (scrollable) */}
+          {/* ── Modal Header ── */}
           <div
-            className="flex-1 overflow-y-auto p-6 space-y-7 border-b lg:border-b-0 lg:border-r"
-            style={{ borderColor: `rgb(var(--primary-100))` }}
+            className="flex items-center justify-between px-6 py-4 shrink-0"
+            style={{ borderBottom: `1px solid rgb(var(--primary-100))`, background: `linear-gradient(to right, rgb(var(--primary-50)), white)` }}
           >
-            {/* Submission meta strip */}
-            <div
-              className="flex items-center gap-3 px-4 py-3 rounded-xl"
-              style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
-            >
-              <div className="flex items-center gap-1.5 text-xs" style={{ color: `rgb(var(--primary-500))` }}>
-                <Clock className="w-3.5 h-3.5" />
-                <span>Submitted {formatDate(narrative.created_at)}</span>
+            <div className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-lg flex items-center justify-center shadow-sm shrink-0"
+                style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-400)), rgb(var(--primary-600)))` }}
+              >
+                <BookOpen className="w-4 h-4 text-white" />
               </div>
-              <span style={{ color: `rgb(var(--primary-200))` }}>·</span>
-              <StatusBadge status={narrative.status} />
+              <div>
+                <h2 className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>Narrative Details</h2>
+                <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
+                  {formatDate(narrative.created_at)}
+                  {narrative.course ? ` · ${narrative.course}` : ''}
+                  {narrative.company ? ` · ${narrative.company}` : ''}
+                </p>
+              </div>
             </div>
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+              style={{ color: `rgb(var(--primary-400))` }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; e.currentTarget.style.color = `rgb(var(--primary-600))`; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = ''; e.currentTarget.style.color = `rgb(var(--primary-400))`; }}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
-            {/* Narrative Content */}
-            <div>
-              <SectionLabel icon={FileText} label="Narrative Report" />
-              {hasContent ? (
-                <>
-                  <style>{`
-                    .narrative-body {
-                      font-size: 15px;
-                      line-height: 1.85;
-                      color: #1e293b;
-                      word-break: break-word;
-                    }
-                    .narrative-body h1 {
-                      font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 10px;
-                      border-bottom: 2px solid rgb(var(--primary-300)); padding-bottom: 6px;
-                      text-transform: uppercase; letter-spacing: 0.05em;
-                    }
-                    .narrative-body h2 {
-                      font-size: 16px; font-weight: 700; color: #1e293b; margin-top: 20px;
-                      margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;
-                      border-bottom: 1px solid rgb(var(--primary-200)); padding-bottom: 4px;
-                    }
-                    .narrative-body p  { margin-bottom: 14px; text-align: justify; }
-                    .narrative-body ul { padding-left: 22px; margin-bottom: 14px; list-style-type: disc; }
-                    .narrative-body ol { padding-left: 22px; margin-bottom: 14px; list-style-type: decimal; }
-                    .narrative-body li { margin-bottom: 6px; }
-                    .narrative-body strong { font-weight: 700; }
-                    .narrative-body em    { font-style: italic; }
-                    .narrative-body img   { max-width: 100%; height: auto; border-radius: 6px; margin: 12px 0; }
-                    .narrative-body img[style*="float: left"],  .narrative-body img[style*="float:left"]  { margin-right: 16px; margin-bottom: 8px; }
-                    .narrative-body img[style*="float: right"], .narrative-body img[style*="float:right"] { margin-left: 16px;  margin-bottom: 8px; }
-                    .narrative-body a { color: rgb(var(--primary-600)); text-decoration: underline; }
-                    .narrative-body pre { background: #f1f5f9; border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; margin-bottom: 14px; }
-                    .narrative-body blockquote { border-left: 3px solid rgb(var(--primary-300)); padding-left: 14px; color: #475569; margin: 14px 0; }
-                  `}</style>
-                  <div
-                    className="narrative-body prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: narrative.content }}
-                  />
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `rgb(var(--primary-50))` }}>
-                    <FileText className="w-6 h-6" style={{ color: `rgb(var(--primary-300))` }} />
+          {/* ── Modal Body ── */}
+          <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
+
+            {/* Left — Narrative Content + Attachments (scrollable) */}
+            <div
+              className="flex-1 overflow-y-auto p-6 space-y-7 border-b lg:border-b-0 lg:border-r"
+              style={{ borderColor: `rgb(var(--primary-100))` }}
+            >
+              {/* Submission meta strip */}
+              <div
+                className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
+              >
+                <div className="flex items-center gap-1.5 text-xs" style={{ color: `rgb(var(--primary-500))` }}>
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Submitted {formatDate(narrative.created_at)}</span>
+                </div>
+                <span style={{ color: `rgb(var(--primary-200))` }}>·</span>
+                <StatusBadge status={narrative.status} />
+              </div>
+
+              {/* Narrative Content */}
+              <div>
+                <SectionLabel icon={FileText} label="Narrative Report" />
+                {hasContent ? (
+                  <>
+                    <style>{`
+                      .narrative-body {
+                        font-size: 15px;
+                        line-height: 1.85;
+                        color: #1e293b;
+                        word-break: break-word;
+                      }
+                      .narrative-body h1 {
+                        font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 10px;
+                        border-bottom: 2px solid rgb(var(--primary-300)); padding-bottom: 6px;
+                        text-transform: uppercase; letter-spacing: 0.05em;
+                      }
+                      .narrative-body h2 {
+                        font-size: 16px; font-weight: 700; color: #1e293b; margin-top: 20px;
+                        margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;
+                        border-bottom: 1px solid rgb(var(--primary-200)); padding-bottom: 4px;
+                      }
+                      .narrative-body p  { margin-bottom: 14px; text-align: justify; }
+                      .narrative-body ul { padding-left: 22px; margin-bottom: 14px; list-style-type: disc; }
+                      .narrative-body ol { padding-left: 22px; margin-bottom: 14px; list-style-type: decimal; }
+                      .narrative-body li { margin-bottom: 6px; }
+                      .narrative-body strong { font-weight: 700; }
+                      .narrative-body em    { font-style: italic; }
+                      .narrative-body img   { max-width: 100%; height: auto; border-radius: 6px; margin: 12px 0; cursor: zoom-in; }
+                      .narrative-body img[style*="float: left"],  .narrative-body img[style*="float:left"]  { margin-right: 16px; margin-bottom: 8px; }
+                      .narrative-body img[style*="float: right"], .narrative-body img[style*="float:right"] { margin-left: 16px;  margin-bottom: 8px; }
+                      .narrative-body a { color: rgb(var(--primary-600)); text-decoration: underline; }
+                      .narrative-body pre { background: #f1f5f9; border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; margin-bottom: 14px; }
+                      .narrative-body blockquote { border-left: 3px solid rgb(var(--primary-300)); padding-left: 14px; color: #475569; margin: 14px 0; }
+                    `}</style>
+                    <div
+                      ref={narrativeBodyRef}
+                      className="narrative-body prose prose-sm max-w-none"
+                      dangerouslySetInnerHTML={{ __html: narrative.content }}
+                    />
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `rgb(var(--primary-50))` }}>
+                      <FileText className="w-6 h-6" style={{ color: `rgb(var(--primary-300))` }} />
+                    </div>
+                    <p className="text-sm italic" style={{ color: `rgb(var(--primary-400))` }}>No narrative content submitted yet.</p>
                   </div>
-                  <p className="text-sm italic" style={{ color: `rgb(var(--primary-400))` }}>No narrative content submitted yet.</p>
+                )}
+              </div>
+
+              {/* Attachments */}
+              {attachments.length > 0 && (
+                <div>
+                  <div
+                    className="flex items-center gap-2 mb-4 pb-3"
+                    style={{ borderBottom: `1px solid rgb(var(--primary-100))` }}
+                  >
+                    <Paperclip className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
+                    <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>
+                      Attachments ({attachments.length})
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {attachments.map((url, idx) => (
+                      <AttachmentItem key={idx} url={url} idx={idx} onImageClick={setPreviewImg} />
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Attachments */}
-            {attachments.length > 0 && (
-              <div>
-                <div
-                  className="flex items-center gap-2 mb-4 pb-3"
-                  style={{ borderBottom: `1px solid rgb(var(--primary-100))` }}
-                >
-                  <Paperclip className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
-                  <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>
-                    Attachments ({attachments.length})
-                  </h3>
+            {/* Right — Review Panel (scrollable) */}
+            <div
+              className="w-full lg:w-72 xl:w-80 shrink-0 flex flex-col overflow-y-auto p-6 space-y-5"
+              style={{ backgroundColor: `rgb(var(--primary-50) / 0.3)` }}
+            >
+              <div className="flex items-center gap-2 mb-1">
+                <MessageSquare className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
+                <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Review</h3>
+              </div>
+
+              {/* Submission Meta */}
+              <div className="bg-white rounded-xl p-4 space-y-3" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+                <div>
+                  <p className="text-xs font-medium" style={{ color: `rgb(var(--primary-500))` }}>Submitted</p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: `rgb(var(--primary-800))` }}>{formatDate(narrative.created_at)}</p>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {attachments.map((url, idx) => (
-                    <AttachmentItem key={idx} url={url} idx={idx} />
-                  ))}
+                <div>
+                  <p className="text-xs font-medium mb-1" style={{ color: `rgb(var(--primary-500))` }}>Current Status</p>
+                  <StatusBadge status={narrative.status} />
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Right — Review Panel (scrollable) */}
-          <div
-            className="w-full lg:w-72 xl:w-80 shrink-0 flex flex-col overflow-y-auto p-6 space-y-5"
-            style={{ backgroundColor: `rgb(var(--primary-50) / 0.3)` }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <MessageSquare className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
-              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Review</h3>
-            </div>
-
-            {/* Submission Meta */}
-            <div className="bg-white rounded-xl p-4 space-y-3" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+              {/* Status Dropdown */}
               <div>
-                <p className="text-xs font-medium" style={{ color: `rgb(var(--primary-500))` }}>Submitted</p>
-                <p className="text-sm font-semibold mt-0.5" style={{ color: `rgb(var(--primary-800))` }}>{formatDate(narrative.created_at)}</p>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>Update Status</label>
+                <div className="relative">
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                    className="w-full appearance-none bg-white text-sm rounded-lg px-3 py-2.5 pr-8 cursor-pointer transition outline-none"
+                    style={{ border: `1px solid rgb(var(--primary-200))`, color: `rgb(var(--primary-800))` }}
+                    onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
+                    onBlur={e =>  { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{STATUS_CONFIG[opt]?.label ?? opt}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: `rgb(var(--primary-400))` }} />
+                </div>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>Preview:</span>
+                  <StatusBadge status={status} />
+                </div>
               </div>
-              <div>
-                <p className="text-xs font-medium mb-1" style={{ color: `rgb(var(--primary-500))` }}>Current Status</p>
-                <StatusBadge status={narrative.status} />
-              </div>
-            </div>
 
-            {/* Status Dropdown */}
-            <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>Update Status</label>
-              <div className="relative">
-                <select
-                  value={status}
-                  onChange={(e) => setStatus(e.target.value)}
-                  className="w-full appearance-none bg-white text-sm rounded-lg px-3 py-2.5 pr-8 cursor-pointer transition outline-none"
+              {/* Feedback textarea */}
+              <div className="flex-1">
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>Coordinator Feedback</label>
+                <textarea
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="Write your feedback or comments here…"
+                  rows={7}
+                  className="w-full text-sm bg-white rounded-lg px-3 py-2.5 resize-none outline-none transition leading-relaxed"
                   style={{ border: `1px solid rgb(var(--primary-200))`, color: `rgb(var(--primary-800))` }}
                   onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
                   onBlur={e =>  { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                />
+                <p className="text-xs mt-1 text-right" style={{ color: `rgb(var(--primary-400))` }}>{feedback.length} characters</p>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-2 pt-1">
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-lg active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150 shadow-sm"
+                  style={{ backgroundColor: `rgb(var(--primary-600))` }}
+                  onMouseEnter={e => { if (!saving) e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`; }}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
                 >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>{STATUS_CONFIG[opt]?.label ?? opt}</option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: `rgb(var(--primary-400))` }} />
+                  {saving ? (
+                    <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
+                  ) : saved ? (
+                    <><CheckCircle className="w-4 h-4" />Saved!</>
+                  ) : (
+                    <><CheckCircle className="w-4 h-4" />Save Changes</>
+                  )}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="w-full px-4 py-2.5 text-sm font-semibold bg-white rounded-lg active:scale-[0.98] transition-all duration-150"
+                  style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+                >
+                  Close
+                </button>
               </div>
-              <div className="mt-2 flex items-center gap-1.5">
-                <span className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>Preview:</span>
-                <StatusBadge status={status} />
-              </div>
-            </div>
-
-            {/* Feedback textarea */}
-            <div className="flex-1">
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>Coordinator Feedback</label>
-              <textarea
-                value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
-                placeholder="Write your feedback or comments here…"
-                rows={7}
-                className="w-full text-sm bg-white rounded-lg px-3 py-2.5 resize-none outline-none transition leading-relaxed"
-                style={{ border: `1px solid rgb(var(--primary-200))`, color: `rgb(var(--primary-800))` }}
-                onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                onBlur={e =>  { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
-              />
-              <p className="text-xs mt-1 text-right" style={{ color: `rgb(var(--primary-400))` }}>{feedback.length} characters</p>
-            </div>
-
-            {/* Actions */}
-            <div className="space-y-2 pt-1">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-lg active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150 shadow-sm"
-                style={{ backgroundColor: `rgb(var(--primary-600))` }}
-                onMouseEnter={e => { if (!saving) e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`; }}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
-              >
-                {saving ? (
-                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
-                ) : saved ? (
-                  <><CheckCircle className="w-4 h-4" />Saved!</>
-                ) : (
-                  <><CheckCircle className="w-4 h-4" />Save Changes</>
-                )}
-              </button>
-              <button
-                onClick={onClose}
-                className="w-full px-4 py-2.5 text-sm font-semibold bg-white rounded-lg active:scale-[0.98] transition-all duration-150"
-                style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
-              >
-                Close
-              </button>
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Fullscreen image preview — rendered outside modal so it sits above everything */}
+      {previewImg && (
+        <ImagePreviewModal
+          src={previewImg}
+          alt="Full preview"
+          onClose={() => setPreviewImg(null)}
+        />
+      )}
+    </>
   );
 };
 

@@ -12,17 +12,16 @@ import Avatar from "../../components/ui/Avatar";
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// "approved" uses primary CSS vars; yellow/red are semantic — kept as Tailwind
 
 const STATUS_STYLES = {
   submitted: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
-  approved:  null,   // rendered with inline CSS vars in StatusBadge
+  approved:  null,
   revision:  'bg-red-100 text-red-800 border border-red-200',
 };
 
 const STATUS_DOT = {
   submitted: 'bg-yellow-400',
-  approved:  null,   // rendered inline
+  approved:  null,
   revision:  'bg-red-400',
 };
 
@@ -84,7 +83,7 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-// ─── SectionLabel ──────────────────────────────────────────────────────────────
+// ─── SectionLabel ─────────────────────────────────────────────────────────────
 
 const SectionLabel = ({ icon: Icon, label }) => (
   <div className="flex items-center gap-1.5 mb-1.5">
@@ -95,13 +94,29 @@ const SectionLabel = ({ icon: Icon, label }) => (
   </div>
 );
 
+// ─── useModalOverlay ──────────────────────────────────────────────────────────
+// Locks body scroll while any modal is open.
+
+const useModalOverlay = (isOpen) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = prev; };
+  }, [isOpen]);
+};
+
 // ─── ImagePreviewModal ────────────────────────────────────────────────────────
 
 const ImagePreviewModal = ({ src, fileName, onClose }) => {
+  useModalOverlay(!!src);
+
   if (!src) return null;
+
   return (
     <div
-      className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 flex items-center justify-center p-4 animate-overlayIn bg-black/70 backdrop-blur-md"
+      style={{ zIndex: 9999 }}
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="relative max-w-3xl w-full animate-fadeIn">
@@ -137,10 +152,13 @@ const ImagePreviewModal = ({ src, fileName, onClose }) => {
 // ─── LogModal ─────────────────────────────────────────────────────────────────
 
 const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
-  const [feedback,     setFeedback]     = useState('');
-  const [revisionMode, setRevisionMode] = useState(startRevision || false);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [feedback,      setFeedback]      = useState('');
+  const [revisionMode,  setRevisionMode]  = useState(startRevision || false);
+  const [previewImage,  setPreviewImage]  = useState(null);
   const [previewFileName, setPreviewFileName] = useState('');
+
+  // Hook must be called unconditionally — before any early return
+  useModalOverlay(!!log);
 
   if (!log) return null;
 
@@ -154,10 +172,14 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
   return (
     <>
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 flex items-center justify-center p-4 animate-overlayIn bg-black/60 backdrop-blur-md"
+        style={{ zIndex: 9998 }}
         onClick={(e) => e.target === e.currentTarget && onClose()}
       >
-        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fadeIn">
+        <div
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fadeIn"
+          style={{ zIndex: 9999 }}
+        >
 
           {/* Modal Header */}
           <div
@@ -255,7 +277,7 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
               )}
             </div>
 
-            {/* Coordinator Feedback — semantic red, kept as Tailwind */}
+            {/* Coordinator Feedback */}
             {log.status === 'revision' && log.feedback && (
               <div className="bg-red-50 rounded-xl p-4 border border-red-100">
                 <SectionLabel icon={MessageSquare} label="Coordinator Feedback" />
@@ -263,7 +285,7 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
               </div>
             )}
 
-            {/* Revision Textarea — semantic amber, kept as Tailwind */}
+            {/* Revision Textarea */}
             {revisionMode && (
               <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
                 <SectionLabel icon={MessageSquare} label="Revision Feedback" />
@@ -286,14 +308,12 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
             >
               {!revisionMode ? (
                 <>
-                  {/* Revision btn — semantic red */}
                   <button
                     onClick={() => setRevisionMode(true)}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50 transition-colors"
                   >
                     <RefreshCcw className="w-4 h-4" />Mark for Revision
                   </button>
-                  {/* Approve btn — primary themed */}
                   <button
                     onClick={() => { onApprove(log.log_id); onClose(); }}
                     className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors"
@@ -518,7 +538,7 @@ const StudentDailyLogs = () => {
                               <span className="hidden sm:inline">Approve</span>
                             </button>
                           )}
-                          {/* Revise — semantic red */}
+                          {/* Revise */}
                           {log.status === 'submitted' && (
                             <button
                               onClick={async () => {
@@ -569,10 +589,15 @@ const StudentDailyLogs = () => {
 
       <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; transform: scale(0.97) translateY(8px); }
-          to   { opacity: 1; transform: scale(1) translateY(0); }
+          from { opacity: 0; transform: scale(0.95) translateY(8px); }
+          to   { opacity: 1; transform: scale(1)    translateY(0); }
         }
-        .animate-fadeIn { animation: fadeIn 0.18s ease-out both; }
+        @keyframes overlayIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        .animate-fadeIn    { animation: fadeIn    0.2s ease-out both; }
+        .animate-overlayIn { animation: overlayIn 0.2s ease-out both; }
       `}</style>
     </div>
   );
