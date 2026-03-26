@@ -41,21 +41,21 @@ const TopBar = ({ onMenuClick, user }) => {
   const resolvedRole = activeRole || user?.role || roles[0];
 
   useEffect(() => {
-  if (roles.length > 0 && !localStorage.getItem("activeRole")) {
-    localStorage.setItem("activeRole", roles[0]);
-  }
-}, [roles]);
+    if (roles.length > 0 && !localStorage.getItem("activeRole")) {
+      localStorage.setItem("activeRole", roles[0]);
+    }
+  }, [roles]);
 
   const safeNavigate = useCallback((path) => {
-  if (!resolvedRole) {
-    console.warn("Navigation blocked: role not resolved.");
-    return;
-  }
+    if (!resolvedRole) {
+      console.warn("Navigation blocked: role not resolved.");
+      return;
+    }
 
-  const finalPath = path.replace(activeRole, resolvedRole);
+    const finalPath = path.replace(activeRole, resolvedRole);
 
-  navigate(finalPath);
-}, [resolvedRole, activeRole, navigate]);
+    navigate(finalPath);
+  }, [resolvedRole, activeRole, navigate]);
 
   useEffect(() => {
     const loadUnread = () => {
@@ -298,7 +298,7 @@ const TopBar = ({ onMenuClick, user }) => {
                   <div className="flex items-center gap-3">
                     <Avatar
                       name={fullName}
-                      src={user?.photo ? `${BASE_URL}${user.photo}` : ""}
+                      src={user?.photo || ""}
                       size="lg"
                       className="border-2 border-white/60 shadow-md"
                     />
