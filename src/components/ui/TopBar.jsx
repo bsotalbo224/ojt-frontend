@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, Repeat } from "lucide-react";
 import { getNotifications, getUnreadCount, markAsRead } from "../../api/notifications";
+import { getRole } from "../../utils/getRole";
 import Avatar from "../ui/Avatar";
 
 // Relative time helper
@@ -33,20 +34,8 @@ const TopBar = ({ onMenuClick, user }) => {
   const fullName = `${user?.f_name || ""} ${user?.l_name || ""}`.trim();
 
   // ── Role resolution ────────────────────────────────────────────────────────
-const roles = Array.isArray(user?.roles)
-  ? user.roles
-  : user?.role
-    ? [user.role]
-    : [];
-
-const activeRole =
-  localStorage.getItem("activeRole") ||
-  roles[0] ||
-  user?.role ||
-  null;
-
-const isMultiRole = roles.length > 1;
-
+  const role = getRole(user);
+  const isMultiRole = Array.isArray(user?.roles) && user.roles.length > 1;
 
   useEffect(() => {
     if (roles.length > 0 && !localStorage.getItem("activeRole")) {
@@ -55,15 +44,9 @@ const isMultiRole = roles.length > 1;
   }, [roles]);
 
   const safeNavigate = useCallback((path) => {
-    if (!isMultiRole) {
-      console.warn("Navigation blocked: role not resolved.");
-      return;
-    }
-
-    const finalPath = path.replace(activeRole, isMultiRole);
-
-    navigate(finalPath);
-  }, [isMultiRole, activeRole, navigate]);
+    const role = getRole(user);
+    navigate(`/${role}${path}`);
+  }, [user, navigate]);
 
   useEffect(() => {
     const loadUnread = () => {
@@ -142,7 +125,7 @@ const isMultiRole = roles.length > 1;
       if (notif.link) {
         safeNavigate(notif.link);
       } else {
-        safeNavigate(`/${activeRole}/notifications`);
+        safeNavigate("/notifications")
       }
     } catch (err) {
       console.error("Notification click error:", err);
@@ -264,7 +247,7 @@ const isMultiRole = roles.length > 1;
                   <button
                     onClick={() => {
                       setNotifOpen(false);
-                      safeNavigate(`/${activeRole}/notifications`);
+                      safeNavigate("/notifications")
                     }}
                     style={{ color: `rgb(var(--primary-text))` }}
                     className="w-full text-xs font-semibold hover:opacity-80 text-center py-1 transition-opacity"
@@ -324,7 +307,7 @@ const isMultiRole = roles.length > 1;
                 <div className="py-2 px-2 mt-1">
                   <button
                     role="menuitem"
-                    onClick={() => { closeAll(); safeNavigate(`/${activeRole}/profile`); }}
+                    onClick={() => { closeAll(); safeNavigate("/profile"); }}
                     className="w-full px-3 py-2.5 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-3 rounded-xl transition-colors group"
                   >
                     <div
@@ -338,7 +321,7 @@ const isMultiRole = roles.length > 1;
 
                   <button
                     role="menuitem"
-                    onClick={() => { closeAll(); safeNavigate(`/${activeRole}/settings`); }}
+                    onClick={() => { closeAll(); safeNavigate("/settings"); }}
                     className="w-full px-3 py-2.5 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-3 rounded-xl transition-colors group"
                   >
                     <div
