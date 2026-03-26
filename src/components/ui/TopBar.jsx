@@ -37,21 +37,25 @@ const TopBar = ({ onMenuClick, user }) => {
   const activeRole =
     localStorage.getItem("activeRole") ||
     (roles.length > 0 ? roles[0] : null);
-  const isMultiRole = roles.length > 1;
+
+  const resolvedRole = activeRole || user?.role || roles[0];
 
   useEffect(() => {
-    if (!localStorage.getItem("activeRole") && roles.length > 0) {
-      localStorage.setItem("activeRole", roles[0]);
-    }
-  }, [roles]);
+  if (roles.length > 0 && !localStorage.getItem("activeRole")) {
+    localStorage.setItem("activeRole", roles[0]);
+  }
+}, [roles]);
 
   const safeNavigate = useCallback((path) => {
-    if (!activeRole) {
-      console.warn("Navigation blocked: activeRole is not resolved yet.");
-      return;
-    }
-    navigate(path);
-  }, [activeRole, navigate]);
+  if (!resolvedRole) {
+    console.warn("Navigation blocked: role not resolved.");
+    return;
+  }
+
+  const finalPath = path.replace(activeRole, resolvedRole);
+
+  navigate(finalPath);
+}, [resolvedRole, activeRole, navigate]);
 
   useEffect(() => {
     const loadUnread = () => {
