@@ -55,15 +55,15 @@ const isMultiRole = roles.length > 1;
   }, [roles]);
 
   const safeNavigate = useCallback((path) => {
-    if (!resolvedRole) {
+    if (!isMultiRole) {
       console.warn("Navigation blocked: role not resolved.");
       return;
     }
 
-    const finalPath = path.replace(activeRole, resolvedRole);
+    const finalPath = path.replace(activeRole, isMultiRole);
 
     navigate(finalPath);
-  }, [resolvedRole, activeRole, navigate]);
+  }, [isMultiRole, activeRole, navigate]);
 
   useEffect(() => {
     const loadUnread = () => {
