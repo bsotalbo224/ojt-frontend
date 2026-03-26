@@ -3,18 +3,18 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, FileText, BookOpen, CheckCircle, AlertCircle,
   Clock, MessageSquare, ChevronDown, X, Download, Paperclip,
+  FileType, File, ExternalLink,
 } from 'lucide-react';
 import { getCoordinatorNarratives, updateNarrativeReview } from '../../api/narrative';
 import Avatar from "../../components/ui/Avatar";
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// "approved" uses primary CSS vars; amber/red are semantic — kept as Tailwind
 
 const STATUS_CONFIG = {
   submitted: { label: 'Submitted',    pill: 'bg-amber-50 text-amber-700 border border-amber-200', icon: Clock        },
   revision:  { label: 'For Revision', pill: 'bg-red-50 text-red-600 border border-red-200',       icon: AlertCircle  },
-  approved:  { label: 'Approved',     pill: null, icon: CheckCircle }, // rendered with CSS vars
+  approved:  { label: 'Approved',     pill: null, icon: CheckCircle },
 };
 
 const STATUS_OPTIONS = ['submitted', 'revision', 'approved'];
@@ -31,8 +31,169 @@ const resolveFullName = (n) => {
 const formatDate = (dateStr) =>
   new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-const isImageFile = (url = '') =>
-  /\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i.test(url);
+/**
+ * Detect file type from URL.
+ * Returns: "image" | "pdf" | "doc" | "other"
+ */
+const detectFileType = (url = '') => {
+  const clean = url.split('?')[0].toLowerCase();
+  if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(clean)) return 'image';
+  if (/\.pdf$/.test(clean)) return 'pdf';
+  if (/\.(doc|docx)$/.test(clean)) return 'doc';
+  return 'other';
+};
+
+/** Extract a readable filename from a URL */
+const getFilename = (url = '') =>
+  decodeURIComponent(url.split('?')[0].split('/').pop()) || 'File';
+
+// ─── AttachmentItem ───────────────────────────────────────────────────────────
+
+const AttachmentItem = ({ url, idx }) => {
+  const [imgError, setImgError] = useState(false);
+  const type     = detectFileType(url);
+  const filename = getFilename(url);
+
+  if (type === 'image' && !imgError) {
+    return (
+      <div
+        className="rounded-xl overflow-hidden shadow-sm group relative"
+        style={{ border: `1px solid rgb(var(--primary-100))` }}
+      >
+        <img
+          src={url}
+          alt={`Attachment ${idx + 1}`}
+          loading="lazy"
+          className="w-full h-28 object-cover"
+          onError={() => setImgError(true)}
+        />
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          className="absolute inset-0 bg-black/0 group-hover:bg-black/30 flex items-center justify-center transition-all duration-200"
+        >
+          <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-semibold bg-black/50 px-2 py-1 rounded-lg transition-opacity flex items-center gap-1">
+            <ExternalLink className="w-3 h-3" /> View
+          </span>
+        </a>
+      </div>
+    );
+  }
+
+  if (type === 'pdf') {
+    return (
+      <div
+        className="rounded-xl overflow-hidden col-span-2 sm:col-span-3"
+        style={{ border: `1px solid rgb(var(--primary-100))` }}
+      >
+        <div className="w-full" style={{ height: '320px', backgroundColor: '#f8f8f8' }}>
+          <iframe
+            src={`${url}#toolbar=0`}
+            title={filename}
+            className="w-full h-full rounded-t-xl"
+            style={{ border: 'none' }}
+          />
+        </div>
+        <div
+          className="flex items-center justify-between px-3 py-2"
+          style={{
+            borderTop:       `1px solid rgb(var(--primary-100))`,
+            backgroundColor: `rgb(var(--primary-50))`,
+          }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div
+              className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+              style={{ backgroundColor: `rgb(var(--primary-200))` }}
+            >
+              <FileType className="w-3.5 h-3.5" style={{ color: `rgb(var(--primary-700))` }} />
+            </div>
+            <span className="text-xs font-medium truncate max-w-40" style={{ color: `rgb(var(--primary-800))` }}>
+              {filename}
+            </span>
+          </div>
+          <a
+            href={url}
+            download
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-lg transition"
+            style={{ backgroundColor: `rgb(var(--primary-100))`, color: `rgb(var(--primary-700))` }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-200))`}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`}
+          >
+            <Download className="w-3 h-3" /> Download
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === 'doc') {
+    return (
+      <div
+        className="flex items-center gap-3 px-3 py-3 rounded-xl"
+        style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
+      >
+        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: '#dbeafe', border: '1px solid #bfdbfe' }}>
+          <FileType className="w-4 h-4 text-blue-600" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold truncate" style={{ color: `rgb(var(--primary-800))` }}>{filename}</p>
+          <p className="text-[10px]" style={{ color: `rgb(var(--primary-500))` }}>Word Document</p>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition"
+            style={{ backgroundColor: `rgb(var(--primary-100))`, color: `rgb(var(--primary-700))` }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-200))`}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`}
+          >
+            <ExternalLink className="w-3 h-3" /> Open
+          </a>
+          <a
+            href={url}
+            download
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-md transition"
+            style={{ backgroundColor: `rgb(var(--primary-200))`, color: `rgb(var(--primary-700))` }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-300))`}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-200))`}
+          >
+            <Download className="w-3 h-3" /> Save
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // "other" fallback
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="flex items-center gap-2 px-3 py-3 rounded-xl transition group"
+      style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
+      onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`; e.currentTarget.style.borderColor = `rgb(var(--primary-300))`; }}
+      onMouseLeave={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`;  e.currentTarget.style.borderColor = `rgb(var(--primary-100))`; }}
+    >
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: `rgb(var(--primary-200))` }}>
+        <File className="w-4 h-4" style={{ color: `rgb(var(--primary-700))` }} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold truncate max-w-35" style={{ color: `rgb(var(--primary-800))` }}>{filename}</p>
+        <p className="text-[10px]" style={{ color: `rgb(var(--primary-500))` }}>Click to download</p>
+      </div>
+      <Download className="w-3.5 h-3.5 ml-auto shrink-0" style={{ color: `rgb(var(--primary-400))` }} />
+    </a>
+  );
+};
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
 
@@ -41,14 +202,9 @@ const StatusBadge = ({ status }) => {
     return (
       <span
         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap border"
-        style={{
-          backgroundColor: `rgb(var(--primary-100))`,
-          color:           `rgb(var(--primary-700))`,
-          borderColor:     `rgb(var(--primary-200))`,
-        }}
+        style={{ backgroundColor: `rgb(var(--primary-100))`, color: `rgb(var(--primary-700))`, borderColor: `rgb(var(--primary-200))` }}
       >
-        <CheckCircle className="w-3 h-3" />
-        Approved
+        <CheckCircle className="w-3 h-3" />Approved
       </span>
     );
   }
@@ -56,8 +212,7 @@ const StatusBadge = ({ status }) => {
   const Icon = config.icon;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${config.pill}`}>
-      <Icon className="w-3 h-3" />
-      {config.label}
+      <Icon className="w-3 h-3" />{config.label}
     </span>
   );
 };
@@ -79,9 +234,7 @@ const SkeletonRow = () => (
 const SectionLabel = ({ icon: Icon, label }) => (
   <div className="flex items-center gap-2 mb-4">
     <Icon className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
-    <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>
-      {label}
-    </h3>
+    <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>{label}</h3>
   </div>
 );
 
@@ -115,30 +268,27 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden"
-        style={{ border: `1px solid rgb(var(--primary-100))` }}
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col overflow-hidden"
+        style={{ border: `1px solid rgb(var(--primary-100))`, maxHeight: '90vh' }}
       >
-        {/* Modal Header */}
+        {/* ── Modal Header ── */}
         <div
           className="flex items-center justify-between px-6 py-4 shrink-0"
-          style={{
-            borderBottom: `1px solid rgb(var(--primary-100))`,
-            background:   `linear-gradient(to right, rgb(var(--primary-50)), white)`,
-          }}
+          style={{ borderBottom: `1px solid rgb(var(--primary-100))`, background: `linear-gradient(to right, rgb(var(--primary-50)), white)` }}
         >
           <div className="flex items-center gap-3">
             <div
-              className="w-9 h-9 rounded-lg flex items-center justify-center shadow-sm"
+              className="w-9 h-9 rounded-lg flex items-center justify-center shadow-sm shrink-0"
               style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-400)), rgb(var(--primary-600)))` }}
             >
               <BookOpen className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h2 className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>
-                Narrative Entry — {formatDate(narrative.created_at)}
-              </h2>
+              <h2 className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>Narrative Details</h2>
               <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
-                {narrative.course}{narrative.company ? ` · ${narrative.company}` : ''}
+                {formatDate(narrative.created_at)}
+                {narrative.course ? ` · ${narrative.course}` : ''}
+                {narrative.company ? ` · ${narrative.company}` : ''}
               </p>
             </div>
           </div>
@@ -153,54 +303,73 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
           </button>
         </div>
 
-        {/* Modal Body */}
+        {/* ── Modal Body ── */}
         <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
 
-          {/* Left — Narrative Content + Attachments */}
+          {/* Left — Narrative Content + Attachments (scrollable) */}
           <div
-            className="flex-1 overflow-y-auto p-6 border-b lg:border-b-0 lg:border-r space-y-6"
+            className="flex-1 overflow-y-auto p-6 space-y-7 border-b lg:border-b-0 lg:border-r"
             style={{ borderColor: `rgb(var(--primary-100))` }}
           >
+            {/* Submission meta strip */}
+            <div
+              className="flex items-center gap-3 px-4 py-3 rounded-xl"
+              style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
+            >
+              <div className="flex items-center gap-1.5 text-xs" style={{ color: `rgb(var(--primary-500))` }}>
+                <Clock className="w-3.5 h-3.5" />
+                <span>Submitted {formatDate(narrative.created_at)}</span>
+              </div>
+              <span style={{ color: `rgb(var(--primary-200))` }}>·</span>
+              <StatusBadge status={narrative.status} />
+            </div>
+
             {/* Narrative Content */}
             <div>
               <SectionLabel icon={FileText} label="Narrative Report" />
               {hasContent ? (
                 <>
                   <style>{`
-                    .narrative-body { font-size: 14px; line-height: 1.8; color: #1e293b; }
-                    .narrative-body::after { content: ""; display: table; clear: both; }
-                    .narrative-body h1 { font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 10px;
+                    .narrative-body {
+                      font-size: 15px;
+                      line-height: 1.85;
+                      color: #1e293b;
+                      word-break: break-word;
+                    }
+                    .narrative-body h1 {
+                      font-size: 20px; font-weight: 700; color: #1e293b; margin-bottom: 10px;
                       border-bottom: 2px solid rgb(var(--primary-300)); padding-bottom: 6px;
-                      text-transform: uppercase; letter-spacing: 0.05em; }
-                    .narrative-body h2 { font-size: 16px; font-weight: 700; color: #1e293b; margin-top: 20px;
+                      text-transform: uppercase; letter-spacing: 0.05em;
+                    }
+                    .narrative-body h2 {
+                      font-size: 16px; font-weight: 700; color: #1e293b; margin-top: 20px;
                       margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;
-                      border-bottom: 1px solid rgb(var(--primary-200)); padding-bottom: 4px; }
-                    .narrative-body p  { margin-bottom: 12px; text-align: justify; }
-                    .narrative-body ul { padding-left: 22px; margin-bottom: 12px; list-style-type: disc; }
-                    .narrative-body ol { padding-left: 22px; margin-bottom: 12px; list-style-type: decimal; }
-                    .narrative-body li { margin-bottom: 5px; }
+                      border-bottom: 1px solid rgb(var(--primary-200)); padding-bottom: 4px;
+                    }
+                    .narrative-body p  { margin-bottom: 14px; text-align: justify; }
+                    .narrative-body ul { padding-left: 22px; margin-bottom: 14px; list-style-type: disc; }
+                    .narrative-body ol { padding-left: 22px; margin-bottom: 14px; list-style-type: decimal; }
+                    .narrative-body li { margin-bottom: 6px; }
                     .narrative-body strong { font-weight: 700; }
                     .narrative-body em    { font-style: italic; }
                     .narrative-body img   { max-width: 100%; height: auto; border-radius: 6px; margin: 12px 0; }
-                    .narrative-body img[style*="float: left"], .narrative-body img[style*="float:left"]   { margin-right: 16px; margin-bottom: 8px; }
-                    .narrative-body img[style*="float: right"], .narrative-body img[style*="float:right"] { margin-left: 16px; margin-bottom: 8px; }
+                    .narrative-body img[style*="float: left"],  .narrative-body img[style*="float:left"]  { margin-right: 16px; margin-bottom: 8px; }
+                    .narrative-body img[style*="float: right"], .narrative-body img[style*="float:right"] { margin-left: 16px;  margin-bottom: 8px; }
                     .narrative-body a { color: rgb(var(--primary-600)); text-decoration: underline; }
+                    .narrative-body pre { background: #f1f5f9; border-radius: 6px; padding: 12px; overflow-x: auto; font-size: 13px; margin-bottom: 14px; }
+                    .narrative-body blockquote { border-left: 3px solid rgb(var(--primary-300)); padding-left: 14px; color: #475569; margin: 14px 0; }
                   `}</style>
-                  <div className="narrative-body prose prose-sm max-w-none overflow-hidden">
-                    <div dangerouslySetInnerHTML={{ __html: narrative.content }} />
-                  </div>
+                  <div
+                    className="narrative-body prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: narrative.content }}
+                  />
                 </>
               ) : (
-                <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
-                  <div
-                    className="w-12 h-12 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: `rgb(var(--primary-50))` }}
-                  >
+                <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: `rgb(var(--primary-50))` }}>
                     <FileText className="w-6 h-6" style={{ color: `rgb(var(--primary-300))` }} />
                   </div>
-                  <p className="text-sm italic" style={{ color: `rgb(var(--primary-400))` }}>
-                    No narrative content submitted yet.
-                  </p>
+                  <p className="text-sm italic" style={{ color: `rgb(var(--primary-400))` }}>No narrative content submitted yet.</p>
                 </div>
               )}
             </div>
@@ -208,67 +377,25 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
             {/* Attachments */}
             {attachments.length > 0 && (
               <div>
-                <div className="flex items-center gap-2 mb-3">
+                <div
+                  className="flex items-center gap-2 mb-4 pb-3"
+                  style={{ borderBottom: `1px solid rgb(var(--primary-100))` }}
+                >
                   <Paperclip className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
                   <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>
                     Attachments ({attachments.length})
                   </h3>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {attachments.map((url, idx) =>
-                    isImageFile(url) ? (
-                      <div
-                        key={idx}
-                        className="rounded-xl overflow-hidden shadow-sm group relative"
-                        style={{ border: `1px solid rgb(var(--primary-100))` }}
-                      >
-                        <img src={url} alt={`Attachment ${idx + 1}`} className="w-full h-28 object-cover" />
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="absolute inset-0 bg-black/0 group-hover:bg-black/30 flex items-center justify-center transition-all duration-200"
-                        >
-                          <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-semibold bg-black/50 px-2 py-1 rounded-lg transition-opacity">
-                            View
-                          </span>
-                        </a>
-                      </div>
-                    ) : (
-                      <a
-                        key={idx}
-                        href={url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-2 px-3 py-3 rounded-xl transition group"
-                        style={{
-                          backgroundColor: `rgb(var(--primary-50))`,
-                          border:          `1px solid rgb(var(--primary-100))`,
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`; e.currentTarget.style.borderColor = `rgb(var(--primary-300))`; }}
-                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`;  e.currentTarget.style.borderColor = `rgb(var(--primary-100))`; }}
-                      >
-                        <div
-                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                          style={{ backgroundColor: `rgb(var(--primary-200))` }}
-                        >
-                          <Download className="w-4 h-4" style={{ color: `rgb(var(--primary-700))` }} />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-xs font-semibold truncate" style={{ color: `rgb(var(--primary-800))` }}>
-                            {url.split('/').pop().split('?')[0] || `File ${idx + 1}`}
-                          </p>
-                          <p className="text-[10px]" style={{ color: `rgb(var(--primary-500))` }}>Click to download</p>
-                        </div>
-                      </a>
-                    )
-                  )}
+                  {attachments.map((url, idx) => (
+                    <AttachmentItem key={idx} url={url} idx={idx} />
+                  ))}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Right — Review Panel */}
+          {/* Right — Review Panel (scrollable) */}
           <div
             className="w-full lg:w-72 xl:w-80 shrink-0 flex flex-col overflow-y-auto p-6 space-y-5"
             style={{ backgroundColor: `rgb(var(--primary-50) / 0.3)` }}
@@ -282,9 +409,7 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
             <div className="bg-white rounded-xl p-4 space-y-3" style={{ border: `1px solid rgb(var(--primary-100))` }}>
               <div>
                 <p className="text-xs font-medium" style={{ color: `rgb(var(--primary-500))` }}>Submitted</p>
-                <p className="text-sm font-semibold mt-0.5" style={{ color: `rgb(var(--primary-800))` }}>
-                  {formatDate(narrative.created_at)}
-                </p>
+                <p className="text-sm font-semibold mt-0.5" style={{ color: `rgb(var(--primary-800))` }}>{formatDate(narrative.created_at)}</p>
               </div>
               <div>
                 <p className="text-xs font-medium mb-1" style={{ color: `rgb(var(--primary-500))` }}>Current Status</p>
@@ -294,9 +419,7 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
 
             {/* Status Dropdown */}
             <div>
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>
-                Update Status
-              </label>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>Update Status</label>
               <div className="relative">
                 <select
                   value={status}
@@ -320,9 +443,7 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
 
             {/* Feedback textarea */}
             <div className="flex-1">
-              <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>
-                Coordinator Feedback
-              </label>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>Coordinator Feedback</label>
               <textarea
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
@@ -333,9 +454,7 @@ const ReviewModal = ({ narrative, onClose, onSave }) => {
                 onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
                 onBlur={e =>  { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
               />
-              <p className="text-xs mt-1 text-right" style={{ color: `rgb(var(--primary-400))` }}>
-                {feedback.length} characters
-              </p>
+              <p className="text-xs mt-1 text-right" style={{ color: `rgb(var(--primary-400))` }}>{feedback.length} characters</p>
             </div>
 
             {/* Actions */}
@@ -457,7 +576,6 @@ const StudentNarrative = () => {
                     {student.course}{student.company ? ` · ${student.company}` : ''}
                   </p>
                 </div>
-                {/* Mini stats — approved uses primary; pending (amber) + revision (red) stay semantic */}
                 <div className="flex items-center gap-3 shrink-0">
                   <div className="flex flex-col items-center bg-amber-50 border border-amber-100 rounded-lg px-4 py-2">
                     <span className="text-lg font-bold text-amber-600">{stats.submitted}</span>
@@ -481,8 +599,6 @@ const StudentNarrative = () => {
 
           {/* Narrative List Table */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ border: `1px solid rgb(var(--primary-50))` }}>
-
-            {/* Table Header Bar */}
             <div
               className="flex items-center justify-between px-6 py-4"
               style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
@@ -498,7 +614,6 @@ const StudentNarrative = () => {
               )}
             </div>
 
-            {/* Table */}
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
@@ -550,7 +665,6 @@ const StudentNarrative = () => {
                         onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.5)`}
                         onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
                       >
-                        {/* Date */}
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-3">
                             <div
@@ -567,9 +681,7 @@ const StudentNarrative = () => {
                             </div>
                           </div>
                         </td>
-                        {/* Status */}
                         <td className="py-4 px-6"><StatusBadge status={narrative.status} /></td>
-                        {/* Action */}
                         <td className="py-4 px-6">
                           <button
                             onClick={() => setSelected(narrative)}
@@ -588,7 +700,6 @@ const StudentNarrative = () => {
               </table>
             </div>
 
-            {/* Table Footer */}
             {!loading && !error && narratives.length > 0 && (
               <div
                 className="px-6 py-3 flex items-center justify-between"
@@ -599,8 +710,7 @@ const StudentNarrative = () => {
                 </p>
                 <div className="flex items-center gap-4 text-xs" style={{ color: `rgb(var(--primary-500))` }}>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: `rgb(var(--primary-500))` }} />
-                    Approved
+                    <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: `rgb(var(--primary-500))` }} />Approved
                   </span>
                   <span className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Pending

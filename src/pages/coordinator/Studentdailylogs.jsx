@@ -101,7 +101,7 @@ const ImagePreviewModal = ({ src, fileName, onClose }) => {
   if (!src) return null;
   return (
     <div
-      className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-9999 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
       <div className="relative max-w-3xl w-full animate-fadeIn">

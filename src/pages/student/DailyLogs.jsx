@@ -89,7 +89,7 @@ const AttachmentModal = ({ file, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       style={{ animation: "fadeIn 0.18s ease" }}
       onClick={onClose}
     >
