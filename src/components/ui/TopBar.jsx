@@ -33,12 +33,20 @@ const TopBar = ({ onMenuClick, user }) => {
   const fullName = `${user?.f_name || ""} ${user?.l_name || ""}`.trim();
 
   // ── Role resolution ────────────────────────────────────────────────────────
-  const roles = user?.roles || (user?.role ? [user.role] : []);
-  const activeRole =
-    localStorage.getItem("activeRole") ||
-    (roles.length > 0 ? roles[0] : null);
+const roles = Array.isArray(user?.roles)
+  ? user.roles
+  : user?.role
+    ? [user.role]
+    : [];
 
-  const resolvedRole = activeRole || user?.role || roles[0];
+const activeRole =
+  localStorage.getItem("activeRole") ||
+  roles[0] ||
+  user?.role ||
+  null;
+
+const isMultiRole = roles.length > 1;
+
 
   useEffect(() => {
     if (roles.length > 0 && !localStorage.getItem("activeRole")) {
