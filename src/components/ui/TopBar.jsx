@@ -46,9 +46,18 @@ const TopBar = ({ onMenuClick, user }) => {
 }, [user]);
 
   const safeNavigate = useCallback((path) => {
-    const role = getRole(user);
-    navigate(`/${role}${path}`);
-  }, [user, navigate]);
+  if (!path) return;
+
+  // If already absolute (starts with /), use it directly
+  if (path.startsWith("/")) {
+    navigate(path);
+    return;
+  }
+
+  // Otherwise prepend role
+  const role = getRole(user);
+  navigate(`/${role}/${path}`);
+}, [user, navigate]);
 
   useEffect(() => {
     const loadUnread = () => {
