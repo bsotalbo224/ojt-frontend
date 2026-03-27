@@ -34,7 +34,7 @@ export const updateLog = async (logId, data) => {
 // Upload attachment
 export const uploadLogAttachment = async (logId, file) => {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("files", file);
 
   const res = await axios.post(
     `/logs/${logId}/attachments`,
@@ -96,7 +96,7 @@ export const updateRevisionAttachment = async (logId, files) => {
 
   for (const file of files) {
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("files", file);
 
     const res = await axios.post(
       `/logs/${logId}/attachments`,
