@@ -357,7 +357,7 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
     try {
       const formData = new FormData();
       formData.append("image", file);
-      const res = await api.post("/upload/narrative-image", formData, {
+      const res = await api.post("/upload/image", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
