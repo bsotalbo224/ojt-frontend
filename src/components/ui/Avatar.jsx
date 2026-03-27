@@ -30,14 +30,16 @@ export default function Avatar({
 
   // SMART URL HANDLING (Cloudinary-safe)
   const resolvedSrc = useMemo(() => {
-    if (!src) return "";
+  if (!src) return "";
 
-    // Cloudinary or external URL
-    if (src.startsWith("http")) return src;
+  // Only allow valid URLs (Cloudinary or external)
+  if (typeof src === "string" && src.startsWith("http")) {
+    return src;
+  }
 
-    // Local fallback (just in case)
-    return `${BASE_URL}${src}`;
-  }, [src]);
+  // Ignore old/local filenames completely
+  return "";
+}, [src]);
 
   const showImage = resolvedSrc && !imgError;
 
