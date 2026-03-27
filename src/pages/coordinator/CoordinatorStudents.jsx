@@ -9,7 +9,6 @@ import { getCompanies } from '../../api/companies';
 import apiClient from '../../api/axios';
 import Avatar from '../../components/ui/Avatar';
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -729,7 +728,11 @@ const CoordinatorStudents = () => {
                           <div className="flex items-center gap-3">
                             <Avatar
                               name={`${student.f_name} ${student.l_name}`}
-                              src={student.photo ? `${BASE_URL}${student.photo}` : ''}
+                              src={
+                                student.photo && student.photo.startsWith("http")
+                                  ? student.photo
+                                  : ""
+                              }
                               size="sm"
                             />
                             <span className="text-sm font-semibold whitespace-nowrap" style={{ color: `rgb(var(--primary-800))` }}>
@@ -904,7 +907,7 @@ const CoordinatorStudents = () => {
                   <div className="flex items-start gap-4 mb-6">
                     <Avatar
                       name={`${progressData.student?.f_name} ${progressData.student?.l_name}`}
-                      src={progressData.student?.photo ? `${BASE_URL}${progressData.student.photo}` : ''}
+                      src={progressData.student?.photo}
                       size="lg"
                     />
                     <div>
