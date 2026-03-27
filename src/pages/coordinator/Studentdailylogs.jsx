@@ -424,7 +424,7 @@ const StudentDailyLogs = () => {
           <div className="flex items-center gap-4">
             <Avatar
               name={`${studentInfo?.f_name} ${studentInfo?.l_name}`}
-              src={studentInfo?.photo ? `${BASE_URL}${studentInfo.photo}` : ""}
+              src={studentInfo?.photo}
               size="xl"
             />
             <div>
