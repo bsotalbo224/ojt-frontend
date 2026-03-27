@@ -48,15 +48,19 @@ const TopBar = ({ onMenuClick, user }) => {
   const safeNavigate = useCallback((path) => {
   if (!path) return;
 
-  // If already absolute (starts with /), use it directly
-  if (path.startsWith("/")) {
-    navigate(path);
+  const role = getRole(user);
+
+  // Ensure leading slash
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+
+  // If already includes role, use as-is
+  if (cleanPath.startsWith(`/${role}/`)) {
+    navigate(cleanPath);
     return;
   }
 
   // Otherwise prepend role
-  const role = getRole(user);
-  navigate(`/${role}/${path}`);
+  navigate(`/${role}${cleanPath}`);
 }, [user, navigate]);
 
   useEffect(() => {
