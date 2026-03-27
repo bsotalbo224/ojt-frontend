@@ -13,7 +13,6 @@ import {
 import { getCoordinatorAttendance } from '../../api/attendance';
 import Avatar from "../../components/ui/Avatar";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -78,9 +77,9 @@ const SummaryCard = ({ title, value, icon: Icon, accent, loading }) => (
 const StudentCard = ({ student, onClick }) => {
   const { records, full_name } = student;
 
-  const verified    = records.filter((r) => r.location_status === 'verified').length;
+  const verified = records.filter((r) => r.location_status === 'verified').length;
   const discrepancy = records.filter((r) => r.location_status === 'discrepancy').length;
-  const missingOut  = records.filter((r) => isMissingTimeOut(r.time_out)).length;
+  const missingOut = records.filter((r) => isMissingTimeOut(r.time_out)).length;
 
   return (
     <div
@@ -93,7 +92,11 @@ const StudentCard = ({ student, onClick }) => {
       <div className="p-5 flex items-center gap-4">
         <Avatar
           name={full_name}
-          src={student.photo ? `${BASE_URL}${student.photo}` : ""}
+          src={
+            student.photo && student.photo.startsWith("http")
+              ? student.photo
+              : ""
+          }
           size="md"
         />
         <div className="min-w-0">
@@ -182,7 +185,7 @@ const SkeletonCard = () => (
       <div className="w-12 h-12 rounded-full" style={{ backgroundColor: `rgb(var(--primary-100))` }} />
       <div className="flex-1 space-y-2">
         <div className="h-3.5 rounded w-3/4" style={{ backgroundColor: `rgb(var(--primary-100))` }} />
-        <div className="h-3 rounded w-1/2"   style={{ backgroundColor: `rgb(var(--primary-50))` }} />
+        <div className="h-3 rounded w-1/2" style={{ backgroundColor: `rgb(var(--primary-50))` }} />
       </div>
     </div>
     <div className="grid grid-cols-3 gap-2">
@@ -229,9 +232,9 @@ const ErrorState = () => (
 const CoordinatorAttendance = () => {
   const navigate = useNavigate();
 
-  const [records, setRecords]       = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(false);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -245,15 +248,15 @@ const CoordinatorAttendance = () => {
 
   const stats = useMemo(() => ({
     totalStudents: students.length,
-    discrepancy:   records.filter((r) => r.location_status === 'discrepancy').length,
-    missingOut:    records.filter((r) => isMissingTimeOut(r.time_out)).length,
+    discrepancy: records.filter((r) => r.location_status === 'discrepancy').length,
+    missingOut: records.filter((r) => isMissingTimeOut(r.time_out)).length,
   }), [students, records]);
 
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return students;
     return students.filter((s) => {
-      const name   = s.full_name.toLowerCase();
+      const name = s.full_name.toLowerCase();
       const course = (s.course ?? '').toLowerCase();
       return name.includes(q) || course.includes(q);
     });

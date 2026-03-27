@@ -12,7 +12,6 @@ import {
 import { getCoordinatorNarratives } from '../../api/narrative';
 import Avatar from "../../components/ui/Avatar";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -74,8 +73,8 @@ const SummaryCard = ({ title, value, icon: Icon, accent, loading }) => (
 const StudentCard = ({ student, onClick }) => {
   const { narratives, full_name } = student;
   const submitted = narratives.filter((n) => n.status === 'submitted').length;
-  const approved  = narratives.filter((n) => n.status === 'approved').length;
-  const revision  = narratives.filter((n) => n.status === 'revision').length;
+  const approved = narratives.filter((n) => n.status === 'approved').length;
+  const revision = narratives.filter((n) => n.status === 'revision').length;
 
   return (
     <div
@@ -88,7 +87,11 @@ const StudentCard = ({ student, onClick }) => {
       <div className="p-5 flex items-center gap-4">
         <Avatar
           name={student.full_name}
-          src={student.photo ? `${BASE_URL}${student.photo}` : ""}
+          src={
+            student.photo && student.photo.startsWith("http")
+              ? student.photo
+              : ""
+          }
           size="md"
         />
         <div className="min-w-0">
@@ -162,7 +165,7 @@ const SkeletonCard = () => (
       <div className="w-12 h-12 rounded-full" style={{ backgroundColor: `rgb(var(--primary-100))` }} />
       <div className="flex-1 space-y-2">
         <div className="h-3.5 rounded w-3/4" style={{ backgroundColor: `rgb(var(--primary-100))` }} />
-        <div className="h-3 rounded w-1/2"   style={{ backgroundColor: `rgb(var(--primary-50))` }} />
+        <div className="h-3 rounded w-1/2" style={{ backgroundColor: `rgb(var(--primary-50))` }} />
       </div>
     </div>
     <div className="grid grid-cols-3 gap-2">
@@ -207,8 +210,8 @@ const ErrorState = () => (
 const CoordinatorNarratives = () => {
   const navigate = useNavigate();
   const [narratives, setNarratives] = useState([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -223,14 +226,14 @@ const CoordinatorNarratives = () => {
   const stats = useMemo(() => ({
     totalStudents: students.length,
     submitted: narratives.filter((n) => n.status === 'submitted').length,
-    revision:  narratives.filter((n) => n.status === 'revision').length,
+    revision: narratives.filter((n) => n.status === 'revision').length,
   }), [students, narratives]);
 
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return students;
     return students.filter((s) => {
-      const name   = s.full_name.toLowerCase();
+      const name = s.full_name.toLowerCase();
       const course = (s.course ?? "").toLowerCase();
       return name.includes(q) || course.includes(q);
     });
@@ -286,9 +289,9 @@ const CoordinatorNarratives = () => {
             </div>
           </div>
           {/* Pending Review — amber is semantic */}
-          <SummaryCard title="Pending Review" value={stats.submitted} icon={Clock}        accent="text-amber-600" loading={loading} />
+          <SummaryCard title="Pending Review" value={stats.submitted} icon={Clock} accent="text-amber-600" loading={loading} />
           {/* For Revision — red is semantic */}
-          <SummaryCard title="For Revision"   value={stats.revision}  icon={AlertCircle}  accent="text-red-500"   loading={loading} />
+          <SummaryCard title="For Revision" value={stats.revision} icon={AlertCircle} accent="text-red-500" loading={loading} />
         </div>
 
         {/* Toolbar */}
@@ -312,16 +315,16 @@ const CoordinatorNarratives = () => {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9 pr-4 py-2 text-sm rounded-lg w-72 transition outline-none"
                 style={{
-                  border:          `1px solid rgb(var(--primary-200))`,
+                  border: `1px solid rgb(var(--primary-200))`,
                   backgroundColor: `rgb(var(--primary-50) / 0.4)`,
-                  color:           `rgb(var(--primary-800))`,
+                  color: `rgb(var(--primary-800))`,
                 }}
                 onFocus={e => {
-                  e.target.style.boxShadow  = `0 0 0 2px rgb(var(--primary-300))`;
+                  e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`;
                   e.target.style.borderColor = `rgb(var(--primary-300))`;
                 }}
                 onBlur={e => {
-                  e.target.style.boxShadow  = 'none';
+                  e.target.style.boxShadow = 'none';
                   e.target.style.borderColor = `rgb(var(--primary-200))`;
                 }}
               />

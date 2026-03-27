@@ -15,7 +15,6 @@ import {
 import { getCoordinatorLogs } from '../../api/logs';
 import Avatar from "../../components/ui/Avatar";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -51,9 +50,9 @@ const StatBox = ({ icon: Icon, label, value, color, usePrimary }) => {
       <div
         className="flex flex-col items-center justify-center p-2 rounded-xl border min-w-15"
         style={{
-          borderColor:     `rgb(var(--primary-200))`,
+          borderColor: `rgb(var(--primary-200))`,
           backgroundColor: `rgb(var(--primary-50))`,
-          color:           `rgb(var(--primary-700))`,
+          color: `rgb(var(--primary-700))`,
         }}
       >
         <Icon className="w-3.5 h-3.5 mb-0.5 opacity-70" />
@@ -75,8 +74,8 @@ const StatBox = ({ icon: Icon, label, value, color, usePrimary }) => {
 
 const StudentCard = ({ student, onView }) => {
   const submitted = countByStatus(student.logs, 'submitted');
-  const approved  = countByStatus(student.logs, 'approved');
-  const revision  = countByStatus(student.logs, 'revision');
+  const approved = countByStatus(student.logs, 'approved');
+  const revision = countByStatus(student.logs, 'revision');
 
   return (
     <div
@@ -94,7 +93,11 @@ const StudentCard = ({ student, onView }) => {
         <div className="flex items-center gap-3">
           <Avatar
             name={`${student.f_name ?? ""} ${student.l_name ?? ""}`}
-            src={student.photo ? `${BASE_URL}${student.photo}` : ""}
+            src={
+              student.photo && student.photo.startsWith("http")
+                ? student.photo
+                : ""
+            }
             size="md"
           />
           <div className="min-w-0">
@@ -117,8 +120,8 @@ const StudentCard = ({ student, onView }) => {
               className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
               style={{
                 backgroundColor: `rgb(var(--primary-50))`,
-                border:          `1px solid rgb(var(--primary-200))`,
-                color:           `rgb(var(--primary-700))`,
+                border: `1px solid rgb(var(--primary-200))`,
+                color: `rgb(var(--primary-700))`,
               }}
             >
               <FileText className="w-3 h-3" />
@@ -130,11 +133,11 @@ const StudentCard = ({ student, onView }) => {
         {/* Stats */}
         <div className="flex gap-2">
           {/* Pending — yellow (semantic) */}
-          <StatBox icon={Clock}        label="Pending"  value={submitted} color="border-yellow-200 bg-yellow-50 text-yellow-700" />
+          <StatBox icon={Clock} label="Pending" value={submitted} color="border-yellow-200 bg-yellow-50 text-yellow-700" />
           {/* Approved — primary themed */}
-          <StatBox icon={CheckCircle}  label="Approved" value={approved}  usePrimary />
+          <StatBox icon={CheckCircle} label="Approved" value={approved} usePrimary />
           {/* Revision — red (semantic) */}
-          <StatBox icon={RefreshCcw}   label="Revision" value={revision}  color="border-red-200 bg-red-50 text-red-600" />
+          <StatBox icon={RefreshCcw} label="Revision" value={revision} color="border-red-200 bg-red-50 text-red-600" />
         </div>
 
         {/* Action */}
@@ -144,8 +147,8 @@ const StudentCard = ({ student, onView }) => {
           style={{ backgroundColor: `rgb(var(--primary-600))` }}
           onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`}
           onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
-          onMouseDown={e =>  e.currentTarget.style.backgroundColor = `rgb(var(--primary-800))`}
-          onMouseUp={e =>    e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`}
+          onMouseDown={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-800))`}
+          onMouseUp={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`}
         >
           View Logs
           <ChevronRight className="w-4 h-4" />
@@ -159,8 +162,8 @@ const StudentCard = ({ student, onView }) => {
 
 const CoordinatorDailyLogs = () => {
   const navigate = useNavigate();
-  const [logs, setLogs]             = useState([]);
-  const [loading, setLoading]       = useState(true);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
@@ -182,8 +185,8 @@ const CoordinatorDailyLogs = () => {
 
   const filteredStudents = students.filter((s) => {
     const fullName = `${s.f_name ?? ''} ${s.l_name ?? ''}`.toLowerCase();
-    const course   = (s.course ?? "").toLowerCase();
-    const q        = searchQuery.toLowerCase();
+    const course = (s.course ?? "").toLowerCase();
+    const q = searchQuery.toLowerCase();
     return !q || fullName.includes(q) || course.includes(q);
   });
 
@@ -235,9 +238,9 @@ const CoordinatorDailyLogs = () => {
               placeholder="Search by student name or course…"
               className="w-full pl-9 pr-8 py-2 text-sm rounded-lg transition outline-none"
               style={{
-                border:          `1px solid rgb(var(--primary-200))`,
+                border: `1px solid rgb(var(--primary-200))`,
                 backgroundColor: `rgb(var(--primary-50))`,
-                color:           `rgb(var(--primary-800))`,
+                color: `rgb(var(--primary-800))`,
               }}
               onFocus={e => {
                 e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-400))`;
@@ -278,7 +281,7 @@ const CoordinatorDailyLogs = () => {
               className="p-5 rounded-2xl mb-4"
               style={{
                 backgroundColor: `rgb(var(--primary-50))`,
-                border:          `1px solid rgb(var(--primary-100))`,
+                border: `1px solid rgb(var(--primary-100))`,
               }}
             >
               <InboxIcon className="w-10 h-10" style={{ color: `rgb(var(--primary-300))` }} />
