@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Menu, Bell, User, Settings, LogOut, ChevronRight, Repeat } from "lucide-react";
 import { getNotifications, getUnreadCount, markAsRead } from "../../api/notifications";
+import { useAuth } from "../../context/AuthContext";
 import { getRole } from "../../utils/getRole";
 import Avatar from "../ui/Avatar";
 
@@ -16,7 +17,8 @@ const relativeTime = (dateStr) => {
 };
 
 
-const TopBar = ({ onMenuClick, user }) => {
+const TopBar = ({ onMenuClick }) => {
+  const { user } = useAuth();
   const [unread, setUnread] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [notifLoading, setNotifLoading] = useState(false);
