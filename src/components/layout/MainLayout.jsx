@@ -4,9 +4,7 @@ import { Outlet } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useTheme } from "../hooks/useTheme";
 
-export default function MainLayout({ role }) {
-  // Seed from localStorage — DashboardSelect writes correct role-specific user
-  // before navigating here, so this initial read is always up-to-date.
+export default function MainLayout() {
   const [user, setUser] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("user")) || null;
@@ -15,8 +13,6 @@ export default function MainLayout({ role }) {
     }
   });
 
-  // Re-sync user state when DashboardSelect or SettingsPage dispatches
-  // "roleChanged" or "themeUpdated" after updating localStorage.
   useEffect(() => {
     const syncUser = () => {
       try {
@@ -26,10 +22,9 @@ export default function MainLayout({ role }) {
         setUser(null);
       }
     };
-    window.addEventListener("roleChanged",  syncUser);
+
     window.addEventListener("userUpdated", syncUser);
     return () => {
-      window.removeEventListener("roleChanged",  syncUser);
       window.removeEventListener("userUpdated", syncUser);
     };
   }, []);
@@ -40,11 +35,7 @@ export default function MainLayout({ role }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-
-      {/* Sidebar receives the full user object so it can derive
-          name, department, and role label based on activeRole itself. */}
       <Sidebar
-        role={role}
         user={user}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}

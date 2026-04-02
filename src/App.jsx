@@ -1,7 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import Login from "./pages/auth/Login";
 import FirstPasswordChange from "./pages/auth/FirstPasswordChange";
-import DashboardSelect from "./pages/DashboardSelect";
 import ForgotPassword from "./pages/auth/ForgotPassword";
 import ResetPassword from "./pages/auth/ResetPassword";
 
@@ -51,7 +50,6 @@ function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password/:token" element={<ResetPassword />} />
       <Route path="/first-password-change" element={<FirstPasswordChange />} />
-      <Route path="/dashboard-select" element={<DashboardSelect />} />
 
       <Route path="/evaluate/:token" element={<PublicEvaluation />} />
 

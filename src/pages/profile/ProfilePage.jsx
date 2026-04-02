@@ -31,7 +31,6 @@ const getRoleBadgeStyle = (key) => {
   };
 };
 
-/* ── Avatar ──────────────────────────────────────────────────────────────── */
 function Avatar({ photo, name, size = "lg", onUpload }) {
   const [imgError, setImgError] = useState(false);
   const [cacheKey, setCacheKey] = useState(Date.now());
@@ -95,7 +94,6 @@ function Avatar({ photo, name, size = "lg", onUpload }) {
   );
 }
 
-/* ── Read-only info row ──────────────────────────────────────────────────── */
 function InfoRow({ icon: Icon, label, value, highlight, colorKey }) {
   const badge = highlight ? getRoleBadgeStyle(colorKey ?? value) : null;
 
@@ -128,7 +126,6 @@ function InfoRow({ icon: Icon, label, value, highlight, colorKey }) {
   );
 }
 
-/* ── Editable field ──────────────────────────────────────────────────────── */
 function EditField({ icon: Icon, label, name, value, onChange, type = "text" }) {
   return (
     <div
@@ -173,7 +170,6 @@ function EditField({ icon: Icon, label, name, value, onChange, type = "text" }) 
   );
 }
 
-/* ── Main page ───────────────────────────────────────────────────────────── */
 export default function ProfilePage() {
   const { user, setUser } = useAuth();
 
@@ -182,7 +178,6 @@ export default function ProfilePage() {
   const [saveError, setSaveError] = useState(null);
   const [form, setForm] = useState({ f_name: "", l_name: "", email: "" });
 
-  /* ── No user yet → show spinner ── */
   if (!user) {
     return (
       <div
@@ -197,13 +192,8 @@ export default function ProfilePage() {
     );
   }
 
-  const activeRole = localStorage.getItem("activeRole") || user?.role;
-  const roles = user?.roles || (user?.role ? [user.role] : []);
-  const orderedRoles = [activeRole, ...roles.filter(r => r !== activeRole)];
-  const roleDisplay = orderedRoles
-    .filter(Boolean)
-    .map(r => ROLE_LABELS[r?.toLowerCase()] ?? r?.charAt(0).toUpperCase() + r?.slice(1))
-    .join(" / ");
+  const activeRole = user?.role;
+  const roleDisplay = ROLE_LABELS[user?.role?.toLowerCase()] || user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1);
 
   function startEdit() {
     const [f_name, ...rest] = (user.name ?? "").split(" ");
@@ -256,19 +246,16 @@ export default function ProfilePage() {
         localStorage.setItem("user", JSON.stringify(data.user));
       }
     } catch {
-      /* silently ignore */
     }
   }
 
   const activeBadge = getRoleBadgeStyle(activeRole);
 
-  /* ── Profile ── */
   return (
     <div
       className="min-h-screen py-10 px-4"
       style={{ backgroundColor: `rgb(var(--primary-50))` }}
     >
-      {/* Page Header */}
       <div className="max-w-2xl mx-auto mb-6">
         <h1
           className="text-2xl font-bold tracking-tight"
@@ -281,12 +268,10 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      {/* Profile Card */}
       <div
         className="max-w-2xl mx-auto bg-white rounded-2xl shadow overflow-hidden"
         style={{ border: `1px solid rgb(var(--primary-100))` }}
       >
-        {/* Banner */}
         <div
           className="h-24 relative"
           style={{
@@ -302,7 +287,6 @@ export default function ProfilePage() {
           />
         </div>
 
-        {/* Avatar + action buttons */}
         <div className="px-6 pb-0 -mt-12 flex items-end justify-between">
           <Avatar
             photo={user?.photo}
@@ -350,7 +334,6 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Name & Role */}
         <div className="px-6 pt-4 pb-2">
           <h2 className="text-xl font-bold text-gray-900 leading-tight">{user?.name ?? "—"}</h2>
           <span
@@ -362,7 +345,6 @@ export default function ProfilePage() {
           </span>
         </div>
 
-        {/* Save error banner */}
         {saveError && (
           <div className="mx-6 mb-2 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
             <AlertCircle size={15} className="text-red-500 mt-0.5 shrink-0" />
@@ -370,10 +352,8 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {/* Divider */}
         <div className="mx-6 mt-2" style={{ borderTop: `1px solid rgb(var(--primary-50))` }} />
 
-        {/* Info / Edit rows */}
         <div className="px-6 py-2">
           {editMode ? (
             <>
@@ -391,7 +371,6 @@ export default function ProfilePage() {
           )}
         </div>
 
-        {/* Card Footer */}
         <div
           className="px-6 py-4 flex items-center justify-between rounded-b-2xl"
           style={{ backgroundColor: `rgb(var(--primary-50))` }}

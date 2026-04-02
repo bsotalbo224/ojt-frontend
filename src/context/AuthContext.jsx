@@ -4,33 +4,17 @@ import api from "../api/axios";
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  /*
-  =================================
-  RESTORE SESSION ON PAGE REFRESH
-  =================================
-  */
   useEffect(() => {
-
     const storedUser = localStorage.getItem("user");
     const token = localStorage.getItem("token");
 
     if (storedUser && token) {
       try {
-
         const parsed = JSON.parse(storedUser);
-
-        // ensure roles exists
-        const normalizedUser = {
-          ...parsed,
-          roles: Array.isArray(parsed.roles) ? parsed.roles : []
-        };
-
-        setUser(normalizedUser);
-
+        setUser(parsed);
       } catch {
         localStorage.removeItem("user");
         localStorage.removeItem("token");
@@ -38,14 +22,8 @@ export function AuthProvider({ children }) {
     }
 
     setLoading(false);
-
   }, []);
 
-  /*
-  =================================
-  LOGIN
-  =================================
-  */
   const login = async (email, password) => {
     try {
       const res = await api.post("/auth/login", { email, password });
@@ -59,53 +37,29 @@ export function AuthProvider({ children }) {
 
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("user", JSON.stringify(res.data.user));
-
-      const normalizedUser = {
-        ...res.data.user,
-        roles: Array.isArray(res.data.user.roles) ? res.data.user.roles : []
-      };
-
-      localStorage.setItem("user", JSON.stringify(normalizedUser));
-      setUser(normalizedUser);
+      setUser(res.data.user);
 
       return {
         success: true,
         user: res.data.user
       };
-
     } catch (err) {
-
       const message =
-        err.response?.data?.message ||
-        "Invalid email or password";
+        err.response?.data?.message || "Invalid email or password";
 
       return {
         success: false,
         message
       };
-
     }
   };
 
-  /*
-  =================================
-  LOGOUT
-  =================================
-  */
   const logout = () => {
-
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-
     setUser(null);
-
   };
 
-  /*
-  =================================
-  CONTEXT VALUE
-  =================================
-  */
   const value = {
     user,
     setUser,
@@ -122,9 +76,4 @@ export function AuthProvider({ children }) {
   );
 }
 
-/*
-=================================
-CUSTOM HOOK
-=================================
-*/
 export const useAuth = () => useContext(AuthContext);

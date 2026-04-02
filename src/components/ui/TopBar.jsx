@@ -1,12 +1,10 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Menu, Bell, User, Settings, LogOut, ChevronRight, Repeat } from "lucide-react";
+import { Menu, Bell, User, Settings, LogOut, ChevronRight } from "lucide-react";
 import { getNotifications, getUnreadCount, markAsRead } from "../../api/notifications";
 import { useAuth } from "../../context/AuthContext";
-import { getRole } from "../../utils/getRole";
 import Avatar from "../ui/Avatar";
 
-// Relative time helper
 const relativeTime = (dateStr) => {
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
   if (diff < 60) return "just now";
@@ -15,7 +13,6 @@ const relativeTime = (dateStr) => {
   if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
   return new Date(dateStr).toLocaleDateString();
 };
-
 
 const TopBar = ({ onMenuClick }) => {
   const { user } = useAuth();
@@ -29,47 +26,24 @@ const TopBar = ({ onMenuClick }) => {
   const profileRef = useRef(null);
   const navigate = useNavigate();
 
-  // ── Full name ─────────────────────────────────────────────────────────────
-  // Backend returns f_name / l_name — there is no single `name` field.
-  // Constructing it here keeps all three Avatar usages consistent and avoids
-  // the "U" initial fallback that appeared when user.name was undefined.
   const fullName = `${user?.f_name || ""} ${user?.l_name || ""}`.trim();
 
-  // ── Role resolution ────────────────────────────────────────────────────────
-  const role = getRole(user);
-  const isMultiRole = Array.isArray(user?.roles) && user.roles.length > 1;
-
-  useEffect(() => {
-  if (Array.isArray(user?.roles) && user.roles.length > 0) {
-    if (!localStorage.getItem("activeRole")) {
-      localStorage.setItem("activeRole", user.roles[0]);
-    }
-  }
-}, [user]);
-
   const safeNavigate = useCallback((path) => {
-  if (!path) return;
-
-  const role = getRole(user);
-
-  // Ensure leading slash
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
-
-  // If already includes role, use as-is
-  if (cleanPath.startsWith(`/${role}/`)) {
-    navigate(cleanPath);
-    return;
-  }
-
-  // Otherwise prepend role
-  navigate(`/${role}${cleanPath}`);
-}, [user, navigate]);
+    if (!path) return;
+    const role = user?.role;
+    const cleanPath = path.startsWith("/") ? path : `/${path}`;
+    if (cleanPath.startsWith(`/${role}/`)) {
+      navigate(cleanPath);
+      return;
+    }
+    navigate(`/${role}${cleanPath}`);
+  }, [user, navigate]);
 
   useEffect(() => {
     const loadUnread = () => {
       getUnreadCount()
         .then((res) => { if (res.data?.success) setUnread(res.data.count || 0); })
-        .catch(() => { });
+        .catch(() => {});
     };
     loadUnread();
     const interval = setInterval(loadUnread, 15000);
@@ -142,7 +116,7 @@ const TopBar = ({ onMenuClick }) => {
       if (notif.link) {
         safeNavigate(notif.link);
       } else {
-        safeNavigate("/notifications")
+        safeNavigate("/notifications");
       }
     } catch (err) {
       console.error("Notification click error:", err);
@@ -151,7 +125,6 @@ const TopBar = ({ onMenuClick }) => {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    localStorage.removeItem("activeRole");
     window.location.href = "/";
   };
 
@@ -159,7 +132,6 @@ const TopBar = ({ onMenuClick }) => {
     <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
       <div className="flex items-center justify-between px-4 py-3 md:px-6">
 
-        {/* Left — hamburger */}
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
@@ -170,10 +142,8 @@ const TopBar = ({ onMenuClick }) => {
           </button>
         </div>
 
-        {/* Right — notifications + avatar */}
         <div className="flex items-center gap-2 md:gap-3">
 
-          {/* ── Notification Bell ── */}
           <div className="relative" ref={notifRef}>
             <button
               onClick={toggleNotif}
@@ -262,10 +232,7 @@ const TopBar = ({ onMenuClick }) => {
 
                 <div className="border-t border-gray-50 px-4 py-2">
                   <button
-                    onClick={() => {
-                      setNotifOpen(false);
-                      safeNavigate("/notifications")
-                    }}
+                    onClick={() => { setNotifOpen(false); safeNavigate("/notifications"); }}
                     style={{ color: `rgb(var(--primary-text))` }}
                     className="w-full text-xs font-semibold hover:opacity-80 text-center py-1 transition-opacity"
                   >
@@ -276,7 +243,6 @@ const TopBar = ({ onMenuClick }) => {
             )}
           </div>
 
-          {/* ── User Avatar Button ── */}
           <div className="relative" ref={profileRef}>
             <button
               onClick={toggleProfile}
@@ -287,11 +253,7 @@ const TopBar = ({ onMenuClick }) => {
               onMouseEnter={e => e.currentTarget.style.borderColor = `rgb(var(--primary-light))`}
               onMouseLeave={e => e.currentTarget.style.borderColor = `rgb(var(--primary-light) / 0.4)`}
             >
-              <Avatar
-                name={fullName}
-                src={user?.photo || ""}
-                size="md"
-              />
+              <Avatar name={fullName} src={user?.photo || ""} size="md" />
             </button>
 
             {profileOpen && (
@@ -349,22 +311,6 @@ const TopBar = ({ onMenuClick }) => {
                     </div>
                     <span className="font-medium">Settings</span>
                   </button>
-
-                  {isMultiRole && (
-                    <button
-                      role="menuitem"
-                      onClick={() => { closeAll(); navigate("/dashboard-select"); }}
-                      className="w-full px-3 py-2.5 hover:bg-gray-50 text-gray-700 text-sm flex items-center gap-3 rounded-xl transition-colors group"
-                    >
-                      <div
-                        style={{ backgroundColor: `rgb(var(--primary-light) / 0.15)` }}
-                        className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
-                      >
-                        <Repeat size={15} style={{ color: `rgb(var(--primary-text))` }} />
-                      </div>
-                      <span className="font-medium">Switch Dashboard</span>
-                    </button>
-                  )}
                 </div>
 
                 <div className="border-t border-gray-100 px-2 py-2">

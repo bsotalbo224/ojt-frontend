@@ -24,56 +24,31 @@ import {
   X,
 } from "lucide-react";
 
-// ── Logo / branding helpers ───────────────────────────────────────────────────
-
 const FALLBACK_LOGO  = "/images/spc-logo.png";
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 const FALLBACK_LABEL = "San Pablo Colleges";
 
 function resolveLogoUrl(logo) {
   if (!logo) return null;
-
-  if (/^https?:\/\//i.test(logo)) {
-    return `${logo}?t=${Date.now()}`;
-  }
-
-  if (logo.startsWith("/")) {
-    return `${BASE_URL}${logo}?t=${Date.now()}`;
-  }
-
+  if (/^https?:\/\//i.test(logo)) return `${logo}?t=${Date.now()}`;
+  if (logo.startsWith("/")) return `${BASE_URL}${logo}?t=${Date.now()}`;
   return `${BASE_URL}/uploads/departments/${logo}?t=${Date.now()}`;
 }
 
 function getBrandingData(user, activeRole) {
-  // No user at all — safe default
-  if (!user) {
-    return { logoSrc: FALLBACK_LOGO, label: FALLBACK_LABEL };
-  }
+  if (!user) return { logoSrc: FALLBACK_LOGO, label: FALLBACK_LABEL };
 
-  // Admin always gets the school branding, regardless of department
-  if (activeRole === "admin") {
-    return { logoSrc: FALLBACK_LOGO, label: "San Pablo Colleges" };
-  }
+  if (activeRole === "admin") return { logoSrc: FALLBACK_LOGO, label: "San Pablo Colleges" };
 
-  // coordinator / student — must have department
   const department = user.department;
 
   if (!department) {
-    console.warn(
-      "[Sidebar] getBrandingData: user.department is missing for role",
-      activeRole,
-      "— falling back to defaults.",
-      user,
-    );
+    console.warn("[Sidebar] getBrandingData: user.department is missing for role", activeRole, "— falling back to defaults.", user);
     return { logoSrc: FALLBACK_LOGO, label: "Department" };
   }
 
   const logoSrc = resolveLogoUrl(department.logo) ?? FALLBACK_LOGO;
-
-  return {
-    logoSrc,
-    label: department.name || "Department",
-  };
+  return { logoSrc, label: department.name || "Department" };
 }
 
 function preloadImage(url) {
@@ -85,34 +60,15 @@ function preloadImage(url) {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
-const Sidebar = ({
-  role = "coordinator",
-  user,
-  isOpen,
-  setIsOpen,
-}) => {
+const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [activeItem,     setActiveItem]     = useState(location.pathname);
-  const [isCollapsed,    setIsCollapsed]    = useState(false);
-  const [openDropdowns,  setOpenDropdowns]  = useState({});
-  const [unreadCount,    setUnreadCount]    = useState(0);
-  const [isMobile,       setIsMobile]       = useState(window.innerWidth < 768);
-
-  // ── Role ──────────────────────────────────────────────────────────────────
-  const getActiveRole = () => localStorage.getItem("activeRole") || role;
-  const [activeRole, setActiveRole] = useState(getActiveRole);
-
-  // ── User ──────────────────────────────────────────────────────────────────
-  const getLatestUser = useCallback(() => {
-    try {
-      const stored = localStorage.getItem("user");
-      return stored ? JSON.parse(stored) : user;
-    } catch { return user; }
-  }, [user]);
+  const [activeItem,    setActiveItem]    = useState(location.pathname);
+  const [isCollapsed,   setIsCollapsed]   = useState(false);
+  const [openDropdowns, setOpenDropdowns] = useState({});
+  const [unreadCount,   setUnreadCount]   = useState(0);
+  const [isMobile,      setIsMobile]      = useState(window.innerWidth < 768);
 
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -123,85 +79,63 @@ const Sidebar = ({
     }
   });
 
-  // ── Branding state ────────────────────────────────────────────────────────
+  const activeRole = currentUser?.role || role;
+
   const [logoSrc,     setLogoSrc]     = useState(() => localStorage.getItem("lastLogo")  || FALLBACK_LOGO);
   const [brandLabel,  setBrandLabel]  = useState(() => localStorage.getItem("lastLabel") || FALLBACK_LABEL);
   const [logoLoading, setLogoLoading] = useState(false);
 
-  /**
-   * updateBranding(latestUser, latestRole?)
-   *
-   * Reads the freshest activeRole from localStorage so it's always current,
-   * even when called from an event handler where the closure might be stale.
-   * Passes both user AND activeRole to getBrandingData.
-   */
-  const updateBranding = useCallback(async (latestUser, latestRole) => {
-    // Prefer the explicit argument; fall back to localStorage
-    const role = latestRole ?? localStorage.getItem("activeRole") ?? activeRole;
+  const getLatestUser = useCallback(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored) : user;
+    } catch { return user; }
+  }, [user]);
 
-    const { logoSrc: newSrc, label: newLabel } = getBrandingData(latestUser, role);
+  const updateBranding = useCallback(async (latestUser) => {
+    const resolvedRole = latestUser?.role || role;
+    const { logoSrc: newSrc, label: newLabel } = getBrandingData(latestUser, resolvedRole);
 
     setBrandLabel(newLabel);
     localStorage.setItem("lastLabel", newLabel);
 
     setLogoSrc((prev) => {
       if (newSrc === prev) return prev;
-
       setLogoLoading(true);
       preloadImage(newSrc).then((resolved) => {
         setLogoSrc(resolved);
         setLogoLoading(false);
         localStorage.setItem("lastLogo", resolved);
       });
-
-      return prev; // keep old src visible while new one loads (no flicker)
+      return prev;
     });
-  }, [activeRole]); // activeRole in deps so the fallback stays current
+  }, [role]);
 
-  // ── Sync incoming user prop → local state ─────────────────────────────────
   useEffect(() => {
     if (user) setCurrentUser(user);
   }, [user]);
 
-  // ── Re-run branding whenever user or role changes ─────────────────────────
   useEffect(() => {
-    updateBranding(currentUser, activeRole);
-  }, [currentUser, activeRole, updateBranding]);
+    updateBranding(currentUser);
+  }, [currentUser, updateBranding]);
 
-  // ── Event listeners ───────────────────────────────────────────────────────
   useEffect(() => {
-    const handleRoleChanged = () => {
-      const newRole = getActiveRole();
-      const newUser = getLatestUser();
-      setActiveRole(newRole);
-      setCurrentUser(newUser);
-      // updateBranding fires automatically via the [currentUser, activeRole] effect
-    };
-
     const handleUserUpdated = () => {
       const newUser = getLatestUser();
-      const curRole = localStorage.getItem("activeRole") ?? role;
       setCurrentUser(newUser);
-      // Pass the freshest role explicitly so there's no stale-closure risk
-      updateBranding(newUser, curRole);
+      updateBranding(newUser);
     };
 
-    window.addEventListener("roleChanged",   handleRoleChanged);
-    window.addEventListener("userUpdated",   handleUserUpdated);
-    return () => {
-      window.removeEventListener("roleChanged",   handleRoleChanged);
-      window.removeEventListener("userUpdated",   handleUserUpdated);
-    };
-  }, [getLatestUser, updateBranding, role]);
+    window.addEventListener("userUpdated", handleUserUpdated);
+    return () => window.removeEventListener("userUpdated", handleUserUpdated);
+  }, [getLatestUser, updateBranding]);
 
-  // ── Resize ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // ── Notifications ─────────────────────────────────────────────────────────
   useEffect(() => { loadUnread(); }, []);
   useEffect(() => {
     const interval = setInterval(loadUnread, 30000);
@@ -227,7 +161,6 @@ const Sidebar = ({
     }
   }, [location.pathname, activeRole]);
 
-  // ── Derived display values ────────────────────────────────────────────────
   const fullName =
     currentUser?.name ||
     `${currentUser?.f_name || ""} ${currentUser?.l_name || ""}`.trim() ||
@@ -238,7 +171,6 @@ const Sidebar = ({
     activeRole === "coordinator" ? "Coordinator"   :
                                    "Student";
 
-  // ── Menu config ───────────────────────────────────────────────────────────
   const menuConfig = {
     student: [
       { path: "/student/dashboard",  label: "Dashboard",        icon: LayoutDashboard },
@@ -259,13 +191,13 @@ const Sidebar = ({
       { path: "/admin/evaluation-templates",  label: "Evaluation",          icon: ClipboardCheck  },
     ],
     coordinator: [
-      { path: "/coordinator/dashboard",  label: "Dashboard",            icon: LayoutDashboard },
-      { path: "/coordinator/students",   label: "Students",             icon: Users           },
-      { path: "/coordinator/messages",   label: "Consultation",         icon: MessageSquare   },
-      { path: "/coordinator/daily-logs", label: "Daily Logs",           icon: FileText        },
-      { path: "/coordinator/narratives", label: "Narratives",           icon: FileText        },
-      { path: "/coordinator/attendance", label: "Attendance",           icon: Calendar        },
-      { path: "/coordinator/responses",  label: "Evaluations Responses",icon: ClipboardList   },
+      { path: "/coordinator/dashboard",  label: "Dashboard",             icon: LayoutDashboard },
+      { path: "/coordinator/students",   label: "Students",              icon: Users           },
+      { path: "/coordinator/messages",   label: "Consultation",          icon: MessageSquare   },
+      { path: "/coordinator/daily-logs", label: "Daily Logs",            icon: FileText        },
+      { path: "/coordinator/narratives", label: "Narratives",            icon: FileText        },
+      { path: "/coordinator/attendance", label: "Attendance",            icon: Calendar        },
+      { path: "/coordinator/responses",  label: "Evaluations Responses", icon: ClipboardList   },
     ],
   };
 
@@ -277,7 +209,6 @@ const Sidebar = ({
   const handleLogout = () => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
-    localStorage.removeItem("activeRole");
     localStorage.removeItem("lastLogo");
     localStorage.removeItem("lastLabel");
     navigate("/", { replace: true });
@@ -291,12 +222,10 @@ const Sidebar = ({
     return activeItem === item.path || item.children.some((child) => activeItem === child.path);
   };
 
-  const open        = isOpen ?? false;
-  const sidebarWidth  = isMobile ? "w-72" : isCollapsed ? "w-20" : "w-72";
-  const translateClass = isMobile
-    ? open ? "translate-x-0" : "-translate-x-full"
-    : "translate-x-0";
-  const showLabels = isMobile ? true : !isCollapsed;
+  const open           = isOpen ?? false;
+  const sidebarWidth   = isMobile ? "w-72" : isCollapsed ? "w-20" : "w-72";
+  const translateClass = isMobile ? (open ? "translate-x-0" : "-translate-x-full") : "translate-x-0";
+  const showLabels     = isMobile ? true : !isCollapsed;
 
   return (
     <>
@@ -308,24 +237,11 @@ const Sidebar = ({
       )}
 
       <div
-        style={{
-          background: "linear-gradient(180deg, rgb(var(--primary)) 0%, rgb(var(--primary-dark)) 100%)",
-        }}
-        className={`
-          fixed md:relative top-0 left-0 h-screen
-          z-999 transition-transform duration-300
-          ${sidebarWidth} ${translateClass}
-          text-white flex flex-col
-        `}
+        style={{ background: "linear-gradient(180deg, rgb(var(--primary)) 0%, rgb(var(--primary-dark)) 100%)" }}
+        className={`fixed md:relative top-0 left-0 h-screen z-999 transition-transform duration-300 ${sidebarWidth} ${translateClass} text-white flex flex-col`}
       >
-        {/* ── Header ── */}
-        <div
-          style={{ borderColor: "rgb(var(--primary-medium) / 0.5)" }}
-          className="py-4 px-4 border-b"
-        >
-          {/* ── Brand Block ── */}
+        <div style={{ borderColor: "rgb(var(--primary-medium) / 0.5)" }} className="py-4 px-4 border-b">
           <div className="flex flex-col gap-2">
-            {/* Toggle button */}
             <div className="flex items-center gap-3">
               <div className="w-14 flex justify-center">
                 <button
@@ -334,12 +250,8 @@ const Sidebar = ({
                     else setIsOpen(false);
                   }}
                   style={{ backgroundColor: "rgb(var(--primary-medium) / 0.5)" }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.backgroundColor = "rgb(var(--primary-medium))")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.backgroundColor = "rgb(var(--primary-medium) / 0.5)")
-                  }
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "rgb(var(--primary-medium))")}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "rgb(var(--primary-medium) / 0.5)")}
                   className="text-white rounded-lg p-2 transition-all duration-200 hover:scale-110"
                 >
                   {isMobile ? (
@@ -353,9 +265,7 @@ const Sidebar = ({
               </div>
             </div>
 
-            {/* Logo + Label row */}
             <div className={`flex items-center ${showLabels ? "gap-3" : "justify-center"}`}>
-              {/* Logo */}
               <div
                 className={`shrink-0 flex items-center justify-center transition-all duration-300 ${
                   showLabels ? "w-14 h-14" : "w-12 h-12"
@@ -366,24 +276,17 @@ const Sidebar = ({
                   src={logoSrc}
                   alt={brandLabel}
                   onError={() => setLogoSrc(FALLBACK_LOGO)}
-                  className={`
-                    w-full h-full object-contain
-                    drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]
-                    transition-all duration-300
-                    hover:scale-105
-                    ${logoLoading ? "opacity-0 scale-95" : "opacity-100 scale-100"}
-                  `}
+                  className={`w-full h-full object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)] transition-all duration-300 hover:scale-105 ${
+                    logoLoading ? "opacity-0 scale-95" : "opacity-100 scale-100"
+                  }`}
                 />
               </div>
 
-              {/* Label */}
               {showLabels && (
                 <h1
-                  className={`
-                    text-base font-bold leading-tight text-left
-                    max-w-45 w-full transition-all duration-200
-                    ${logoLoading ? "opacity-0" : "opacity-100"}
-                  `}
+                  className={`text-base font-bold leading-tight text-left max-w-45 w-full transition-all duration-200 ${
+                    logoLoading ? "opacity-0" : "opacity-100"
+                  }`}
                   style={{
                     display: "-webkit-box",
                     WebkitLineClamp: 2,
@@ -399,14 +302,10 @@ const Sidebar = ({
             </div>
           </div>
 
-          {/* ── User identity card — only expanded ── */}
           {showLabels && (
             <div className="flex items-center gap-3 mt-4 p-3 bg-white/10 rounded-xl backdrop-blur-sm">
               <div
-                style={{
-                  background:
-                    "linear-gradient(to bottom right, rgb(var(--primary-light)), rgb(var(--primary-medium)))",
-                }}
+                style={{ background: "linear-gradient(to bottom right, rgb(var(--primary-light)), rgb(var(--primary-medium)))" }}
                 className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-lg shrink-0"
               >
                 {getInitials(fullName)}
@@ -419,13 +318,12 @@ const Sidebar = ({
           )}
         </div>
 
-        {/* ── Nav ── */}
         <nav className="flex-1 p-4 overflow-y-auto">
           <ul className="space-y-1.5">
             {menuItems.map((item) => {
-              const Icon      = item.icon;
-              const isActive  = isParentActive(item);
-              const dropKey   = item.label.toLowerCase().replace(/\s+/g, "");
+              const Icon           = item.icon;
+              const isActive       = isParentActive(item);
+              const dropKey        = item.label.toLowerCase().replace(/\s+/g, "");
               const isDropdownOpen = openDropdowns[dropKey];
 
               return (
@@ -522,11 +420,7 @@ const Sidebar = ({
           </ul>
         </nav>
 
-        {/* ── Logout ── */}
-        <div
-          style={{ borderColor: "rgb(var(--primary-medium) / 0.5)" }}
-          className="p-4 border-t"
-        >
+        <div style={{ borderColor: "rgb(var(--primary-medium) / 0.5)" }} className="p-4 border-t">
           <button
             onClick={handleLogout}
             className={`flex items-center w-full px-4 py-3.5 text-sm font-medium text-white/90 hover:bg-red-500/20 hover:text-red-200 rounded-xl transition-all duration-200 ${

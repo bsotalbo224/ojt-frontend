@@ -8,8 +8,6 @@ import {
 import api from "../../api/axios";
 import { THEMES } from "../../components/themes/themes";
 
-// ─── Theme classification ─────────────────────────────────────────────────────
-
 const isSpecialTheme = (key) =>
   key.includes("dark") ||
   key.includes("ccs")  ||
@@ -19,8 +17,6 @@ const isSpecialTheme = (key) =>
 const normalThemes  = Object.entries(THEMES).filter(([key]) => !isSpecialTheme(key));
 const specialThemes = Object.entries(THEMES).filter(([key]) =>  isSpecialTheme(key));
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const ROLE_LABELS = {
   student:     "Student",
   coordinator: "Coordinator",
@@ -29,8 +25,6 @@ const ROLE_LABELS = {
 
 const MAX_FILE_SIZE_MB = 2;
 const ACCEPTED_TYPES   = ["image/png", "image/jpeg", "image/svg+xml"];
-
-// ─── PasswordInput ────────────────────────────────────────────────────────────
 
 function PasswordInput({ label, value, onChange, show, onToggle, placeholder }) {
   return (
@@ -70,8 +64,6 @@ function PasswordInput({ label, value, onChange, show, onToggle, placeholder }) 
     </div>
   );
 }
-
-// ─── LogoDropZone ─────────────────────────────────────────────────────────────
 
 function LogoDropZone({ preview, onFileSelect, onClear }) {
   const inputRef                = useRef(null);
@@ -148,15 +140,12 @@ function LogoDropZone({ preview, onFileSelect, onClear }) {
   );
 }
 
-// ─── ThemeButton ──────────────────────────────────────────────────────────────
-
 function ThemeButton({ themeKey, theme, selected, onClick, disabled }) {
   const primaryRgb =
     theme.vars["--primary"] ||
     theme.vars["--primary-600"] ||
     "100 116 139";
 
-  // Dual-tone swatch for special/dark themes that expose an accent
   const accentRgb = theme.vars["--accent"] || null;
 
   return (
@@ -199,10 +188,7 @@ function ThemeButton({ themeKey, theme, selected, onClick, disabled }) {
         }
       }}
     >
-      {/* Color swatch — dual-tone when accent is present */}
-      <span
-        className="relative shrink-0 w-4 h-4 rounded-full ring-1 ring-black/10 overflow-hidden"
-      >
+      <span className="relative shrink-0 w-4 h-4 rounded-full ring-1 ring-black/10 overflow-hidden">
         <span
           className="absolute inset-0"
           style={{ backgroundColor: `rgb(${primaryRgb})` }}
@@ -228,14 +214,11 @@ function ThemeButton({ themeKey, theme, selected, onClick, disabled }) {
   );
 }
 
-// ─── ThemeSelector ────────────────────────────────────────────────────────────
-
 function ThemeSelector({ selectedTheme, onSelect, isAdmin, selectedDept }) {
   return (
     <div className="space-y-4">
       <label className="block text-sm font-semibold text-gray-600">Theme Color</label>
 
-      {/* ── Standard Themes ── */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
@@ -257,7 +240,6 @@ function ThemeSelector({ selectedTheme, onSelect, isAdmin, selectedDept }) {
         </div>
       </div>
 
-      {/* ── Special Themes ── */}
       {specialThemes.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center gap-2">
@@ -285,7 +267,6 @@ function ThemeSelector({ selectedTheme, onSelect, isAdmin, selectedDept }) {
             ))}
           </div>
 
-          {/* Contextual note when a special theme is active */}
           {isSpecialTheme(selectedTheme) && (
             <div
               className="flex items-start gap-2 text-xs rounded-xl px-3 py-2.5 mt-1"
@@ -305,7 +286,6 @@ function ThemeSelector({ selectedTheme, onSelect, isAdmin, selectedDept }) {
         </div>
       )}
 
-      {/* Selected label */}
       {selectedDept && (
         <p className="text-xs text-gray-400 pt-0.5">
           Selected:{" "}
@@ -315,7 +295,6 @@ function ThemeSelector({ selectedTheme, onSelect, isAdmin, selectedDept }) {
         </p>
       )}
 
-      {/* Non-admin notice */}
       {!isAdmin && (
         <p className="text-xs text-gray-400 italic">
           Only administrators can change the department theme.
@@ -325,12 +304,9 @@ function ThemeSelector({ selectedTheme, onSelect, isAdmin, selectedDept }) {
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
 export default function SettingsPage() {
   const navigate = useNavigate();
 
-  // Seed from localStorage so the page never flashes empty on mount
   const [user, setUser] = useState(() => {
     try {
       const stored = localStorage.getItem("user");
@@ -353,14 +329,12 @@ export default function SettingsPage() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg,   setErrorMsg]   = useState("");
 
-  // Theme state
   const [departments,   setDepartments]   = useState([]);
   const [selectedDept,  setSelectedDept]  = useState("");
   const [selectedTheme, setSelectedTheme] = useState("green");
   const [savingTheme,   setSavingTheme]   = useState(false);
   const [loadingDepts,  setLoadingDepts]  = useState(false);
 
-  // Logo state
   const [logoFile,      setLogoFile]      = useState(null);
   const [logoPreview,   setLogoPreview]   = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -368,7 +342,6 @@ export default function SettingsPage() {
   const [logoError,     setLogoError]     = useState("");
   const [logoDept,      setLogoDept]      = useState("");
 
-  // ── Single source of truth ───────────────────────────────────────────────────
   const refreshUser = useCallback(async () => {
     const res = await api.get("/auth/me");
     const raw = res.data?.user ?? res.data;
@@ -401,9 +374,8 @@ export default function SettingsPage() {
     })();
   }, [refreshUser]);
 
-  // Load departments (admin only)
   useEffect(() => {
-    if (!user?.roles?.includes("admin")) return;
+    if (user?.role !== "admin") return;
     setLoadingDepts(true);
     (async () => {
       try {
@@ -415,19 +387,13 @@ export default function SettingsPage() {
         setLoadingDepts(false);
       }
     })();
-  }, [user?.roles]);
+  }, [user?.role]);
 
-  // ── Derived values ───────────────────────────────────────────────────────────
-  const activeRole   = localStorage.getItem("activeRole") || user?.role;
-  const roles        = user?.roles || (user?.role ? [user.role] : []);
-  const orderedRoles = [activeRole, ...roles.filter((r) => r !== activeRole)];
-  const roleDisplay  = orderedRoles
-    .filter(Boolean)
-    .map((r) => ROLE_LABELS[r?.toLowerCase()] ?? (r?.charAt(0).toUpperCase() + r?.slice(1)))
-    .join(" / ");
+  const role        = user?.role;
+  const roleDisplay = ROLE_LABELS[user?.role?.toLowerCase()] || user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1);
 
-  const roleBadgeClass = (role) => {
-    switch (role) {
+  const roleBadgeClass = (r) => {
+    switch (r) {
       case "admin":
         return { tw: "bg-purple-100 text-purple-700 border-purple-200", inline: null };
       case "coordinator":
@@ -444,10 +410,9 @@ export default function SettingsPage() {
     }
   };
 
-  const isAdmin = activeRole === "admin";
+  const isAdmin = role === "admin";
   const clearMessages = () => { setSuccessMsg(""); setErrorMsg(""); };
 
-  // ── Password handlers ────────────────────────────────────────────────────────
   const handleFirstLogin = async (e) => {
     e.preventDefault();
     clearMessages();
@@ -457,7 +422,7 @@ export default function SettingsPage() {
     try {
       await api.put("/auth/change-password-first", { new_password: newPassword });
       setSuccessMsg("Password set successfully! Redirecting…");
-      setTimeout(() => navigate(`/${activeRole}/dashboard`), 1500);
+      setTimeout(() => navigate(`/${role}/dashboard`), 1500);
     } catch (err) {
       setErrorMsg(err?.response?.data?.message || "Failed to set password. Please try again.");
     } finally {
@@ -485,7 +450,6 @@ export default function SettingsPage() {
     }
   };
 
-  // ── Theme handlers ───────────────────────────────────────────────────────────
   const handleDeptChange = (deptId) => {
     setSelectedDept(deptId);
     if (!deptId) { setSelectedTheme("green"); return; }
@@ -512,7 +476,6 @@ export default function SettingsPage() {
     }
   };
 
-  // ── Logo handlers ────────────────────────────────────────────────────────────
   const handleLogoFileSelect = (file) => {
     setLogoError("");
     setLogoSuccess("");
@@ -562,7 +525,6 @@ export default function SettingsPage() {
     }
   };
 
-  // ── Loading screen ───────────────────────────────────────────────────────────
   if (loadingUser) {
     return (
       <div
@@ -576,8 +538,6 @@ export default function SettingsPage() {
       </div>
     );
   }
-
-  // ── Local shared components ──────────────────────────────────────────────────
 
   const SectionHeader = ({ icon: Icon, title, subtitle }) => (
     <div
@@ -609,7 +569,6 @@ export default function SettingsPage() {
     </button>
   );
 
-  // Reusable department <select> — handles loading / empty states
   const DeptSelect = ({ value, onChange }) => {
     if (loadingDepts) {
       return (
@@ -660,9 +619,7 @@ export default function SettingsPage() {
     );
   };
 
-  const badge = roleBadgeClass(activeRole);
-
-  // ── Render ───────────────────────────────────────────────────────────────────
+  const badge = roleBadgeClass(role);
 
   return (
     <div
@@ -673,7 +630,6 @@ export default function SettingsPage() {
     >
       <div className="max-w-2xl mx-auto space-y-6">
 
-        {/* ── Page Header ── */}
         <div className="flex items-center gap-3 mb-2">
           <div
             className="p-2.5 bg-white rounded-xl shadow-sm"
@@ -687,7 +643,6 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* ── Global Feedback ── */}
         {successMsg && (
           <div
             className="flex items-center gap-2.5 text-sm rounded-xl px-4 py-3 shadow-sm"
@@ -706,7 +661,6 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* ── Password section ── */}
         {user?.must_change_password ? (
           <div
             className="bg-white rounded-2xl shadow p-6 space-y-5"
@@ -773,7 +727,6 @@ export default function SettingsPage() {
                 placeholder="Confirm new password"
               />
 
-              {/* Password strength indicator */}
               {newPassword.length > 0 && (
                 <div className="space-y-1">
                   <div className="flex gap-1">
@@ -823,10 +776,8 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* ── Admin: Department Theme + Logo Settings ── */}
         {isAdmin && (
           <>
-            {/* ── Theme Settings ── */}
             <div
               className="bg-white rounded-2xl shadow p-6 space-y-5"
               style={{ border: `1px solid rgb(var(--primary-100))` }}
@@ -844,13 +795,11 @@ export default function SettingsPage() {
 
               <form onSubmit={handleSaveTheme} className="space-y-4">
 
-                {/* Department */}
                 <div className="space-y-1.5">
                   <label className="block text-sm font-semibold text-gray-600">Department</label>
                   <DeptSelect value={selectedDept} onChange={handleDeptChange} />
                 </div>
 
-                {/* ✅ Dynamic theme selector — Standard + Special groups */}
                 <ThemeSelector
                   selectedTheme={selectedTheme}
                   onSelect={setSelectedTheme}
@@ -858,7 +807,6 @@ export default function SettingsPage() {
                   selectedDept={selectedDept}
                 />
 
-                {/* Save */}
                 <button
                   type="submit"
                   disabled={savingTheme || !selectedDept || loadingDepts}
@@ -887,7 +835,6 @@ export default function SettingsPage() {
               </form>
             </div>
 
-            {/* ── Logo Settings ── */}
             <div
               className="bg-white rounded-2xl shadow p-6 space-y-5"
               style={{ border: `1px solid rgb(var(--primary-100))` }}
@@ -980,7 +927,6 @@ export default function SettingsPage() {
           </>
         )}
 
-        {/* ── Account Info Card ── */}
         <div
           className="bg-white rounded-2xl shadow p-6 space-y-5"
           style={{ border: `1px solid rgb(var(--primary-100))` }}
@@ -1013,7 +959,6 @@ export default function SettingsPage() {
               </div>
             ))}
 
-            {/* Role row */}
             <div
               className="flex items-center gap-3 p-3 rounded-xl"
               style={{
