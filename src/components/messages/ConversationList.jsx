@@ -27,23 +27,30 @@ export default function ConversationList({
   searchQuery = "",
   onSearchChange,
 }) {
-  const normalized = useMemo(
-    () => Array.isArray(conversations) ? conversations.map((c) => ({ ...c, name: buildName(c) })) : [],
-    [conversations]
-  );
+  const normalized = useMemo(() => {
+    const list = conversations?.conversations || conversations || [];
+    const arr = Array.isArray(list) ? list : [];
+    return arr.map((c) => ({
+      ...c,
+      name: buildName(c),
+      last_message: c?.last_message ?? "",
+      last_message_time: c?.last_message_time ?? null,
+      unread_count: c?.unread_count ?? 0,
+    }));
+  }, [conversations]);
 
   const filtered = useMemo(
-    () => normalized.filter((c) => c.name.toLowerCase().includes((searchQuery ?? "").toLowerCase())),
+    () => normalized.filter((c) =>
+      (c.name || "").toLowerCase().includes((searchQuery ?? "").toLowerCase())
+    ),
     [normalized, searchQuery]
   );
 
   return (
     <div className="flex flex-col h-full bg-white border-r border-gray-100">
 
-      {/* Header */}
       <div className="px-4 pt-5 pb-3 border-b border-gray-100 bg-white">
         <div className="flex items-center gap-2 mb-3">
-          {/* Icon — primary-700 */}
           <div
             className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
             style={{ backgroundColor: `rgb(var(--primary-700))` }}
@@ -58,7 +65,6 @@ export default function ConversationList({
           </div>
         </div>
 
-        {/* Search input — focus ring via onFocus/onBlur */}
         <div className="relative">
           <svg
             className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"
@@ -78,12 +84,10 @@ export default function ConversationList({
         </div>
       </div>
 
-      {/* Section label */}
       <div className="px-4 pt-3 pb-1">
         <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Active Threads</span>
       </div>
 
-      {/* List */}
       <ul className="flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
           <li className="flex flex-col items-center justify-center h-32 gap-2 px-4">
@@ -112,7 +116,6 @@ export default function ConversationList({
                     borderLeftColor: `rgb(var(--primary-600))`,
                   } : {}}
                 >
-                  {/* Avatar */}
                   <div className="relative shrink-0 self-center">
                     <div
                       className="rounded-full transition-all duration-150"
@@ -123,13 +126,11 @@ export default function ConversationList({
                     >
                       <Avatar name={fullName} src={user.photo ? `${BASE_URL}${user.photo}` : ""} size="md" />
                     </div>
-                    {/* Unread dot — amber is semantic */}
                     {hasUnread && (
                       <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-white" />
                     )}
                   </div>
 
-                  {/* Text */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
                       <span className={`text-xs truncate leading-snug ${
@@ -147,7 +148,6 @@ export default function ConversationList({
                           <span className="italic text-gray-300">{user.role ? user.role : "No messages yet"}</span>
                         )}
                       </p>
-                      {/* Unread count badge — amber is semantic */}
                       {hasUnread && (
                         <span className="shrink-0 min-w-4.5 h-4.5 px-1 rounded-full bg-amber-400 text-white text-[9px] font-bold flex items-center justify-center leading-none">
                           {user.unread_count > 99 ? "99+" : user.unread_count}
