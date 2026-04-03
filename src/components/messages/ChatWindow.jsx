@@ -3,7 +3,7 @@ import { Check, CheckCheck, ArrowLeft, BookOpen, FileText, ScrollText } from "lu
 import Avatar from "../ui/Avatar";
 import MessageInput from "./MessageInput";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
+
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -166,7 +166,7 @@ function MessageBubble({ item, isSent, isGroupStart, isGroupEnd, selectedUser, s
       {!isSent && (
         <div className="shrink-0 w-7 self-end mb-1">
           {isGroupEnd ? (
-            <Avatar name={selectedName} src={selectedUser.photo ? `${BASE_URL}${selectedUser.photo}` : ""} size="sm" />
+            <Avatar name={selectedName} src={selectedUser.photo} size="sm" />
           ) : (
             <div className="w-7 h-7" />
           )}
