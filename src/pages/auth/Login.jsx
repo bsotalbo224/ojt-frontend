@@ -68,7 +68,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-100 via-green-50 to-green-200 px-4 py-8 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-green-100 px-4 py-8 relative overflow-hidden">
 
       <div className="absolute top-0 left-0 w-96 h-96 bg-green-300/20 rounded-full blur-3xl opacity-20 -translate-x-1/2 -translate-y-1/2" />
       <div className="absolute bottom-0 right-0 w-96 h-96 bg-green-400/20 rounded-full blur-3xl opacity-20 translate-x-1/2 translate-y-1/2" />
