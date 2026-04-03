@@ -124,7 +124,7 @@ export default function ConversationList({
                         outlineOffset: '1px',
                       } : {}}
                     >
-                      <Avatar name={fullName} src={user.photo ? `${BASE_URL}${user.photo}` : ""} size="md" />
+                      <Avatar name={fullName} src={user.photo} size="md" />
                     </div>
                     {hasUnread && (
                       <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-white" />
