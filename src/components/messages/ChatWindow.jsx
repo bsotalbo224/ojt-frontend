@@ -308,7 +308,7 @@ export default function ChatWindow({
         )}
 
         <div className="relative shrink-0">
-          <Avatar name={selectedName} src={selectedUser.photo ? `${BASE_URL}${selectedUser.photo}` : ""} size="md" />
+          <Avatar name={selectedName} src={selectedUser.photo} size="md" />
           {isOnline && (
             <span
               className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white"
