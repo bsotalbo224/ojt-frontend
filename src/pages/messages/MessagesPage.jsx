@@ -114,8 +114,6 @@ export default function MessagesPage() {
     try {
       const res  = await api.get("/messages/conversations");
 
-      console.log("RAW RESPONSE:", res.data); // 👈 DEBUG
-
 
       const data =
         res?.data?.conversations && Array.isArray(res.data.conversations)
@@ -123,8 +121,7 @@ export default function MessagesPage() {
           : Array.isArray(res?.data)
             ? res.data
             : [];
-
-      console.log("FINAL DATA:", data); // 👈 DEBUG
+            
       setConversations(data);
     } catch (err) {
       console.error("Failed to load conversations:", err);
