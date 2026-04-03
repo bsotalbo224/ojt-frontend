@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   FileText, Eye, CheckCircle, RefreshCcw, X, Paperclip,
   ArrowLeft, Loader2, InboxIcon, MessageSquare, User, BookOpen, Download,
+  Building2, Clock, CalendarDays, Briefcase,
 } from 'lucide-react';
 import {
   getCoordinatorLogs, getCoordinatorLogDetails, approveLog, rejectLog,
@@ -55,6 +56,34 @@ const downloadAttachment = async (file) => {
   window.URL.revokeObjectURL(url);
 };
 
+const formatTime = (value) => {
+  if (!value) return '—';
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+      // Try parsing as plain time string like "08:00:00"
+      const [h, m] = value.split(':').map(Number);
+      const d = new Date();
+      d.setHours(h, m, 0);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '—';
+  }
+};
+
+const formatDate = (value) => {
+  if (!value) return '—';
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  } catch {
+    return '—';
+  }
+};
+
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
 
 const StatusBadge = ({ status }) => {
@@ -94,8 +123,23 @@ const SectionLabel = ({ icon: Icon, label }) => (
   </div>
 );
 
+// ─── DetailField ──────────────────────────────────────────────────────────────
+
+const DetailField = ({ icon: Icon, label, value }) => (
+  <div className="flex flex-col gap-0.5">
+    <div className="flex items-center gap-1">
+      {Icon && <Icon className="w-3 h-3" style={{ color: `rgb(var(--primary-400))` }} />}
+      <span className="text-xs font-medium uppercase tracking-wide" style={{ color: `rgb(var(--primary-500))` }}>
+        {label}
+      </span>
+    </div>
+    <span className="text-sm font-semibold pl-0.5" style={{ color: `rgb(var(--primary-800))` }}>
+      {value || '—'}
+    </span>
+  </div>
+);
+
 // ─── useModalOverlay ──────────────────────────────────────────────────────────
-// Locks body scroll while any modal is open.
 
 const useModalOverlay = (isOpen) => {
   useEffect(() => {
@@ -152,12 +196,11 @@ const ImagePreviewModal = ({ src, fileName, onClose }) => {
 // ─── LogModal ─────────────────────────────────────────────────────────────────
 
 const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
-  const [feedback,      setFeedback]      = useState('');
-  const [revisionMode,  setRevisionMode]  = useState(startRevision || false);
-  const [previewImage,  setPreviewImage]  = useState(null);
+  const [feedback,        setFeedback]        = useState('');
+  const [revisionMode,    setRevisionMode]    = useState(startRevision || false);
+  const [previewImage,    setPreviewImage]    = useState(null);
   const [previewFileName, setPreviewFileName] = useState('');
 
-  // Hook must be called unconditionally — before any early return
   useModalOverlay(!!log);
 
   if (!log) return null;
@@ -227,6 +270,48 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
               <p className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>
                 {log.f_name} {log.l_name}
               </p>
+            </div>
+
+            {/* ── Log Details ─────────────────────────────────────────────── */}
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+              <SectionLabel icon={Briefcase} label="Log Details" />
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                <DetailField
+                  icon={User}
+                  label="Student Name"
+                  value={log.f_name && log.l_name ? `${log.f_name} ${log.l_name}` : null}
+                />
+                <DetailField
+                  icon={Building2}
+                  label="Company"
+                  value={log.company_name}
+                />
+                <DetailField
+                  icon={Briefcase}
+                  label="Department"
+                  value={log.department_name}
+                />
+                <DetailField
+                  icon={CalendarDays}
+                  label="Date"
+                  value={formatDate(log.log_date)}
+                />
+                <DetailField
+                  icon={Clock}
+                  label="Time In"
+                  value={formatTime(log.time_in)}
+                />
+                <DetailField
+                  icon={Clock}
+                  label="Time Out"
+                  value={formatTime(log.time_out)}
+                />
+                <DetailField
+                  icon={Clock}
+                  label="Total Hours"
+                  value={log.total_hours != null ? `${log.total_hours} hours` : null}
+                />
+              </div>
             </div>
 
             {/* Daily Narrative */}
