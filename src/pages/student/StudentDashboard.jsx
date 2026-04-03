@@ -78,13 +78,19 @@ const StudentDashboard = () => {
   const formatTime = (timeString) => {
     if (!timeString) return "—";
 
-    const [h, m] = timeString.split(":").map(Number);
+    let date;
 
-    // Create UTC date
-    const date = new Date(Date.UTC(1970, 0, 1, h, m));
+    // If ISO string (UTC)
+    if (timeString.includes("T")) {
+      date = new Date(timeString);
+    } else {
+      // If TIME string (HH:mm:ss)
+      const [h, m] = timeString.split(":");
+      date = new Date();
+      date.setHours(h, m, 0);
+    }
 
     return date.toLocaleTimeString("en-PH", {
-      timeZone: "Asia/Manila",
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
