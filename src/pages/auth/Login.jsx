@@ -30,10 +30,8 @@ export default function Login() {
     setLoading(true);
 
     try {
-
       const result = await login(email.trim(), password);
 
-      // login failed
       if (!result || !result.success) {
         setError(result?.message || "Invalid email or password");
         setLoading(false);
@@ -41,52 +39,43 @@ export default function Login() {
       }
 
       const user = result.user;
-      const roles = user.roles || [];
+      const role = user.role;
 
       if (user.must_change_password) {
         navigate("/first-password-change", { replace: true });
         return;
       }
-      if (roles.length > 1) {
-        navigate("/dashboard-select", { replace: true });
-        return;
-      }
 
-      if (roles.includes("student")) {
+      if (role === "student") {
         navigate("/student/dashboard", { replace: true });
         return;
       }
 
-      if (roles.includes("coordinator")) {
+      if (role === "coordinator") {
         navigate("/coordinator/dashboard", { replace: true });
         return;
       }
 
-      if (roles.includes("admin")) {
+      if (role === "admin") {
         navigate("/admin/dashboard", { replace: true });
         return;
       }
-
     } catch (err) {
-
       setError(err.message || "Invalid email or password");
-
     }
 
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-50 via-white to-green-50 px-4 py-8 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-green-100 via-green-50 to-green-200 px-4 py-8 relative overflow-hidden">
 
-      {/* Background blobs */}
-      <div className="absolute top-0 left-0 w-96 h-96 bg-green-200 rounded-full blur-3xl opacity-20 -translate-x-1/2 -translate-y-1/2" />
-      <div className="absolute bottom-0 right-0 w-96 h-96 bg-green-300 rounded-full blur-3xl opacity-20 translate-x-1/2 translate-y-1/2" />
+      <div className="absolute top-0 left-0 w-96 h-96 bg-green-300/20 rounded-full blur-3xl opacity-20 -translate-x-1/2 -translate-y-1/2" />
+      <div className="absolute bottom-0 right-0 w-96 h-96 bg-green-400/20 rounded-full blur-3xl opacity-20 translate-x-1/2 translate-y-1/2" />
 
       <div className="w-full max-w-md relative z-10">
-        <div className="bg-white/80 backdrop-blur-lg shadow-2xl rounded-3xl overflow-hidden border border-green-100">
+        <div className="bg-white/90 backdrop-blur-lg shadow-2xl rounded-3xl overflow-hidden border border-green-200">
 
-          {/* Header */}
           <div className="px-8 pt-8 pb-4 text-center">
             <div className="flex justify-center mb-0">
               <img
@@ -104,7 +93,6 @@ export default function Login() {
             </p>
           </div>
 
-          {/* FORM */}
           <form onSubmit={submitHandler} className="px-8 pt-5 pb-10">
 
             <div className="mb-6 text-center">
@@ -123,7 +111,6 @@ export default function Login() {
               </div>
             )}
 
-            {/* Email */}
             <div className="mb-5">
               <label className="block text-sm font-bold text-gray-700 mb-2">
                 Email Address
@@ -143,7 +130,6 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Password */}
             <div className="mb-3">
               <label className="block text-sm font-bold text-gray-700 mb-2">
                 Password
@@ -170,7 +156,6 @@ export default function Login() {
               </div>
             </div>
 
-            {/* Forgot Password */}
             <div className="flex justify-end mb-6">
               <Link
                 to="/forgot-password"
@@ -180,7 +165,6 @@ export default function Login() {
               </Link>
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading}
@@ -198,8 +182,7 @@ export default function Login() {
 
           </form>
 
-          {/* Footer */}
-          <div className="bg-linear-to-r from-green-50 to-green-100/50 px-8 py-5 text-center border-t border-green-100">
+          <div className="bg-linear-to-r from-green-100 to-green-200/50 px-8 py-5 text-center border-t border-green-200">
             <p className="text-xs text-gray-600 font-medium">
               © 2026 TRACKTERN. All rights reserved.
             </p>
