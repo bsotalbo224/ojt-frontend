@@ -113,12 +113,18 @@ export default function MessagesPage() {
   const fetchConversations = useCallback(async () => {
     try {
       const res  = await api.get("/messages/conversations");
+
+      console.log("RAW RESPONSE:", res.data); // 👈 DEBUG
+
+
       const data =
         res?.data?.conversations && Array.isArray(res.data.conversations)
           ? res.data.conversations
           : Array.isArray(res?.data)
             ? res.data
             : [];
+
+      console.log("FINAL DATA:", data); // 👈 DEBUG
       setConversations(data);
     } catch (err) {
       console.error("Failed to load conversations:", err);
