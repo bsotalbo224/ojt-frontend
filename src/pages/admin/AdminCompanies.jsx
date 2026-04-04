@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Building2, Plus, Search, Edit2, Power, MapPin, Mail, Phone, Users,
+  Building2, Plus, Search, Edit2, Power, MapPin, Users,
   X, AlertCircle, CheckCircle, ChevronDown, Loader2, Filter, Navigation, Info, Target,
 } from 'lucide-react';
 import apiClient from '../../api/axios';
@@ -64,13 +64,12 @@ const Tooltip = ({ text, children }) => (
 );
 
 // ── RadiusInput ───────────────────────────────────────────────────────────────
-// Stores a LOCAL string draft so React never coerces the value mid-keystroke.
-// PROBLEM 2 FIX: Label is now "Geofence Radius" only. The unit "m" appears
-//                solely beside the number input — not duplicated in the label.
 
 const RadiusInput = ({ value, onChange, error }) => {
+  // Keep a local string draft so React never coerces the value mid-keystroke
   const [draft, setDraft] = useState(String(value ?? RADIUS_DEFAULT));
 
+  // Sync draft when the external value changes (e.g. modal reset)
   useEffect(() => {
     setDraft(String(value ?? RADIUS_DEFAULT));
   }, [value]);
@@ -79,7 +78,10 @@ const RadiusInput = ({ value, onChange, error }) => {
   const clampedValue = isNaN(numericDraft)
     ? RADIUS_MIN
     : Math.min(Math.max(numericDraft, RADIUS_MIN), RADIUS_MAX);
-  const pct  = ((clampedValue - RADIUS_MIN) / (RADIUS_MAX - RADIUS_MIN)) * 100;
+
+  const pct = ((clampedValue - RADIUS_MIN) / (RADIUS_MAX - RADIUS_MIN)) * 100;
+
+  // Color tier based on radius magnitude
   const tier =
     clampedValue <= 50  ? 'text-blue-600'  :
     clampedValue <= 200 ? 'text-green-600' :
@@ -98,6 +100,7 @@ const RadiusInput = ({ value, onChange, error }) => {
     onChange(num);
   };
 
+  // On blur: clamp and commit the final value
   const handleBlur = () => {
     const num     = Number(draft);
     const clamped = isNaN(num)
@@ -109,8 +112,8 @@ const RadiusInput = ({ value, onChange, error }) => {
 
   return (
     <div className="flex flex-col gap-2">
+      {/* Header row: label left, numeric input + unit right */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        {/* PROBLEM 2 FIX: "Geofence Radius" only — no "(meters)" in the label */}
         <label
           htmlFor="radius-number-input"
           className="text-xs font-semibold text-green-700 uppercase tracking-wide flex items-center gap-1.5"
@@ -118,8 +121,23 @@ const RadiusInput = ({ value, onChange, error }) => {
           <Target className="w-3.5 h-3.5 text-green-500" aria-hidden="true" />
           Geofence Radius
         </label>
-        {/* Unit "m" appears only here, next to the number box */}
-        <div className="flex items-center gap-1.5">
+
+        {/* Dynamic value badge + editable number input */}
+        <div className="flex items-center gap-2">
+          {/* Live badge showing current clamped value */}
+          <span
+            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+              error
+                ? 'border-red-200 bg-red-50 text-red-500'
+                : 'border-green-200 bg-green-50 ' + tier
+            }`}
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {clampedValue} m
+          </span>
+
+          {/* Editable number box */}
           <input
             id="radius-number-input"
             type="number"
@@ -132,13 +150,17 @@ const RadiusInput = ({ value, onChange, error }) => {
             aria-describedby="radius-helper-text"
             aria-invalid={!!error}
             className={`w-20 text-center px-2 py-1 rounded-lg border text-sm font-bold transition-all outline-none focus:ring-2 focus:ring-green-100 ${
-              error ? 'border-red-300 text-red-600 bg-red-50 focus:ring-red-100' : `border-green-200 bg-white ${tier}`
+              error
+                ? 'border-red-300 text-red-600 bg-red-50 focus:ring-red-100'
+                : `border-green-200 bg-white ${tier}`
             }`}
           />
+          {/* Unit label — appears ONLY here, not in the label above */}
           <span className="text-xs text-green-500 font-medium">m</span>
         </div>
       </div>
 
+      {/* Gradient slider track */}
       <div className="relative h-5 flex items-center" role="presentation">
         <div className="w-full h-2 rounded-full bg-green-100 overflow-hidden" aria-hidden="true">
           <div
@@ -156,6 +178,7 @@ const RadiusInput = ({ value, onChange, error }) => {
           aria-label={`Geofence radius slider, ${clampedValue} meters`}
           className="absolute inset-0 w-full opacity-0 cursor-pointer h-5"
         />
+        {/* Custom thumb */}
         <div
           aria-hidden="true"
           className="absolute w-4 h-4 rounded-full bg-white border-2 border-green-500 shadow-md pointer-events-none transition-all duration-150"
@@ -163,10 +186,15 @@ const RadiusInput = ({ value, onChange, error }) => {
         />
       </div>
 
+      {/* Tick labels */}
       <div className="flex justify-between text-[10px] text-green-400 font-medium" aria-hidden="true">
-        <span>{RADIUS_MIN}m</span><span>250m</span><span>500m</span><span>{RADIUS_MAX}m</span>
+        <span>{RADIUS_MIN}m</span>
+        <span>250m</span>
+        <span>500m</span>
+        <span>{RADIUS_MAX}m</span>
       </div>
 
+      {/* Error or helper text */}
       {error ? (
         <p id="radius-helper-text" role="alert" className="text-xs text-red-500 flex items-center gap-1">
           <AlertCircle className="w-3 h-3 shrink-0" aria-hidden="true" /> {error}
@@ -339,19 +367,9 @@ const LeafletLocationPicker = ({ latitude, longitude, radius, onLocationChange }
 };
 
 // ── ModalField ────────────────────────────────────────────────────────────────
-// PROBLEM 1 FIX: This component is defined at MODULE SCOPE, outside CompanyModal.
-//
-// Root cause of the focus-loss bug:
-//   The original code defined `Field` as a `const` INSIDE CompanyModal's render
-//   body. Every time CompanyModal re-rendered (i.e. on every keystroke), React
-//   created a brand-new component type for `Field`. React's reconciler compares
-//   component types by reference — a new function reference means a completely
-//   different component, so React unmounted the old input and mounted a fresh
-//   one, destroying focus in the process.
-//
-// Fix: Move ModalField (and its helper `inputCls`) to module scope so their
-//   references are stable across renders. React then correctly reuses the
-//   existing DOM nodes and focus is never lost.
+// Defined at MODULE SCOPE so its reference is stable across renders.
+// This prevents React from unmounting/remounting inputs on every keystroke
+// (which would destroy focus).
 
 const inputCls = (hasIcon, hasErr) =>
   `w-full ${hasIcon ? 'pl-9' : 'px-3.5'} pr-3.5 py-2.5 rounded-lg border text-sm text-green-900 placeholder-green-300 bg-white outline-none focus:ring-2 transition-all ${
@@ -386,8 +404,11 @@ const ModalField = ({ label, id, icon: Icon, error: fieldErr, children }) => (
 // ── CompanyModal ──────────────────────────────────────────────────────────────
 
 const EMPTY_FORM = {
-  company_name: '', address: '', contact_person: '', contact_email: '',
-  latitude: '', longitude: '', location_name: '',
+  company_name : '',
+  address      : '',
+  latitude     : '',
+  longitude    : '',
+  location_name: '',
   radius_meters: RADIUS_DEFAULT,
 };
 
@@ -402,14 +423,12 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
     if (!isOpen) return;
     if (company) {
       setFormData({
-        company_name  : company.company_name   ?? '',
-        address       : company.address        ?? '',
-        contact_person: company.contact_person ?? '',
-        contact_email : company.contact_email  ?? '',
-        latitude      : company.latitude       ?? '',
-        longitude     : company.longitude      ?? '',
-        location_name : company.location_name  ?? company.company_name ?? '',
-        radius_meters : Number(company.radius_meters) || RADIUS_DEFAULT,
+        company_name : company.company_name  ?? '',
+        address      : company.address       ?? '',
+        latitude     : company.latitude      ?? '',
+        longitude    : company.longitude     ?? '',
+        location_name: company.location_name ?? company.company_name ?? '',
+        radius_meters: Number(company.radius_meters) || RADIUS_DEFAULT,
       });
     } else {
       setFormData(EMPTY_FORM);
@@ -427,7 +446,7 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
 
   const set = useCallback((field, val) => {
     setFormData((p) => ({ ...p, [field]: val }));
-    setErrors((p) => ({ ...p, [field]: undefined }));
+    setErrors((p)  => ({ ...p, [field]: undefined }));
   }, []);
 
   const handleLocationChange = useCallback(({ latitude, longitude, location_name }) => {
@@ -443,13 +462,8 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
 
   const validate = () => {
     const e = {};
-    if (!formData.company_name.trim())   e.company_name   = 'Company name is required';
-    if (!formData.address.trim())        e.address        = 'Address is required';
-    if (!formData.contact_person.trim()) e.contact_person = 'Contact person is required';
-    if (!formData.contact_email.trim()) { e.contact_email = 'Email is required'; }
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.contact_email)) {
-      e.contact_email = 'Enter a valid email address';
-    }
+    if (!formData.company_name.trim()) e.company_name = 'Company name is required';
+    if (!formData.address.trim())      e.address      = 'Address is required';
     const r = Number(formData.radius_meters);
     if (isNaN(r) || r < RADIUS_MIN || r > RADIUS_MAX) {
       e.radius_meters = `Radius must be between ${RADIUS_MIN} and ${RADIUS_MAX} meters`;
@@ -465,14 +479,12 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
     setLoading(true);
     try {
       const payload = {
-        company_name  : formData.company_name,
-        address       : formData.address,
-        contact_person: formData.contact_person,
-        contact_email : formData.contact_email,
-        latitude      : formData.latitude  ? parseFloat(formData.latitude)  : null,
-        longitude     : formData.longitude ? parseFloat(formData.longitude) : null,
-        location_name : formData.location_name || formData.company_name,
-        radius_meters : Number(formData.radius_meters) || RADIUS_DEFAULT,
+        company_name : formData.company_name,
+        address      : formData.address,
+        latitude     : formData.latitude  ? parseFloat(formData.latitude)  : null,
+        longitude    : formData.longitude ? parseFloat(formData.longitude) : null,
+        location_name: formData.location_name || formData.company_name,
+        radius_meters: Number(formData.radius_meters) || RADIUS_DEFAULT,
       };
       if (isEdit) { await apiClient.put(`/companies/${company.company_id}`, payload); }
       else        { await apiClient.post('/companies', payload); }
@@ -495,6 +507,7 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
       aria-label={isEdit ? 'Edit Company' : 'Add New Company'}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8 animate-[fadeUp_0.2s_ease]">
+        {/* Modal header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-green-50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
@@ -527,6 +540,7 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
               </div>
             )}
 
+            {/* Company Information */}
             <section aria-label="Company information">
               <div className="flex items-center gap-2 mb-3">
                 <Building2 className="w-4 h-4 text-green-500" aria-hidden="true" />
@@ -534,12 +548,6 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
               </div>
               <div className="bg-green-50/40 rounded-xl border border-green-100 p-4 space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/*
-                    PROBLEM 1 FIX: Using ModalField (defined at module scope).
-                    Previously `Field` was defined inside CompanyModal, making React
-                    treat it as a new component type on every render and unmount/remount
-                    the input — destroying focus. ModalField has a stable reference.
-                  */}
                   <ModalField label="Company Name" id="company_name" error={errors.company_name}>
                     <input
                       id="company_name"
@@ -563,32 +571,10 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
                     />
                   </ModalField>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <ModalField label="Contact Person" id="contact_person" icon={Phone} error={errors.contact_person}>
-                    <input
-                      id="contact_person"
-                      type="text"
-                      value={formData.contact_person}
-                      onChange={(e) => set('contact_person', e.target.value)}
-                      className={inputCls(true, !!errors.contact_person)}
-                      placeholder="e.g., John Doe"
-                    />
-                  </ModalField>
-                  <ModalField label="Contact Email" id="contact_email" icon={Mail} error={errors.contact_email}>
-                    <input
-                      id="contact_email"
-                      type="email"
-                      value={formData.contact_email}
-                      onChange={(e) => set('contact_email', e.target.value)}
-                      className={inputCls(true, !!errors.contact_email)}
-                      placeholder="contact@company.com"
-                      autoComplete="email"
-                    />
-                  </ModalField>
-                </div>
               </div>
             </section>
 
+            {/* Location & Geofence */}
             <section aria-label="Location and geofence settings">
               <div className="flex items-center gap-2 mb-3">
                 <MapPin className="w-4 h-4 text-green-500" aria-hidden="true" />
@@ -611,6 +597,7 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
             </section>
           </div>
 
+          {/* Footer actions */}
           <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-3 px-6 py-4 border-t border-green-50 bg-green-50/30 rounded-b-2xl">
             <button
               type="button"
@@ -730,10 +717,8 @@ const AdminCompanies = () => {
     if (searchTerm) {
       const s = searchTerm.toLowerCase();
       result = result.filter((c) =>
-        c.company_name?.toLowerCase().includes(s)   ||
-        c.address?.toLowerCase().includes(s)        ||
-        c.contact_person?.toLowerCase().includes(s) ||
-        c.contact_email?.toLowerCase().includes(s)
+        c.company_name?.toLowerCase().includes(s) ||
+        c.address?.toLowerCase().includes(s)
       );
     }
     setFilteredCompanies(result);
@@ -774,6 +759,7 @@ const AdminCompanies = () => {
       <div className="min-h-screen bg-linear-to-br from-green-50 to-white p-4 sm:p-6">
         <div className="max-w-7xl mx-auto space-y-6">
 
+          {/* Page header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-green-600 rounded-2xl flex items-center justify-center shadow-md">
@@ -792,6 +778,7 @@ const AdminCompanies = () => {
             </button>
           </div>
 
+          {/* Error banner */}
           {error && (
             <div role="alert" className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl">
               <AlertCircle className="w-4 h-4 text-red-500 shrink-0" aria-hidden="true" />
@@ -806,6 +793,7 @@ const AdminCompanies = () => {
             </div>
           )}
 
+          {/* Stats cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
               { label: 'Total Companies', value: stats.total,    icon: Building2,   iconClass: 'text-green-600 bg-green-100',    valueClass: 'text-green-800'   },
@@ -827,7 +815,9 @@ const AdminCompanies = () => {
             ))}
           </div>
 
+          {/* Main table card */}
           <div className="bg-white rounded-2xl shadow-md border border-green-50 overflow-hidden">
+            {/* Table toolbar */}
             <div className="px-6 pt-5 pb-4 border-b border-green-50">
               <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
                 <div>
@@ -845,7 +835,7 @@ const AdminCompanies = () => {
                     <input
                       id="company-search"
                       type="text"
-                      placeholder="Search company, address, contact…"
+                      placeholder="Search company or address…"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-9 pr-8 py-2 rounded-lg border border-green-200 text-sm text-green-800 placeholder-green-300 focus:outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100 w-full sm:w-64 transition-all"
@@ -887,6 +877,7 @@ const AdminCompanies = () => {
               </div>
             </div>
 
+            {/* Table body */}
             <div className="overflow-x-auto" role="region" aria-label="Companies table">
               {loading ? (
                 <div className="flex items-center justify-center py-24 gap-3">
@@ -899,7 +890,7 @@ const AdminCompanies = () => {
                 <table className="w-full" aria-busy={loading}>
                   <thead>
                     <tr className="bg-green-50/60">
-                      {['Company Name','Address','Contact Person','Contact Email','Students','Status','Actions'].map((col) => (
+                      {['Company Name', 'Address', 'Students', 'Status', 'Actions'].map((col) => (
                         <th key={col} scope="col" className="text-left py-3 px-4 text-xs font-semibold text-green-600 uppercase tracking-wider whitespace-nowrap">
                           {col}
                         </th>
@@ -911,12 +902,14 @@ const AdminCompanies = () => {
                       const hasCoords = !!(company.latitude && company.longitude);
                       return (
                         <tr key={company.company_id} className="border-b border-green-50 hover:bg-green-50/40 transition-colors duration-150 group">
+                          {/* Company Name + location badge */}
                           <td className="py-3.5 px-4">
                             <div className="flex flex-col gap-1 min-w-0">
                               <span className="text-sm font-semibold text-green-900 whitespace-nowrap">{company.company_name}</span>
                               <LocationBadge hasCoords={hasCoords} radiusMeters={company.radius_meters} />
                             </div>
                           </td>
+                          {/* Address */}
                           <td className="py-3.5 px-4">
                             <Tooltip text={company.address}>
                               <div className="flex items-center gap-1.5 text-sm text-green-600">
@@ -926,41 +919,28 @@ const AdminCompanies = () => {
                                     href={`https://www.google.com/maps?q=${company.latitude},${company.longitude}`}
                                     target="_blank" rel="noopener noreferrer"
                                     aria-label={`Open ${company.address} in Google Maps`}
-                                    className="truncate max-w-45 hover:underline hover:text-green-700"
+                                    className="truncate max-w-xs hover:underline hover:text-green-700"
                                   >
                                     {company.address || '—'}
                                   </a>
                                 ) : (
-                                  <span className="truncate max-w-45">{company.address || '—'}</span>
+                                  <span className="truncate max-w-xs">{company.address || '—'}</span>
                                 )}
                               </div>
                             </Tooltip>
                           </td>
-                          <td className="py-3.5 px-4">
-                            <Tooltip text={company.contact_person}>
-                              <div className="flex items-center gap-1.5 text-sm text-green-700">
-                                <Phone className="w-3.5 h-3.5 text-green-400 shrink-0" aria-hidden="true" />
-                                <span className="truncate max-w-30">{company.contact_person || '—'}</span>
-                              </div>
-                            </Tooltip>
-                          </td>
-                          <td className="py-3.5 px-4">
-                            <Tooltip text={company.contact_email}>
-                              <div className="flex items-center gap-1.5 text-sm text-green-600">
-                                <Mail className="w-3.5 h-3.5 text-green-400 shrink-0" aria-hidden="true" />
-                                <span className="truncate max-w-37.5">{company.contact_email || '—'}</span>
-                              </div>
-                            </Tooltip>
-                          </td>
+                          {/* Students */}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-1.5 text-sm text-green-700">
                               <Users className="w-3.5 h-3.5 text-green-400" aria-hidden="true" />
                               <span className="font-semibold">{company.total_students || 0}</span>
                             </div>
                           </td>
+                          {/* Status */}
                           <td className="py-3.5 px-4">
                             <StatusBadge isActive={company.is_active} />
                           </td>
+                          {/* Actions */}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-1">
                               <button
@@ -989,6 +969,7 @@ const AdminCompanies = () => {
               )}
             </div>
 
+            {/* Table footer legend */}
             {!loading && filteredCompanies.length > 0 && (
               <div className="px-6 py-3 border-t border-green-50 bg-green-50/30 flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xs text-green-500">
@@ -1005,6 +986,7 @@ const AdminCompanies = () => {
         </div>
       </div>
 
+      {/* Modals */}
       <CompanyModal
         isOpen={isCompanyModalOpen}
         onClose={() => setIsCompanyModalOpen(false)}
