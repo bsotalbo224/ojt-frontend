@@ -66,10 +66,8 @@ const Tooltip = ({ text, children }) => (
 // ── RadiusInput ───────────────────────────────────────────────────────────────
 
 const RadiusInput = ({ value, onChange, error }) => {
-  // Keep a local string draft so React never coerces the value mid-keystroke
   const [draft, setDraft] = useState(String(value ?? RADIUS_DEFAULT));
 
-  // Sync draft when the external value changes (e.g. modal reset)
   useEffect(() => {
     setDraft(String(value ?? RADIUS_DEFAULT));
   }, [value]);
@@ -81,7 +79,6 @@ const RadiusInput = ({ value, onChange, error }) => {
 
   const pct = ((clampedValue - RADIUS_MIN) / (RADIUS_MAX - RADIUS_MIN)) * 100;
 
-  // Color tier based on radius magnitude
   const tier =
     clampedValue <= 50  ? 'text-blue-600'  :
     clampedValue <= 200 ? 'text-green-600' :
@@ -100,7 +97,6 @@ const RadiusInput = ({ value, onChange, error }) => {
     onChange(num);
   };
 
-  // On blur: clamp and commit the final value
   const handleBlur = () => {
     const num     = Number(draft);
     const clamped = isNaN(num)
@@ -110,9 +106,17 @@ const RadiusInput = ({ value, onChange, error }) => {
     onChange(clamped);
   };
 
+  // Tick positions as % of the range for absolute label placement
+  const ticks = [
+    { label: `${RADIUS_MIN}m`, pct: 0 },
+    { label: '250m',           pct: ((250 - RADIUS_MIN) / (RADIUS_MAX - RADIUS_MIN)) * 100 },
+    { label: '500m',           pct: ((500 - RADIUS_MIN) / (RADIUS_MAX - RADIUS_MIN)) * 100 },
+    { label: `${RADIUS_MAX}m`, pct: 100 },
+  ];
+
   return (
     <div className="flex flex-col gap-2">
-      {/* Header row: label left, numeric input + unit right */}
+      {/* Header row */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <label
           htmlFor="radius-number-input"
@@ -122,9 +126,7 @@ const RadiusInput = ({ value, onChange, error }) => {
           Geofence Radius
         </label>
 
-        {/* Dynamic value badge + editable number input */}
         <div className="flex items-center gap-2">
-          {/* Live badge showing current clamped value */}
           <span
             className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
               error
@@ -137,7 +139,6 @@ const RadiusInput = ({ value, onChange, error }) => {
             {clampedValue} m
           </span>
 
-          {/* Editable number box */}
           <input
             id="radius-number-input"
             type="number"
@@ -155,43 +156,52 @@ const RadiusInput = ({ value, onChange, error }) => {
                 : `border-green-200 bg-white ${tier}`
             }`}
           />
-          {/* Unit label — appears ONLY here, not in the label above */}
           <span className="text-xs text-green-500 font-medium">m</span>
         </div>
       </div>
 
-      {/* Gradient slider track */}
-      <div className="relative h-5 flex items-center" role="presentation">
-        <div className="w-full h-2 rounded-full bg-green-100 overflow-hidden" aria-hidden="true">
+      {/* Slider + scale labels — single unified container */}
+      <div className="w-full mt-2">
+        {/* Slider track */}
+        <div className="relative w-full h-5 flex items-center" role="presentation">
+          {/* Filled track background */}
+          <div className="w-full h-2 rounded-full bg-green-100 overflow-hidden" aria-hidden="true">
+            <div
+              className="h-full rounded-full bg-linear-to-r from-blue-400 via-green-400 to-red-400 transition-all duration-150"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {/* Native range input — overlaid, invisible, full width, no extra padding */}
+          <input
+            type="range"
+            min={RADIUS_MIN}
+            max={RADIUS_MAX}
+            step={5}
+            value={clampedValue}
+            onChange={handleSliderChange}
+            aria-label={`Geofence radius slider, ${clampedValue} meters`}
+            className="absolute inset-0 w-full opacity-0 cursor-pointer h-5"
+          />
+          {/* Custom thumb */}
           <div
-            className="h-full rounded-full bg-linear-to-r from-blue-400 via-green-400 to-red-400 transition-all duration-150"
-            style={{ width: `${pct}%` }}
+            aria-hidden="true"
+            className="absolute w-4 h-4 rounded-full bg-white border-2 border-green-500 shadow-md pointer-events-none transition-all duration-150"
+            style={{ left: `calc(${pct}% - 8px)` }}
           />
         </div>
-        <input
-          type="range"
-          min={RADIUS_MIN}
-          max={RADIUS_MAX}
-          step={5}
-          value={clampedValue}
-          onChange={handleSliderChange}
-          aria-label={`Geofence radius slider, ${clampedValue} meters`}
-          className="absolute inset-0 w-full opacity-0 cursor-pointer h-5"
-        />
-        {/* Custom thumb */}
-        <div
-          aria-hidden="true"
-          className="absolute w-4 h-4 rounded-full bg-white border-2 border-green-500 shadow-md pointer-events-none transition-all duration-150"
-          style={{ left: `calc(${pct}% - 8px)` }}
-        />
-      </div>
 
-      {/* Tick labels */}
-      <div className="flex justify-between text-[10px] text-green-400 font-medium" aria-hidden="true">
-        <span>{RADIUS_MIN}m</span>
-        <span>250m</span>
-        <span>500m</span>
-        <span>{RADIUS_MAX}m</span>
+        {/* Scale labels — same width, absolutely positioned within a relative container */}
+        <div className="relative w-full h-4 mt-1" aria-hidden="true">
+          {ticks.map(({ label, pct: tickPct }) => (
+            <span
+              key={label}
+              className="absolute text-[10px] text-green-400 font-medium -translate-x-1/2"
+              style={{ left: `${tickPct}%` }}
+            >
+              {label}
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Error or helper text */}
@@ -345,7 +355,7 @@ const LeafletLocationPicker = ({ latitude, longitude, radius, onLocationChange }
           <AlertCircle className="w-3 h-3" aria-hidden="true" /> {searchError}
         </p>
       )}
-      <div ref={mapRef} className="w-full rounded-xl border-2 border-green-100 overflow-hidden shadow-sm"
+      <div ref={mapRef} className="w-full rounded-xl border-2 border-green-100 shadow-sm"
         style={{ height: '280px', zIndex: 0 }} aria-label="Map — click to set company location" role="application" />
       {latitude && longitude ? (
         <div className="flex items-center gap-3 px-3 py-2 bg-green-50 rounded-lg border border-green-100">
@@ -367,9 +377,6 @@ const LeafletLocationPicker = ({ latitude, longitude, radius, onLocationChange }
 };
 
 // ── ModalField ────────────────────────────────────────────────────────────────
-// Defined at MODULE SCOPE so its reference is stable across renders.
-// This prevents React from unmounting/remounting inputs on every keystroke
-// (which would destroy focus).
 
 const inputCls = (hasIcon, hasErr) =>
   `w-full ${hasIcon ? 'pl-9' : 'px-3.5'} pr-3.5 py-2.5 rounded-lg border text-sm text-green-900 placeholder-green-300 bg-white outline-none focus:ring-2 transition-all ${
