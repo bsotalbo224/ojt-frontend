@@ -30,6 +30,7 @@ import NarrativesHistory from "./pages/student/NarrativeHistory";
 import StudentProgress from "./pages/student/StudentProgress";
 
 import CoordinatorStudents from "./pages/coordinator/CoordinatorStudents";
+import CoordinatorCompanies from "./pages/coordinator/CoordinatorCompanies";
 import CoordinatorDailyLogs from "./pages/coordinator/CoordinatorDailyLogs";
 import StudentDailyLogs from "./pages/coordinator/Studentdailylogs";
 import CoordinatorNarratives from "./pages/coordinator/CoordinatorNarratives";
@@ -89,6 +90,7 @@ function App() {
         <Route path="daily-logs" element={<CoordinatorDailyLogs />} />
         <Route path="daily-logs/:studentId" element={<StudentDailyLogs />} />
         <Route path="students" element={<CoordinatorStudents />} />
+        <Route path="companies" element={<CoordinatorCompanies />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="narratives" element={<CoordinatorNarratives />} />
         <Route path="narratives/:studentId" element={<StudentNarrative />} />

@@ -14,7 +14,6 @@ import {
 } from "../../api/admin";
 import Avatar from "../../components/ui/Avatar";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const STATUS_CONFIG = {
   ongoing: {
@@ -136,7 +135,7 @@ const StudentOverviewTable = ({ students, loading, onPreview }) => (
                     <div className="flex items-center gap-3">
                       <Avatar
                         name={`${student.f_name} ${student.l_name}`}
-                        src={student.photo ? `${BASE_URL}${student.photo}` : ""}
+                        src={student.photo}
                         size="sm"
                       />
                       <span className="text-sm font-semibold text-green-900 whitespace-nowrap">
