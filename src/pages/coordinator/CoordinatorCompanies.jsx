@@ -33,7 +33,15 @@ const StatusBadge = ({ isActive }) =>
       <CheckCircle className="w-3 h-3" /> Active
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200">
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border"
+      style={{
+        backgroundColor: `rgb(var(--primary-50))`,
+        color: `rgb(var(--primary-500))`,
+        borderColor: `rgb(var(--primary-200))`,
+        opacity: 0.7,
+      }}
+    >
       <AlertCircle className="w-3 h-3" /> Inactive
     </span>
   );
@@ -41,7 +49,12 @@ const StatusBadge = ({ isActive }) =>
 const LocationBadge = ({ hasCoords, radiusMeters }) =>
   hasCoords ? (
     <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-600 border border-blue-100 whitespace-nowrap"
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap"
+      style={{
+        backgroundColor: `rgb(var(--primary-50))`,
+        color: `rgb(var(--primary-600))`,
+        borderColor: `rgb(var(--primary-200))`,
+      }}
       title={radiusMeters ? `Geofence radius: ${radiusMeters}m` : 'GPS location set'}
     >
       <Target className="w-2.5 h-2.5 shrink-0" />
@@ -67,12 +80,12 @@ const Tooltip = ({ text, children }) => (
     {text && (
       <span
         className="pointer-events-none absolute bottom-full left-0 mb-1.5 z-50 hidden group-hover:block w-max max-w-xs text-white text-xs rounded-lg px-2.5 py-1.5 shadow-lg leading-snug"
-        style={{ backgroundColor: `rgb(var(--primary-900))` }}
+        style={{ backgroundColor: `rgb(var(--primary-800))` }}
       >
         {text}
         <span
           className="absolute top-full left-3 border-4 border-transparent"
-          style={{ borderTopColor: `rgb(var(--primary-900))` }}
+          style={{ borderTopColor: `rgb(var(--primary-800))` }}
         />
       </span>
     )}
@@ -168,7 +181,6 @@ const RadiusInput = ({ value, onChange, error }) => {
                 : { border: `1px solid rgb(var(--primary-200))`, backgroundColor: 'white', color: `rgb(var(--primary-700))` }
             }
             onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-200))`; e.target.style.borderColor = `rgb(var(--primary-400))`; }}
-            onBlur2={e => { e.target.style.boxShadow = 'none'; }}
           />
           <span className="text-xs font-medium" style={{ color: `rgb(var(--primary-500))` }}>m</span>
         </div>
@@ -373,7 +385,7 @@ const LeafletLocationPicker = ({ latitude, longitude, radius, onLocationChange }
             style={{
               border: `1px solid rgb(var(--primary-200))`,
               backgroundColor: `rgb(var(--primary-50))`,
-              color: `rgb(var(--primary-900))`,
+              color: `rgb(var(--primary-800))`,
             }}
             onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-200))`; e.target.style.borderColor = `rgb(var(--primary-400))`; }}
             onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
@@ -586,7 +598,7 @@ const CompanyModal = ({ isOpen, onClose, company, onSave }) => {
               }
             </div>
             <div>
-              <h2 className="text-lg font-bold" style={{ color: `rgb(var(--primary-900))` }}>
+              <h2 className="text-lg font-bold" style={{ color: `rgb(var(--primary-800))` }}>
                 {isEdit ? 'Edit Company' : 'Add New Company'}
               </h2>
               <p className="text-xs mt-0.5" style={{ color: `rgb(var(--primary-500))` }}>
@@ -772,14 +784,17 @@ const ConfirmToggleModal = ({ isOpen, onClose, company, onConfirm, loading }) =>
         className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6"
         style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out forwards' }}
       >
-        <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4 ${isDeactivating ? 'bg-red-50' : ''}`}
-          style={!isDeactivating ? { backgroundColor: `rgb(var(--primary-50))` } : {}}>
-          <Power className={`w-7 h-7 ${isDeactivating ? 'text-red-500' : ''}`}
-            style={!isDeactivating ? { color: `rgb(var(--primary-500))` } : {}}
+        <div
+          className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4"
+          style={isDeactivating ? { backgroundColor: '#fef2f2' } : { backgroundColor: `rgb(var(--primary-50))` }}
+        >
+          <Power
+            className="w-7 h-7"
+            style={isDeactivating ? { color: '#ef4444' } : { color: `rgb(var(--primary-500))` }}
             aria-hidden="true"
           />
         </div>
-        <h3 className="text-lg font-bold text-center mb-1" style={{ color: `rgb(var(--primary-900))` }}>
+        <h3 className="text-lg font-bold text-center mb-1" style={{ color: `rgb(var(--primary-800))` }}>
           {isDeactivating ? 'Deactivate Company' : 'Activate Company'}
         </h3>
         <p className="text-sm text-center mb-6" style={{ color: `rgb(var(--primary-600))` }}>
@@ -804,12 +819,19 @@ const ConfirmToggleModal = ({ isOpen, onClose, company, onConfirm, loading }) =>
           <button
             onClick={onConfirm}
             disabled={loading}
-            className={`flex-1 px-4 py-2.5 rounded-lg text-white text-sm font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-              isDeactivating ? 'bg-red-500 hover:bg-red-600' : ''
-            }`}
-            style={!isDeactivating ? { backgroundColor: `rgb(var(--primary-600))` } : {}}
-            onMouseEnter={e => { if (!isDeactivating && !e.currentTarget.disabled) e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`; }}
-            onMouseLeave={e => { if (!isDeactivating) e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`; }}
+            className="flex-1 px-4 py-2.5 rounded-lg text-white text-sm font-semibold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={isDeactivating
+              ? { backgroundColor: '#ef4444' }
+              : { backgroundColor: `rgb(var(--primary-600))` }
+            }
+            onMouseEnter={e => {
+              if (!e.currentTarget.disabled) {
+                e.currentTarget.style.backgroundColor = isDeactivating ? '#dc2626' : `rgb(var(--primary-700))`;
+              }
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = isDeactivating ? '#ef4444' : `rgb(var(--primary-600))`;
+            }}
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
             {isDeactivating ? 'Deactivate' : 'Activate'}
@@ -902,6 +924,7 @@ const CoordinatorCompanies = () => {
           to   { opacity: 1; transform: scale(1) translateY(0); }
         }
         .leaflet-container { font-family: inherit; }
+        .company-row:hover { background-color: rgb(var(--primary-100)); }
       `}</style>
 
       <div
@@ -949,10 +972,10 @@ const CoordinatorCompanies = () => {
           {/* Stats cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { label: 'Total Companies', value: stats.total,    icon: Building2,   colorClass: '' },
-              { label: 'Active',          value: stats.active,   icon: CheckCircle, colorClass: '' },
-              { label: 'Inactive',        value: stats.inactive, icon: AlertCircle, colorClass: 'text-gray-700', iconStyle: { color: '#6b7280', backgroundColor: '#f3f4f6' } },
-            ].map(({ label, value, icon: Icon, iconStyle }) => (
+              { label: 'Total Companies', value: stats.total,    icon: Building2   },
+              { label: 'Active',          value: stats.active,   icon: CheckCircle },
+              { label: 'Inactive',        value: stats.inactive, icon: AlertCircle },
+            ].map(({ label, value, icon: Icon }) => (
               <div
                 key={label}
                 className="bg-white rounded-xl shadow-sm px-5 py-4 flex items-center gap-4 hover:shadow-md transition-shadow duration-200"
@@ -960,13 +983,10 @@ const CoordinatorCompanies = () => {
               >
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                  style={iconStyle ?? { backgroundColor: `rgb(var(--primary-50))` }}
+                  style={{ backgroundColor: `rgb(var(--primary-50))` }}
                   aria-hidden="true"
                 >
-                  <Icon
-                    className="w-5 h-5"
-                    style={iconStyle ? { color: iconStyle.color } : { color: `rgb(var(--primary-600))` }}
-                  />
+                  <Icon className="w-5 h-5" style={{ color: `rgb(var(--primary-600))` }} />
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: `rgb(var(--primary-500))` }}>
@@ -974,10 +994,7 @@ const CoordinatorCompanies = () => {
                   </p>
                   {loading
                     ? <div className="h-7 w-10 rounded animate-pulse mt-1" style={{ backgroundColor: `rgb(var(--primary-100))` }} />
-                    : <p
-                        className="text-3xl font-bold"
-                        style={iconStyle ? { color: iconStyle.color } : { color: `rgb(var(--primary-800))` }}
-                      >
+                    : <p className="text-3xl font-bold" style={{ color: `rgb(var(--primary-800))` }}>
                         {value}
                       </p>
                   }
@@ -1026,7 +1043,7 @@ const CoordinatorCompanies = () => {
                         backgroundColor: `rgb(var(--primary-50))`,
                         color: `rgb(var(--primary-800))`,
                       }}
-                      onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
+                      onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-200))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
                       onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     />
                     {searchTerm && (
@@ -1060,7 +1077,7 @@ const CoordinatorCompanies = () => {
                         backgroundColor: `rgb(var(--primary-50))`,
                         color: `rgb(var(--primary-800))`,
                       }}
-                      onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
+                      onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-200))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
                       onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     >
                       <option value="all">All Status</option>
@@ -1085,7 +1102,7 @@ const CoordinatorCompanies = () => {
                       onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`}
                       onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
                     >
-                      <X className="w-3 h-3" aria-hidden="true" />Clear
+                      <X className="w-3 h-3" aria-hidden="true" /> Clear
                     </button>
                   )}
                 </div>
@@ -1121,19 +1138,18 @@ const CoordinatorCompanies = () => {
                     {filteredCompanies.map((company) => {
                       const hasCoords = !!(company.latitude && company.longitude);
                       return (
-                        // ✅ FIX: Replaced inline onMouseEnter/onMouseLeave with Tailwind hover classes.
-                        // hover:bg-gray-50 is a neutral gray that won't blend with primary-colored text.
                         <tr
                           key={company.company_id}
-                          className="hover:bg-gray-50 transition-colors duration-150"
+                          className="company-row transition-colors duration-150"
                           style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
                         >
                           {/* Company Name + location badge */}
                           <td className="py-3.5 px-4">
                             <div className="flex flex-col gap-1 min-w-0">
-                              {/* ✅ FIX: Changed from primary-900 inline style to a solid gray class for
-                                  guaranteed contrast on both default and hover backgrounds. */}
-                              <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
+                              <span
+                                className="text-sm font-semibold whitespace-nowrap"
+                                style={{ color: `rgb(var(--primary-800))` }}
+                              >
                                 {company.company_name}
                               </span>
                               <LocationBadge hasCoords={hasCoords} radiusMeters={company.radius_meters} />
@@ -1143,24 +1159,35 @@ const CoordinatorCompanies = () => {
                           {/* Address */}
                           <td className="py-3.5 px-4">
                             <Tooltip text={company.address}>
-                              {/* ✅ FIX: Changed wrapper color from primary-600 inline style to text-gray-600
-                                  so it stays readable on hover:bg-gray-50. Icon also uses text-gray-400. */}
-                              <div className="flex items-center gap-1.5 text-sm text-gray-600">
-                                <MapPin className="w-3.5 h-3.5 shrink-0 text-gray-400" aria-hidden="true" />
+                              <div
+                                className="flex items-center gap-1.5 text-sm"
+                                style={{ color: `rgb(var(--primary-700))` }}
+                              >
+                                <MapPin
+                                  className="w-3.5 h-3.5 shrink-0"
+                                  style={{ color: `rgb(var(--primary-500))` }}
+                                  aria-hidden="true"
+                                />
                                 {hasCoords ? (
-                                  // ✅ FIX: Link uses text-gray-600 base, darkens to text-gray-900 on hover
-                                  // for a clear, accessible hover affordance without relying on primary colors.
                                   <a
                                     href={`https://www.google.com/maps?q=${company.latitude},${company.longitude}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     aria-label={`Open ${company.address} in Google Maps`}
-                                    className="truncate max-w-xs text-gray-600 hover:text-gray-900 hover:underline transition-colors duration-150"
+                                    className="truncate max-w-xs transition-colors duration-150"
+                                    style={{ color: `rgb(var(--primary-800))` }}
+                                    onMouseEnter={e => { e.currentTarget.style.color = `rgb(var(--primary-600))`; e.currentTarget.style.textDecoration = 'underline'; }}
+                                    onMouseLeave={e => { e.currentTarget.style.color = `rgb(var(--primary-800))`; e.currentTarget.style.textDecoration = 'none'; }}
                                   >
                                     {company.address || '—'}
                                   </a>
                                 ) : (
-                                  <span className="truncate max-w-xs">{company.address || '—'}</span>
+                                  <span
+                                    className="truncate max-w-xs"
+                                    style={{ color: `rgb(var(--primary-800))` }}
+                                  >
+                                    {company.address || '—'}
+                                  </span>
                                 )}
                               </div>
                             </Tooltip>
@@ -1168,14 +1195,20 @@ const CoordinatorCompanies = () => {
 
                           {/* Students */}
                           <td className="py-3.5 px-4">
-                            {/* ✅ FIX: Changed from primary-700 inline style to text-gray-700 for consistency. */}
-                            <div className="flex items-center gap-1.5 text-sm text-gray-700">
-                              <Users className="w-3.5 h-3.5 text-gray-400" aria-hidden="true" />
+                            <div
+                              className="flex items-center gap-1.5 text-sm"
+                              style={{ color: `rgb(var(--primary-800))` }}
+                            >
+                              <Users
+                                className="w-3.5 h-3.5"
+                                style={{ color: `rgb(var(--primary-500))` }}
+                                aria-hidden="true"
+                              />
                               <span className="font-semibold">{company.total_students || 0}</span>
                             </div>
                           </td>
 
-                          {/* Status — unchanged */}
+                          {/* Status */}
                           <td className="py-3.5 px-4">
                             <StatusBadge isActive={company.is_active} />
                           </td>
@@ -1187,9 +1220,10 @@ const CoordinatorCompanies = () => {
                                 onClick={() => handleEdit(company)}
                                 aria-label={`Edit ${company.company_name}`}
                                 title="Edit"
-                                // ✅ FIX: Replaced inline hover handlers with Tailwind classes.
-                                // hover:bg-gray-100 gives a clear pressed-state without conflicting colors.
-                                className="p-2 rounded-lg transition-colors duration-150 text-gray-500 hover:text-gray-800 hover:bg-gray-100"
+                                className="p-2 rounded-lg transition-colors duration-150"
+                                style={{ color: `rgb(var(--primary-500))` }}
+                                onMouseEnter={e => { e.currentTarget.style.color = `rgb(var(--primary-800))`; e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`; }}
+                                onMouseLeave={e => { e.currentTarget.style.color = `rgb(var(--primary-500))`; e.currentTarget.style.backgroundColor = 'transparent'; }}
                               >
                                 <Edit2 className="w-4 h-4" aria-hidden="true" />
                               </button>
@@ -1197,13 +1231,18 @@ const CoordinatorCompanies = () => {
                                 onClick={() => handleToggleClick(company)}
                                 aria-label={company.is_active ? `Deactivate ${company.company_name}` : `Activate ${company.company_name}`}
                                 title={company.is_active ? 'Deactivate' : 'Activate'}
-                                // ✅ FIX: Unified hover behavior for both active and inactive states.
-                                // Active (deactivate intent) gets a red tint; inactive gets a neutral hover.
-                                className={`p-2 rounded-lg transition-colors duration-150 ${
-                                  company.is_active
-                                    ? 'text-gray-400 hover:text-red-500 hover:bg-red-50'
-                                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-                                }`}
+                                className="p-2 rounded-lg transition-colors duration-150"
+                                style={{ color: `rgb(var(--primary-500))` }}
+                                onMouseEnter={e => {
+                                  if (company.is_active) {
+                                    e.currentTarget.style.color = '#ef4444';
+                                    e.currentTarget.style.backgroundColor = '#fef2f2';
+                                  } else {
+                                    e.currentTarget.style.color = `rgb(var(--primary-800))`;
+                                    e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`;
+                                  }
+                                }}
+                                onMouseLeave={e => { e.currentTarget.style.color = `rgb(var(--primary-500))`; e.currentTarget.style.backgroundColor = 'transparent'; }}
                               >
                                 <Power className="w-4 h-4" aria-hidden="true" />
                               </button>
@@ -1229,17 +1268,29 @@ const CoordinatorCompanies = () => {
                 <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
                   Showing {filteredCompanies.length} of {companies.length} compan{companies.length !== 1 ? 'ies' : 'y'}
                 </p>
-                <div className="flex items-center gap-4 text-xs flex-wrap" style={{ color: `rgb(var(--primary-500))` }} aria-label="Legend">
+                <div
+                  className="flex items-center gap-4 text-xs flex-wrap"
+                  style={{ color: `rgb(var(--primary-500))` }}
+                  aria-label="Legend"
+                >
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: `rgb(var(--primary-500))` }} aria-hidden="true" />
+                    <span
+                      className="w-2 h-2 rounded-full inline-block"
+                      style={{ backgroundColor: `rgb(var(--primary-500))` }}
+                      aria-hidden="true"
+                    />
                     Active
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" aria-hidden="true" />
+                    <span
+                      className="w-2 h-2 rounded-full inline-block"
+                      style={{ backgroundColor: `rgb(var(--primary-300))` }}
+                      aria-hidden="true"
+                    />
                     Inactive
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Target className="w-3 h-3 text-blue-500" aria-hidden="true" />
+                    <Target className="w-3 h-3" style={{ color: `rgb(var(--primary-500))` }} aria-hidden="true" />
                     Location + radius set
                   </span>
                 </div>
