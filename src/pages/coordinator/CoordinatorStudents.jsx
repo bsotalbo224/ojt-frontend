@@ -206,7 +206,13 @@ const AssignCompanyModal = ({ student, companies, loadingCompanies, selectedComp
                   onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                 >
                   <option value="" disabled>— Choose a company —</option>
-                  {companies.map((c) => <option key={c.company_id} value={c.company_id}>{c.company_name}</option>)}
+                  {companies
+                    .filter((c) => c.is_active === 1)
+                    .map((c) => (
+                      <option key={c.company_id} value={c.company_id}>
+                        {c.company_name}
+                      </option>
+                    ))}
                 </select>
               )}
             </div>
@@ -543,6 +549,12 @@ const CoordinatorStudents = () => {
       showToast(`Company assigned to ${selectedStudent.f_name} ${selectedStudent.l_name}`);
     } catch (err) {
       console.error('Assign company error:', err);
+
+      const message =
+        err.response?.data?.message ||
+        "Failed to assign company";
+
+      showToast(message);
     } finally {
       setSubmitting(false);
     }
