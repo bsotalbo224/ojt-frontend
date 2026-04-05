@@ -117,7 +117,6 @@ const RadiusInput = ({ value, onChange, error }) => {
     onChange(clamped);
   };
 
-  // Tick positions as % of the range for absolute label placement
   const ticks = [
     { label: `${RADIUS_MIN}m`, pct: 0 },
     { label: '250m',           pct: ((250 - RADIUS_MIN) / (RADIUS_MAX - RADIUS_MIN)) * 100 },
@@ -127,7 +126,6 @@ const RadiusInput = ({ value, onChange, error }) => {
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Header row */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <label
           htmlFor="radius-number-input"
@@ -176,11 +174,8 @@ const RadiusInput = ({ value, onChange, error }) => {
         </div>
       </div>
 
-      {/* Slider + scale labels — single unified container */}
       <div className="w-full mt-2">
-        {/* Slider track */}
         <div className="relative w-full h-5 flex items-center" role="presentation">
-          {/* Filled track background */}
           <div
             className="w-full h-2 rounded-full overflow-hidden"
             style={{ backgroundColor: `rgb(var(--primary-100))` }}
@@ -194,7 +189,6 @@ const RadiusInput = ({ value, onChange, error }) => {
               }}
             />
           </div>
-          {/* Native range input — overlaid, invisible, full width, no extra padding */}
           <input
             type="range"
             min={RADIUS_MIN}
@@ -205,7 +199,6 @@ const RadiusInput = ({ value, onChange, error }) => {
             aria-label={`Geofence radius slider, ${clampedValue} meters`}
             className="absolute inset-0 w-full opacity-0 cursor-pointer h-5"
           />
-          {/* Custom thumb */}
           <div
             aria-hidden="true"
             className="absolute w-4 h-4 rounded-full bg-white shadow-md pointer-events-none transition-all duration-150"
@@ -216,7 +209,6 @@ const RadiusInput = ({ value, onChange, error }) => {
           />
         </div>
 
-        {/* Scale labels — same width, absolutely positioned within a relative container */}
         <div className="relative w-full h-4 mt-1" aria-hidden="true">
           {ticks.map(({ label, pct: tickPct }) => (
             <span
@@ -230,7 +222,6 @@ const RadiusInput = ({ value, onChange, error }) => {
         </div>
       </div>
 
-      {/* Error or helper text */}
       {error ? (
         <p id="radius-helper-text" role="alert" className="text-xs text-red-500 flex items-center gap-1">
           <AlertCircle className="w-3 h-3 shrink-0" aria-hidden="true" /> {error}
@@ -1130,40 +1121,41 @@ const CoordinatorCompanies = () => {
                     {filteredCompanies.map((company) => {
                       const hasCoords = !!(company.latitude && company.longitude);
                       return (
+                        // ✅ FIX: Replaced inline onMouseEnter/onMouseLeave with Tailwind hover classes.
+                        // hover:bg-gray-50 is a neutral gray that won't blend with primary-colored text.
                         <tr
                           key={company.company_id}
-                          className="transition-colors duration-150"
+                          className="hover:bg-gray-50 transition-colors duration-150"
                           style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
-                          onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
-                          onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
                         >
                           {/* Company Name + location badge */}
                           <td className="py-3.5 px-4">
                             <div className="flex flex-col gap-1 min-w-0">
-                              <span
-                                className="text-sm font-semibold whitespace-nowrap"
-                                style={{ color: `rgb(var(--primary-900))` }}
-                              >
+                              {/* ✅ FIX: Changed from primary-900 inline style to a solid gray class for
+                                  guaranteed contrast on both default and hover backgrounds. */}
+                              <span className="text-sm font-semibold text-gray-900 whitespace-nowrap">
                                 {company.company_name}
                               </span>
                               <LocationBadge hasCoords={hasCoords} radiusMeters={company.radius_meters} />
                             </div>
                           </td>
+
                           {/* Address */}
                           <td className="py-3.5 px-4">
                             <Tooltip text={company.address}>
-                              <div className="flex items-center gap-1.5 text-sm" style={{ color: `rgb(var(--primary-600))` }}>
-                                <MapPin className="w-3.5 h-3.5 shrink-0" style={{ color: `rgb(var(--primary-400))` }} aria-hidden="true" />
+                              {/* ✅ FIX: Changed wrapper color from primary-600 inline style to text-gray-600
+                                  so it stays readable on hover:bg-gray-50. Icon also uses text-gray-400. */}
+                              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                                <MapPin className="w-3.5 h-3.5 shrink-0 text-gray-400" aria-hidden="true" />
                                 {hasCoords ? (
+                                  // ✅ FIX: Link uses text-gray-600 base, darkens to text-gray-900 on hover
+                                  // for a clear, accessible hover affordance without relying on primary colors.
                                   <a
                                     href={`https://www.google.com/maps?q=${company.latitude},${company.longitude}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     aria-label={`Open ${company.address} in Google Maps`}
-                                    className="truncate max-w-xs hover:underline"
-                                    style={{ color: `rgb(var(--primary-600))` }}
-                                    onMouseEnter={e => e.currentTarget.style.color = `rgb(var(--primary-800))`}
-                                    onMouseLeave={e => e.currentTarget.style.color = `rgb(var(--primary-600))`}
+                                    className="truncate max-w-xs text-gray-600 hover:text-gray-900 hover:underline transition-colors duration-150"
                                   >
                                     {company.address || '—'}
                                   </a>
@@ -1173,17 +1165,21 @@ const CoordinatorCompanies = () => {
                               </div>
                             </Tooltip>
                           </td>
+
                           {/* Students */}
                           <td className="py-3.5 px-4">
-                            <div className="flex items-center gap-1.5 text-sm" style={{ color: `rgb(var(--primary-700))` }}>
-                              <Users className="w-3.5 h-3.5" style={{ color: `rgb(var(--primary-400))` }} aria-hidden="true" />
+                            {/* ✅ FIX: Changed from primary-700 inline style to text-gray-700 for consistency. */}
+                            <div className="flex items-center gap-1.5 text-sm text-gray-700">
+                              <Users className="w-3.5 h-3.5 text-gray-400" aria-hidden="true" />
                               <span className="font-semibold">{company.total_students || 0}</span>
                             </div>
                           </td>
-                          {/* Status */}
+
+                          {/* Status — unchanged */}
                           <td className="py-3.5 px-4">
                             <StatusBadge isActive={company.is_active} />
                           </td>
+
                           {/* Actions */}
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-1">
@@ -1191,10 +1187,9 @@ const CoordinatorCompanies = () => {
                                 onClick={() => handleEdit(company)}
                                 aria-label={`Edit ${company.company_name}`}
                                 title="Edit"
-                                className="p-2 rounded-lg transition-colors duration-150"
-                                style={{ color: `rgb(var(--primary-600))` }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
+                                // ✅ FIX: Replaced inline hover handlers with Tailwind classes.
+                                // hover:bg-gray-100 gives a clear pressed-state without conflicting colors.
+                                className="p-2 rounded-lg transition-colors duration-150 text-gray-500 hover:text-gray-800 hover:bg-gray-100"
                               >
                                 <Edit2 className="w-4 h-4" aria-hidden="true" />
                               </button>
@@ -1202,10 +1197,13 @@ const CoordinatorCompanies = () => {
                                 onClick={() => handleToggleClick(company)}
                                 aria-label={company.is_active ? `Deactivate ${company.company_name}` : `Activate ${company.company_name}`}
                                 title={company.is_active ? 'Deactivate' : 'Activate'}
-                                className={`p-2 rounded-lg transition-colors duration-150 ${company.is_active ? 'text-gray-500 hover:bg-gray-100' : ''}`}
-                                style={!company.is_active ? { color: `rgb(var(--primary-600))` } : {}}
-                                onMouseEnter={e => { if (!company.is_active) e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; }}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
+                                // ✅ FIX: Unified hover behavior for both active and inactive states.
+                                // Active (deactivate intent) gets a red tint; inactive gets a neutral hover.
+                                className={`p-2 rounded-lg transition-colors duration-150 ${
+                                  company.is_active
+                                    ? 'text-gray-400 hover:text-red-500 hover:bg-red-50'
+                                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                                }`}
                               >
                                 <Power className="w-4 h-4" aria-hidden="true" />
                               </button>
