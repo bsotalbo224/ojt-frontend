@@ -76,26 +76,19 @@ const StudentDashboard = () => {
   };
 
   const formatTime = (timeString) => {
-    if (!timeString) return "—";
+  if (!timeString) return "—";
 
-    let date;
+  const [h, m] = timeString.split(":");
 
-    // If ISO string (UTC)
-    if (timeString.includes("T")) {
-      date = new Date(timeString);
-    } else {
-      // If TIME string (HH:mm:ss)
-      const [h, m] = timeString.split(":");
-      date = new Date();
-      date.setHours(h, m, 0);
-    }
+  const date = new Date();
+  date.setHours(parseInt(h), parseInt(m), 0);
 
-    return date.toLocaleTimeString("en-PH", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
-  };
+  return date.toLocaleTimeString("en-PH", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
 
   const formatDate = () => {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
