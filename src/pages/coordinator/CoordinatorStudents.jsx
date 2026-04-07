@@ -40,6 +40,18 @@ const studentsApi = {
 
 const isCompleted = (student) => student.hours_completed >= student.ojt_hours_required;
 
+// ✅ FIX: Converts "HH:mm:ss" → "h:mm AM/PM" without using new Date()
+// Avoids timezone shifts by doing pure string parsing + integer math.
+const formatTime12h = (timeStr) => {
+  if (!timeStr) return '—';
+  const [hourStr, minuteStr] = timeStr.split(':');
+  const hour = parseInt(hourStr, 10);
+  if (isNaN(hour)) return '—';
+  const period = hour >= 12 ? 'PM' : 'AM';
+  const hour12 = hour % 12 || 12; // 0 → 12 (midnight), 12 → 12 (noon)
+  return `${hour12}:${minuteStr} ${period}`;
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 const StatusBadge = ({ completed }) =>
@@ -1021,8 +1033,16 @@ const CoordinatorStudents = () => {
                                     return date && !isNaN(date) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
                                   })()}
                                 </td>
-                                <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>{rec.time_in ?? '—'}</td>
-                                <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>{rec.time_out ?? '—'}</td>
+
+
+                                <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>
+                                  {formatTime12h(rec.time_in)}
+                                </td>
+
+                                <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>
+                                  {formatTime12h(rec.time_out)}
+                                </td>
+
                                 <td className="py-2.5 px-4 whitespace-nowrap cursor-default select-none">
                                   <span
                                     className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
