@@ -25,6 +25,10 @@ const uid          = () => Math.random().toString(36).slice(2, 9);
 const newCriterion = () => ({ id: uid(), title: "", type: "rating", required: true, options: [] });
 const newSection   = () => ({ id: uid(), title: "", criteria: [newCriterion()] });
 
+/* ── Safe option text resolver ───────────────────────────────────────────── */
+const resolveOptionText = (opt, fallback = "") =>
+  typeof opt === "string" ? opt : (opt?.option_text ?? fallback);
+
 /* ── Shared class tokens ─────────────────────────────────────────────────── */
 const card       = "bg-white border border-gray-200 rounded-xl shadow-sm";
 const btnPrimary = "inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors";
@@ -194,14 +198,17 @@ function TemplatePreviewModal({ open, template, onClose }) {
         }
         return (
           <div className="flex flex-col gap-1.5 mt-2">
-            {opts.map((opt, i) => (
-              <label key={i} className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name={`mc-${criterion.id}`} className="accent-green-600" />
-                <span className="text-sm text-gray-700">
-                  {opt || <span className="italic text-gray-400">Untitled option</span>}
-                </span>
-              </label>
-            ))}
+            {opts.map((opt, i) => {
+              const label = resolveOptionText(opt, "Untitled option");
+              return (
+                <label key={i} className="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name={`mc-${criterion.id}`} className="accent-green-600" />
+                  <span className="text-sm text-gray-700">
+                    {label || <span className="italic text-gray-400">Untitled option</span>}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         );
       }
@@ -317,23 +324,26 @@ function OptionsEditor({ options = [], onChange }) {
 
   return (
     <div className="mt-2 space-y-2 pl-1">
-      {options.map((opt, idx) => (
-        <div key={idx} className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 w-16 shrink-0">Option {idx + 1}</span>
-          <input
-            className={`${inputCls} flex-1`}
-            placeholder={`Option ${idx + 1}...`}
-            value={opt}
-            onChange={(e) => updateOption(idx, e.target.value)}
-          />
-          <button
-            onClick={() => deleteOption(idx)}
-            className="shrink-0 text-gray-300 hover:text-red-500 transition-colors"
-          >
-            <Trash2 size={15} />
-          </button>
-        </div>
-      ))}
+      {options.map((opt, idx) => {
+        const displayValue = resolveOptionText(opt, "");
+        return (
+          <div key={idx} className="flex items-center gap-2">
+            <span className="text-xs text-gray-400 w-16 shrink-0">Option {idx + 1}</span>
+            <input
+              className={`${inputCls} flex-1`}
+              placeholder={`Option ${idx + 1}...`}
+              value={displayValue}
+              onChange={(e) => updateOption(idx, e.target.value)}
+            />
+            <button
+              onClick={() => deleteOption(idx)}
+              className="shrink-0 text-gray-300 hover:text-red-500 transition-colors"
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        );
+      })}
       <button
         onClick={addOption}
         className={`${btnGhost} text-green-600 hover:text-green-700 text-xs`}
@@ -807,9 +817,7 @@ export default function AdminEvaluationTemplates() {
           type:     criterion.type,
           required: criterion.required,
           options: (criterion.options || [])
-            .map((opt) =>
-              typeof opt === "string" ? opt : (opt?.option_text ?? "")
-            )
+            .map((opt) => resolveOptionText(opt, ""))
             .filter((opt) => opt.trim() !== ""),
         })),
       }));
