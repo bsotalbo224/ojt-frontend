@@ -27,10 +27,6 @@ const newSection   = () => ({ id: uid(), title: "", criteria: [newCriterion()] }
 
 /* ── Shared class tokens ─────────────────────────────────────────────────── */
 const card       = "bg-white border border-gray-200 rounded-xl shadow-sm";
-const badge      = {
-  Active:   "bg-green-100 text-green-700 border border-green-200",
-  Inactive: "bg-gray-100  text-gray-500  border border-gray-200",
-};
 const btnPrimary = "inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors";
 const btnOutline = "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 hover:border-green-500 hover:text-green-700 text-gray-600 text-sm font-medium transition-colors bg-white";
 const btnGhost   = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-500 hover:text-green-700 hover:bg-green-50 text-sm transition-colors";
@@ -141,7 +137,7 @@ function PublishLinkModal({ open, link, onClose }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TEMPLATE PREVIEW MODAL  (FEATURE 5 + 7)
+   TEMPLATE PREVIEW MODAL
 ══════════════════════════════════════════════════════════════════════════ */
 function TemplatePreviewModal({ open, template, onClose }) {
   if (!open || !template) return null;
@@ -308,7 +304,7 @@ function TemplatePreviewModal({ open, template, onClose }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   MULTIPLE CHOICE OPTIONS EDITOR  (FEATURE 2)
+   MULTIPLE CHOICE OPTIONS EDITOR
 ══════════════════════════════════════════════════════════════════════════ */
 function OptionsEditor({ options = [], onChange }) {
   const addOption    = () => onChange([...options, ""]);
@@ -349,7 +345,7 @@ function OptionsEditor({ options = [], onChange }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   CRITERION ROW  (updated — multiple_choice options editor)
+   CRITERION ROW
 ══════════════════════════════════════════════════════════════════════════ */
 function CriterionRow({ criterion, onChange, onDelete }) {
   return (
@@ -372,7 +368,6 @@ function CriterionRow({ criterion, onChange, onDelete }) {
               onChange({
                 ...criterion,
                 type: e.target.value,
-                // Pre-seed one blank option when switching to multiple_choice
                 options:
                   e.target.value === "multiple_choice"
                     ? (criterion.options?.length ? criterion.options : [""])
@@ -386,7 +381,6 @@ function CriterionRow({ criterion, onChange, onDelete }) {
           </select>
         </div>
 
-        {/* Options editor — only visible for multiple_choice (FEATURE 2) */}
         {criterion.type === "multiple_choice" && (
           <OptionsEditor
             options={criterion.options || []}
@@ -536,12 +530,11 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={onCancel} className={btnOutline}><X size={15} /> Cancel</button>
-          {template?.id && (
+          {template?.id && template?.status === "draft" && (
             <button onClick={handlePublishClick} className={btnPrimary}>
               <Send size={14} /> Publish
             </button>
           )}
-          {/* FEATURE 3: options included in form.sections[].criteria[].options */}
           <button onClick={() => onSave(form)} className={btnPrimary}>Save Template</button>
         </div>
       </div>
@@ -608,9 +601,9 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TEMPLATE CARD  (Preview button added — FEATURE 4)
+   TEMPLATE CARD
 ══════════════════════════════════════════════════════════════════════════ */
-function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onPreview }) {
+function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onPreview, onToggleActive }) {
   const sectionCount  = Array.isArray(template.sections) ? template.sections.length  : (template.sections  || 0);
   const criteriaCount = Array.isArray(template.criteria) ? template.criteria.length  : (template.criteria  || 0);
   const createdDate   = template.createdAt
@@ -620,11 +613,8 @@ function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onP
     : "-";
 
   return (
-    <div
-      className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 flex flex-col gap-4 min-h-52.5 hover:shadow-md hover:border-green-300 transition-all duration-200 group cursor-pointer"
-      onClick={() => onPublish(template)}
-      title="Click to publish this template"
-    >
+    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 flex flex-col gap-4 hover:shadow-md hover:border-green-300 transition-all duration-200 group">
+
       {/* Card header */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
@@ -636,9 +626,20 @@ function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onP
             <span className="text-xs text-gray-500 font-medium truncate max-w-35">{template.courseCode || "-"}</span>
           </div>
         </div>
-        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium shrink-0 border ${template.isActive ? badge.Active : badge.Inactive}`}>
+
+        {/* Clickable active/inactive toggle — always visible */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleActive(template.id); }}
+          title={template.isActive ? "Click to deactivate" : "Click to activate"}
+          className={`shrink-0 flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border transition-colors ${
+            template.isActive
+              ? "bg-green-100 text-green-700 border-green-200 hover:bg-green-200"
+              : "bg-gray-100 text-gray-500 border-gray-200 hover:bg-gray-200"
+          }`}
+        >
+          {template.isActive ? <ToggleRight size={13} /> : <ToggleLeft size={13} />}
           {template.isActive ? "Active" : "Inactive"}
-        </span>
+        </button>
       </div>
 
       {/* Stats row */}
@@ -660,14 +661,8 @@ function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onP
         </div>
       </div>
 
-      {/* Publish hint */}
-      <div className="flex items-center gap-1.5 text-xs text-gray-400 group-hover:text-green-500 transition-colors -mb-1">
-        <Send size={11} />
-        <span>Click card to publish</span>
-      </div>
-
-      {/* Action buttons — all stopPropagation to avoid triggering publish */}
-      <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      {/* Action buttons — always visible */}
+      <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100">
         <button
           onClick={(e) => { e.stopPropagation(); onEdit(template.id); }}
           className={`${btnGhost} flex-1 justify-center`}
@@ -676,7 +671,6 @@ function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onP
           <Edit2 size={14} /><span className="text-xs whitespace-nowrap">Edit</span>
         </button>
 
-        {/* FEATURE 4 — Preview button */}
         <button
           onClick={(e) => { e.stopPropagation(); onPreview(template.id); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition-colors flex-1 justify-center text-sm"
@@ -692,6 +686,7 @@ function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onP
         >
           <Copy size={14} /><span className="text-xs whitespace-nowrap">Duplicate</span>
         </button>
+
         <button
           onClick={(e) => { e.stopPropagation(); onArchive(template.id); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors flex-1 justify-center"
@@ -699,13 +694,24 @@ function TemplateCard({ template, onEdit, onDuplicate, onArchive, onPublish, onP
         >
           <Trash2 size={14} /><span className="text-xs whitespace-nowrap">Delete</span>
         </button>
+
+        {/* Publish button — only for draft templates */}
+        {template.status === "draft" && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPublish(template); }}
+            className={`${btnPrimary} flex-1 justify-center`}
+            title="Publish"
+          >
+            <Send size={14} /><span className="text-xs whitespace-nowrap">Publish</span>
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
 /* ── Templates Grid ──────────────────────────────────────────────────────── */
-function TemplatesGrid({ templates, onEdit, onDuplicate, onArchive, onPublish, onPreview }) {
+function TemplatesGrid({ templates, onEdit, onDuplicate, onArchive, onPublish, onPreview, onToggleActive }) {
   if (templates.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -724,7 +730,7 @@ function TemplatesGrid({ templates, onEdit, onDuplicate, onArchive, onPublish, o
           key={t.id} template={t}
           onEdit={onEdit} onDuplicate={onDuplicate}
           onArchive={onArchive} onPublish={onPublish}
-          onPreview={onPreview}
+          onPreview={onPreview} onToggleActive={onToggleActive}
         />
       ))}
     </div>
@@ -750,7 +756,7 @@ export default function AdminEvaluationTemplates() {
   const [publishLink,      setPublishLink]      = useState(null);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
 
-  // Preview state (FEATURE 6)
+  // Preview state
   const [previewTemplate,  setPreviewTemplate]  = useState(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
@@ -792,48 +798,44 @@ export default function AdminEvaluationTemplates() {
     } catch (err) { console.error("Error deleting template:", err); }
   };
 
-  // FEATURE 3: options sent inside sections[].criteria[].options — backend handles evaluation_options
   const handleSave = async (form) => {
-  try {
-    // Normalize sections: clean up options (string | object → string, drop empties)
-    const cleanedSections = (form.sections || []).map((section) => ({
-      title: section.title,
-      criteria: (section.criteria || []).map((criterion) => ({
-        title:    criterion.title,
-        type:     criterion.type,
-        required: criterion.required,
-        options: (criterion.options || [])
-          .map((opt) =>
-            typeof opt === "string" ? opt : (opt?.option_text ?? "")
-          )
-          .filter((opt) => opt.trim() !== ""),
-      })),
-    }));
+    try {
+      const cleanedSections = (form.sections || []).map((section) => ({
+        title: section.title,
+        criteria: (section.criteria || []).map((criterion) => ({
+          title:    criterion.title,
+          type:     criterion.type,
+          required: criterion.required,
+          options: (criterion.options || [])
+            .map((opt) =>
+              typeof opt === "string" ? opt : (opt?.option_text ?? "")
+            )
+            .filter((opt) => opt.trim() !== ""),
+        })),
+      }));
 
-    const payload = {
-      name:           form.name,
-      description:    form.description,
-      courseId:       form.courseId,
-      academicYear:   form.academicYear,
-      active:         form.isActive,        // ✅ isActive → active
-      ratingSettings: form.ratingSettings,
-      sections:       cleanedSections,
-    };
+      const payload = {
+        name:           form.name,
+        description:    form.description,
+        courseId:       form.courseId,
+        academicYear:   form.academicYear,
+        active:         form.isActive,
+        ratingSettings: form.ratingSettings,
+        sections:       cleanedSections,
+      };
 
-    console.log("PUT PAYLOAD:", payload);   // debug
+      if (editTarget?.id) {
+        await api.put(`/evaluation-templates/${editTarget.id}`, payload);
+      } else {
+        await api.post("/evaluation-templates", payload);
+      }
 
-    if (editTarget?.id) {
-      await api.put(`/evaluation-templates/${editTarget.id}`, payload);
-    } else {
-      await api.post("/evaluation-templates", payload);
+      setView("list");
+      fetchData();
+    } catch (err) {
+      console.error("Error saving template:", err);
     }
-
-    setView("list");
-    fetchData();
-  } catch (err) {
-    console.error("Error saving template:", err);
-  }
-};
+  };
 
   const handleDuplicate = async (t) => {
     try {
@@ -842,6 +844,16 @@ export default function AdminEvaluationTemplates() {
       await api.post("/evaluation-templates", copy);
       fetchData();
     } catch (err) { console.error("Error duplicating:", err); }
+  };
+
+  /* ── Toggle active handler ───────────────────────────────────────────── */
+  const handleToggleActive = async (id) => {
+    try {
+      await api.put(`/evaluation-templates/${id}/toggle-active`);
+      fetchData();
+    } catch (err) {
+      console.error("Error toggling active state:", err);
+    }
   };
 
   /* ── Publish handlers ────────────────────────────────────────────────── */
@@ -877,7 +889,7 @@ export default function AdminEvaluationTemplates() {
     } catch (err) { console.error("Error publishing template:", err); }
   };
 
-  /* ── Preview handlers (FEATURE 6) ───────────────────────────────────── */
+  /* ── Preview handlers ────────────────────────────────────────────────── */
   const handlePreview = async (id) => {
     try {
       const res = await api.get(`/evaluation-templates/${id}`);
@@ -981,6 +993,7 @@ export default function AdminEvaluationTemplates() {
               onArchive={handleArchive}
               onPublish={handlePublish}
               onPreview={handlePreview}
+              onToggleActive={handleToggleActive}
             />
           )}
         </>
@@ -1002,7 +1015,7 @@ export default function AdminEvaluationTemplates() {
         onClose={handlePublishModalClose}
       />
 
-      {/* Template preview modal (FEATURE 5 + 6 + 7) */}
+      {/* Template preview modal */}
       <TemplatePreviewModal
         open={previewModalOpen}
         template={previewTemplate}
