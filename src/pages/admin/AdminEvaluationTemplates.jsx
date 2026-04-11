@@ -26,8 +26,12 @@ const newCriterion = () => ({ id: uid(), title: "", type: "rating", required: tr
 const newSection   = () => ({ id: uid(), title: "", criteria: [newCriterion()] });
 
 /* ── Safe option text resolver ───────────────────────────────────────────── */
-const resolveOptionText = (opt, fallback = "") =>
-  typeof opt === "string" ? opt : (opt?.option_text ?? fallback);
+const resolveOptionText = (opt, fallback = "") => {
+  if (!opt) return fallback;
+  if (typeof opt === "string") return opt;
+  if (typeof opt === "object") return String(opt.option_text || fallback);
+  return String(opt);
+};
 
 /* ── Shared class tokens ─────────────────────────────────────────────────── */
 const card       = "bg-white border border-gray-200 rounded-xl shadow-sm";
@@ -204,7 +208,7 @@ function TemplatePreviewModal({ open, template, onClose }) {
                 <label key={i} className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name={`mc-${criterion.id}`} className="accent-green-600" />
                   <span className="text-sm text-gray-700">
-                    {label || <span className="italic text-gray-400">Untitled option</span>}
+                    {label}
                   </span>
                 </label>
               );
