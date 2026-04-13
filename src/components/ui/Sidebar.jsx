@@ -194,11 +194,11 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
       { path: "/coordinator/dashboard",  label: "Dashboard",             icon: LayoutDashboard },
       { path: "/coordinator/students",   label: "Students",              icon: Users           },
       { path: "/coordinator/messages",   label: "Consultation",          icon: MessageSquare   },
-      { path: "/coordinator/companies", label:  "Companies",             icon: Building2       },
+      { path: "/coordinator/companies",  label:  "Companies",            icon: Building2       },
       { path: "/coordinator/daily-logs", label: "Daily Logs",            icon: FileText        },
       { path: "/coordinator/narratives", label: "Narratives",            icon: FileText        },
       { path: "/coordinator/attendance", label: "Attendance",            icon: Calendar        },
-      { path: "/coordinator/responses",  label: "Evaluations Responses", icon: ClipboardList   },
+      { path: "/coordinator/evaluation",  label: "Evaluation", icon: ClipboardList   },
     ],
   };
 

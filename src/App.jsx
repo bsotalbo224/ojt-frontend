@@ -37,7 +37,7 @@ import CoordinatorNarratives from "./pages/coordinator/CoordinatorNarratives";
 import StudentNarrative from "./pages/coordinator/StudentNarrative";
 import CoordinatorAttendance from "./pages/coordinator/CoordinatorAttendance";
 import StudentAttendanceRecords from "./pages/coordinator/StudentAttendanceRecords";
-import CoordinatorEvaluationResponses from "./pages/coordinator/CoordinatorEvaluationResponses";
+import CoordinatorEvaluationPage from "./pages/coordinator/CoordinatorEvaluationPage";
 
 import PublicEvaluation from "./pages/PublicEvaluation";
 import ProtectedRoute from "./components/layout/ProtectedRoute";
@@ -96,7 +96,7 @@ function App() {
         <Route path="narratives/:studentId" element={<StudentNarrative />} />
         <Route path="attendance" element={<CoordinatorAttendance />} />
         <Route path="attendance/:studentId" element={<StudentAttendanceRecords />} />
-        <Route path="responses" element={<CoordinatorEvaluationResponses />} />
+        <Route path="evaluation" element={<CoordinatorEvaluationPage />} />
         <Route path="messages" element={<MessagesPage />}/>
 
         <Route path="profile" element={<ProfilePage />} />
