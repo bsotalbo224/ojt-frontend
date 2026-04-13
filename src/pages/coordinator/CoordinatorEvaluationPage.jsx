@@ -751,7 +751,7 @@ function FormsTab({ onViewResponses }) {
     try {
       setLoading(true);
       const [tplRes, courseRes] = await Promise.all([
-        api.get("/evaluation-templates/coordinator"),
+        api.get("/evaluation-templates/"),
         api.get("/courses"),
       ]);
       setTemplates(tplRes.data);
