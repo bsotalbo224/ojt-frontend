@@ -37,14 +37,173 @@ const resolveOptionText = (opt, fallback = "") => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════════
-   SHARED STYLE TOKENS
+   SHARED STYLE TOKENS — unified with CoordinatorNarratives design system
 ══════════════════════════════════════════════════════════════════════════ */
-const card       = "bg-white border border-gray-200 rounded-xl shadow-sm";
-const btnPrimary = "inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white text-sm font-medium transition-colors";
-const btnOutline = "inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 hover:border-green-500 hover:text-green-700 text-gray-600 text-sm font-medium transition-colors bg-white";
-const btnGhost   = "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-500 hover:text-green-700 hover:bg-green-50 text-sm transition-colors";
-const inputCls   = "w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition bg-white";
-const selectCls  = "w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition bg-white";
+const card       = "bg-white rounded-2xl shadow-sm";
+const cardBorder = { border: "1px solid rgb(var(--primary-50))" };
+
+const btnPrimary = {
+  base: "inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all duration-150 shadow-sm",
+  style: { backgroundColor: "rgb(var(--primary-600))" },
+  hoverStyle: { backgroundColor: "rgb(var(--primary-700))" },
+};
+
+const btnOutline = {
+  base: "inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-150 bg-white",
+  style: { color: "rgb(var(--primary-600))", border: "1px solid rgb(var(--primary-200))" },
+};
+
+const btnGhost = {
+  base: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm transition-colors",
+  style: { color: "rgb(var(--primary-500))" },
+};
+
+// Inline hover helpers — attach to onMouseEnter/onMouseLeave
+const hoverPrimary = {
+  enter: (e) => (e.currentTarget.style.backgroundColor = "rgb(var(--primary-700))"),
+  leave: (e) => (e.currentTarget.style.backgroundColor = "rgb(var(--primary-600))"),
+};
+const hoverOutline = {
+  enter: (e) => { e.currentTarget.style.borderColor = "rgb(var(--primary-300))"; e.currentTarget.style.color = "rgb(var(--primary-700))"; },
+  leave: (e) => { e.currentTarget.style.borderColor = "rgb(var(--primary-200))"; e.currentTarget.style.color = "rgb(var(--primary-600))"; },
+};
+const hoverGhost = {
+  enter: (e) => { e.currentTarget.style.backgroundColor = "rgb(var(--primary-50))"; e.currentTarget.style.color = "rgb(var(--primary-700))"; },
+  leave: (e) => { e.currentTarget.style.backgroundColor = "transparent"; e.currentTarget.style.color = "rgb(var(--primary-500))"; },
+};
+const hoverCard = {
+  enter: (e) => { e.currentTarget.style.borderColor = "rgb(var(--primary-200))"; e.currentTarget.style.boxShadow = "0 4px 6px -1px rgb(0 0 0 / 0.07), 0 2px 4px -2px rgb(0 0 0 / 0.07)"; },
+  leave: (e) => { e.currentTarget.style.borderColor = "rgb(var(--primary-50))"; e.currentTarget.style.boxShadow = "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)"; },
+};
+
+/* Reusable button components */
+function PrimaryBtn({ children, onClick, disabled, style, className = "" }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${btnPrimary.base} ${className}`}
+      style={{ ...btnPrimary.style, ...style }}
+      onMouseEnter={hoverPrimary.enter}
+      onMouseLeave={hoverPrimary.leave}
+    >
+      {children}
+    </button>
+  );
+}
+
+function OutlineBtn({ children, onClick, disabled, className = "" }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`${btnOutline.base} ${className}`}
+      style={btnOutline.style}
+      onMouseEnter={hoverOutline.enter}
+      onMouseLeave={hoverOutline.leave}
+    >
+      {children}
+    </button>
+  );
+}
+
+function GhostBtn({ children, onClick, className = "" }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`${btnGhost.base} ${className}`}
+      style={btnGhost.style}
+      onMouseEnter={hoverGhost.enter}
+      onMouseLeave={hoverGhost.leave}
+    >
+      {children}
+    </button>
+  );
+}
+
+const inputCls  = "w-full px-3 py-2 rounded-lg text-sm outline-none transition";
+const selectCls = "w-full px-3 py-2 rounded-lg text-sm outline-none transition";
+
+function StyledInput({ className = "", onFocus, onBlur, ...props }) {
+  return (
+    <input
+      className={`${inputCls} ${className}`}
+      style={{
+        border: "1px solid rgb(var(--primary-200))",
+        backgroundColor: "rgba(var(--primary-50), 0.4)",
+        color: "rgb(var(--primary-800))",
+      }}
+      onFocus={(e) => {
+        e.target.style.boxShadow = "0 0 0 2px rgb(var(--primary-300))";
+        e.target.style.borderColor = "rgb(var(--primary-300))";
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        e.target.style.boxShadow = "none";
+        e.target.style.borderColor = "rgb(var(--primary-200))";
+        onBlur?.(e);
+      }}
+      {...props}
+    />
+  );
+}
+
+function StyledSelect({ className = "", ...props }) {
+  return (
+    <select
+      className={`${selectCls} ${className}`}
+      style={{
+        border: "1px solid rgb(var(--primary-200))",
+        backgroundColor: "rgba(var(--primary-50), 0.4)",
+        color: "rgb(var(--primary-800))",
+      }}
+      {...props}
+    />
+  );
+}
+
+function StyledTextarea({ className = "", ...props }) {
+  return (
+    <textarea
+      className={`${inputCls} resize-none ${className}`}
+      style={{
+        border: "1px solid rgb(var(--primary-200))",
+        backgroundColor: "rgba(var(--primary-50), 0.4)",
+        color: "rgb(var(--primary-800))",
+      }}
+      onFocus={(e) => {
+        e.target.style.boxShadow = "0 0 0 2px rgb(var(--primary-300))";
+        e.target.style.borderColor = "rgb(var(--primary-300))";
+      }}
+      onBlur={(e) => {
+        e.target.style.boxShadow = "none";
+        e.target.style.borderColor = "rgb(var(--primary-200))";
+      }}
+      {...props}
+    />
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SKELETON CARD
+══════════════════════════════════════════════════════════════════════════ */
+const SkeletonCard = () => (
+  <div
+    className={`${card} p-5 space-y-4 animate-pulse`}
+    style={cardBorder}
+  >
+    <div className="space-y-2">
+      <div className="h-4 rounded w-3/4" style={{ backgroundColor: "rgb(var(--primary-100))" }} />
+      <div className="h-3 rounded w-1/3" style={{ backgroundColor: "rgb(var(--primary-50))" }} />
+    </div>
+    <div className="grid grid-cols-3 gap-2">
+      {[0,1,2].map(i => (
+        <div key={i} className="h-16 rounded-lg" style={{ backgroundColor: "rgb(var(--primary-50))" }} />
+      ))}
+    </div>
+    <div className="h-9 rounded-lg" style={{ backgroundColor: "rgb(var(--primary-100))" }} />
+  </div>
+);
 
 /* ══════════════════════════════════════════════════════════════════════════
    PUBLISH CONFIRM DIALOG
@@ -54,29 +213,29 @@ function PublishConfirmDialog({ open, template, onCancel, onConfirm, loading }) 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4" style={{ border: "1px solid rgb(var(--primary-100))" }}>
         <div className="flex flex-col items-center text-center gap-3 pb-1">
-          <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-            <Send size={20} className="text-green-600" />
+          <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+            <Send size={20} style={{ color: "rgb(var(--primary-600))" }} />
           </div>
           <div>
-            <h2 className="text-base font-bold text-gray-900">Publish Template</h2>
-            <p className="text-sm text-gray-500 mt-1">
-              Do you want to publish{" "}
-              <span className="font-semibold text-gray-700">"{template?.name}"</span>?
+            <h2 className="text-base font-bold" style={{ color: "rgb(var(--primary-800))" }}>Publish Template</h2>
+            <p className="text-sm mt-1" style={{ color: "rgb(var(--primary-500))" }}>
+              Publish{" "}
+              <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>"{template?.name}"</span>?
               <br />A shareable link will be generated for supervisors.
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2 pt-1">
-          <button onClick={onCancel} disabled={loading} className={`${btnOutline} flex-1 justify-center`}>Cancel</button>
-          <button onClick={onConfirm} disabled={loading} className={`${btnPrimary} flex-1 justify-center`}>
+          <OutlineBtn onClick={onCancel} disabled={loading} className="flex-1 justify-center">Cancel</OutlineBtn>
+          <PrimaryBtn onClick={onConfirm} disabled={loading} className="flex-1 justify-center">
             {loading ? (
               <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Publishing...</>
             ) : (
               <><Send size={14} /> Publish</>
             )}
-          </button>
+          </PrimaryBtn>
         </div>
       </div>
     </div>
@@ -97,38 +256,55 @@ function PublishLinkModal({ open, link, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5">
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5" style={{ border: "1px solid rgb(var(--primary-100))" }}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-              <Link2 size={18} className="text-green-600" />
+            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+              <Link2 size={18} style={{ color: "rgb(var(--primary-600))" }} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900">Evaluation Link</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Share this link with your supervisors.</p>
+              <h2 className="text-base font-bold" style={{ color: "rgb(var(--primary-800))" }}>Evaluation Link</h2>
+              <p className="text-xs mt-0.5" style={{ color: "rgb(var(--primary-500))" }}>Share this link with your supervisors.</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors mt-0.5">
+          <button onClick={onClose} className="transition-colors mt-0.5" style={{ color: "rgb(var(--primary-400))" }}
+            onMouseEnter={e => e.currentTarget.style.color = "rgb(var(--primary-700))"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgb(var(--primary-400))"}
+          >
             <X size={18} />
           </button>
         </div>
+
+        {/* Link input — Google Forms-style */}
         <div className="space-y-2">
-          <label className="block text-xs font-medium text-gray-500">Supervisor Evaluation Link</label>
-          <input readOnly value={link ?? ""} className={`${inputCls} bg-gray-50 text-gray-600 cursor-text`} onFocus={(e) => e.target.select()} />
+          <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: "rgb(var(--primary-500))" }}>
+            Supervisor Evaluation Link
+          </label>
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-200))" }}>
+            <Link2 size={14} style={{ color: "rgb(var(--primary-400))" }} className="shrink-0" />
+            <input
+              readOnly
+              value={link ?? ""}
+              className="flex-1 bg-transparent text-sm outline-none cursor-text"
+              style={{ color: "rgb(var(--primary-700))" }}
+              onFocus={e => e.target.select()}
+            />
+          </div>
         </div>
+
         <div className="flex items-center justify-between gap-3 pt-1">
           <div className="h-5 flex items-center">
             {copied && (
-              <span className="flex items-center gap-1 text-green-600 text-xs font-medium">
+              <span className="flex items-center gap-1 text-xs font-medium" style={{ color: "rgb(var(--primary-600))" }}>
                 <Check size={13} /> Link copied!
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={onClose} className={btnOutline}>Close</button>
-            <button onClick={handleCopy} className={btnPrimary}>
+            <OutlineBtn onClick={onClose}>Close</OutlineBtn>
+            <PrimaryBtn onClick={handleCopy}>
               <Copy size={14} /> {copied ? "Copied!" : "Copy Link"}
-            </button>
+            </PrimaryBtn>
           </div>
         </div>
       </div>
@@ -150,12 +326,15 @@ function TemplatePreviewModal({ open, template, onClose }) {
         return (
           <div className="flex items-center gap-1.5 mt-2">
             {Array.from({ length: max }, (_, i) => (
-              <button key={i} type="button" className="w-8 h-8 rounded-full border-2 border-yellow-300 bg-yellow-50 hover:bg-yellow-200 text-yellow-600 text-xs font-bold transition-colors">
-                {i + 1}
-              </button>
+              <button key={i} type="button"
+                className="w-8 h-8 rounded-full text-xs font-bold transition-colors"
+                style={{ border: "2px solid rgb(var(--primary-200))", backgroundColor: "rgb(var(--primary-50))", color: "rgb(var(--primary-600))" }}
+              >{i + 1}</button>
             ))}
             {template.ratingSettings?.minLabel && (
-              <span className="text-[11px] text-gray-400 ml-1">{template.ratingSettings.minLabel} → {template.ratingSettings.maxLabel}</span>
+              <span className="text-[11px] ml-1" style={{ color: "rgb(var(--primary-400))" }}>
+                {template.ratingSettings.minLabel} → {template.ratingSettings.maxLabel}
+              </span>
             )}
           </div>
         );
@@ -163,25 +342,30 @@ function TemplatePreviewModal({ open, template, onClose }) {
       case "yesno":
         return (
           <div className="flex items-center gap-5 mt-2">
-            {["Yes", "No"].map((opt) => (
+            {["Yes", "No"].map(opt => (
               <label key={opt} className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name={`yesno-${criterion.id}`} className="accent-green-600" />
-                <span className="text-sm text-gray-700">{opt}</span>
+                <input type="radio" name={`yesno-${criterion.id}`} style={{ accentColor: "rgb(var(--primary-600))" }} />
+                <span className="text-sm" style={{ color: "rgb(var(--primary-700))" }}>{opt}</span>
               </label>
             ))}
           </div>
         );
       case "text":
-        return <textarea rows={2} disabled placeholder="Supervisor will type their response here..." className="mt-2 w-full px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-400 bg-gray-50 resize-none" />;
+        return (
+          <textarea rows={2} disabled placeholder="Supervisor will type their response here..."
+            className="mt-2 w-full px-3 py-2 rounded-lg text-sm resize-none"
+            style={{ border: "1px solid rgb(var(--primary-100))", backgroundColor: "rgb(var(--primary-50))", color: "rgb(var(--primary-400))" }}
+          />
+        );
       case "multiple_choice": {
         const opts = Array.isArray(criterion.options) ? criterion.options : [];
-        if (opts.length === 0) return <p className="mt-2 text-xs text-gray-400 italic">No options defined.</p>;
+        if (opts.length === 0) return <p className="mt-2 text-xs italic" style={{ color: "rgb(var(--primary-400))" }}>No options defined.</p>;
         return (
           <div className="flex flex-col gap-1.5 mt-2">
             {opts.map((opt, i) => (
               <label key={i} className="flex items-center gap-2 cursor-pointer">
-                <input type="radio" name={`mc-${criterion.id}`} className="accent-green-600" />
-                <span className="text-sm text-gray-700">{resolveOptionText(opt, "Untitled option")}</span>
+                <input type="radio" name={`mc-${criterion.id}`} style={{ accentColor: "rgb(var(--primary-600))" }} />
+                <span className="text-sm" style={{ color: "rgb(var(--primary-700))" }}>{resolveOptionText(opt, "Untitled option")}</span>
               </label>
             ))}
           </div>
@@ -194,46 +378,55 @@ function TemplatePreviewModal({ open, template, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" style={{ border: "1px solid rgb(var(--primary-100))" }}>
+        <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: "1px solid rgb(var(--primary-100))" }}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-blue-100 flex items-center justify-center">
-              <Eye size={16} className="text-blue-600" />
+            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+              <Eye size={16} style={{ color: "rgb(var(--primary-600))" }} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900">Template Preview</h2>
-              <p className="text-xs text-gray-500">How supervisors will see this form</p>
+              <h2 className="text-base font-bold" style={{ color: "rgb(var(--primary-800))" }}>Template Preview</h2>
+              <p className="text-xs" style={{ color: "rgb(var(--primary-500))" }}>How supervisors will see this form</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
+          <button onClick={onClose} className="transition-colors" style={{ color: "rgb(var(--primary-400))" }}
+            onMouseEnter={e => e.currentTarget.style.color = "rgb(var(--primary-700))"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgb(var(--primary-400))"}
+          >
+            <X size={18} />
+          </button>
         </div>
+
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-6">
           <div className="space-y-1">
-            <h3 className="text-xl font-bold text-gray-900">{template.name || "Untitled Template"}</h3>
-            {template.description && <p className="text-sm text-gray-500">{template.description}</p>}
-            <div className="flex items-center gap-3 pt-1 text-xs text-gray-400">
+            <h3 className="text-xl font-bold" style={{ color: "rgb(var(--primary-800))" }}>{template.name || "Untitled Template"}</h3>
+            {template.description && <p className="text-sm" style={{ color: "rgb(var(--primary-500))" }}>{template.description}</p>}
+            <div className="flex items-center gap-3 pt-1 text-xs" style={{ color: "rgb(var(--primary-400))" }}>
               {template.courseCode && <span className="flex items-center gap-1"><BookOpen size={11} /> {template.courseCode}</span>}
               {template.academicYear && <span className="flex items-center gap-1"><Calendar size={11} /> {template.academicYear}</span>}
             </div>
           </div>
+
           {sections.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No sections defined in this template.</p>
+            <p className="text-sm italic" style={{ color: "rgb(var(--primary-400))" }}>No sections defined in this template.</p>
           ) : (
             sections.map((section, si) => {
               const criteria = Array.isArray(section.criteria) ? section.criteria : [];
               return (
                 <div key={section.id || si} className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <div className="h-px flex-1 bg-gray-100" />
-                    <h4 className="text-xs font-bold uppercase tracking-widest text-green-600 px-2">{section.title || `Section ${si + 1}`}</h4>
-                    <div className="h-px flex-1 bg-gray-100" />
+                    <div className="h-px flex-1" style={{ backgroundColor: "rgb(var(--primary-100))" }} />
+                    <h4 className="text-xs font-bold uppercase tracking-widest px-2" style={{ color: "rgb(var(--primary-600))" }}>
+                      {section.title || `Section ${si + 1}`}
+                    </h4>
+                    <div className="h-px flex-1" style={{ backgroundColor: "rgb(var(--primary-100))" }} />
                   </div>
                   <div className="space-y-4">
                     {criteria.map((criterion, ci) => (
-                      <div key={criterion.id || ci} className="bg-gray-50 rounded-xl border border-gray-100 p-4">
+                      <div key={criterion.id || ci} className="rounded-xl p-4" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
                         <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-semibold text-gray-800">
-                            {criterion.title || <span className="italic text-gray-400">Untitled criterion</span>}
+                          <p className="text-sm font-semibold" style={{ color: "rgb(var(--primary-800))" }}>
+                            {criterion.title || <span className="italic" style={{ color: "rgb(var(--primary-400))" }}>Untitled criterion</span>}
                           </p>
                           {criterion.required && (
                             <span className="shrink-0 text-[10px] font-medium bg-red-50 text-red-500 border border-red-100 px-1.5 py-0.5 rounded-full">Required</span>
@@ -248,8 +441,9 @@ function TemplatePreviewModal({ open, template, onClose }) {
             })
           )}
         </div>
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end shrink-0">
-          <button onClick={onClose} className={btnOutline}><X size={14} /> Close Preview</button>
+
+        <div className="px-6 py-4 flex justify-end shrink-0" style={{ borderTop: "1px solid rgb(var(--primary-100))" }}>
+          <OutlineBtn onClick={onClose}><X size={14} /> Close Preview</OutlineBtn>
         </div>
       </div>
     </div>
@@ -267,14 +461,19 @@ function OptionsEditor({ options = [], onChange }) {
     <div className="mt-2 space-y-2 pl-1">
       {options.map((opt, idx) => (
         <div key={idx} className="flex items-center gap-2">
-          <span className="text-xs text-gray-400 w-16 shrink-0">Option {idx + 1}</span>
-          <input className={`${inputCls} flex-1`} placeholder={`Option ${idx + 1}...`} value={resolveOptionText(opt, "")} onChange={(e) => updateOption(idx, e.target.value)} />
-          <button onClick={() => deleteOption(idx)} className="shrink-0 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={15} /></button>
+          <span className="text-xs w-16 shrink-0" style={{ color: "rgb(var(--primary-400))" }}>Option {idx + 1}</span>
+          <StyledInput className="flex-1" placeholder={`Option ${idx + 1}...`} value={resolveOptionText(opt, "")} onChange={e => updateOption(idx, e.target.value)} />
+          <button onClick={() => deleteOption(idx)} className="shrink-0 transition-colors" style={{ color: "rgb(var(--primary-300))" }}
+            onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgb(var(--primary-300))"}
+          >
+            <Trash2 size={15} />
+          </button>
         </div>
       ))}
-      <button onClick={addOption} className={`${btnGhost} text-green-600 hover:text-green-700 text-xs`}>
+      <GhostBtn onClick={addOption} className="text-xs">
         <Plus size={13} /> Add Option
-      </button>
+      </GhostBtn>
     </div>
   );
 }
@@ -284,25 +483,32 @@ function OptionsEditor({ options = [], onChange }) {
 ══════════════════════════════════════════════════════════════════════════ */
 function CriterionRow({ criterion, onChange, onDelete }) {
   return (
-    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg border border-gray-100 group">
-      <GripVertical size={16} className="mt-2.5 text-gray-300 shrink-0 cursor-grab" />
+    <div className="flex items-start gap-3 p-3 rounded-lg group" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
+      <GripVertical size={16} className="mt-2.5 shrink-0 cursor-grab" style={{ color: "rgb(var(--primary-300))" }} />
       <div className="flex-1 space-y-2">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div className="sm:col-span-2">
-            <input className={inputCls} placeholder="Criterion title..." value={criterion.title} onChange={(e) => onChange({ ...criterion, title: e.target.value })} />
+            <StyledInput placeholder="Criterion title..." value={criterion.title} onChange={e => onChange({ ...criterion, title: e.target.value })} />
           </div>
-          <select className={selectCls} value={criterion.type} onChange={(e) => onChange({ ...criterion, type: e.target.value, options: e.target.value === "multiple_choice" ? (criterion.options?.length ? criterion.options : [""]) : (criterion.options || []) })}>
-            {QUESTION_TYPES.map((t) => <option key={`${criterion.id}-${t.value}`} value={t.value}>{t.label}</option>)}
-          </select>
+          <StyledSelect value={criterion.type} onChange={e => onChange({ ...criterion, type: e.target.value, options: e.target.value === "multiple_choice" ? (criterion.options?.length ? criterion.options : [""]) : (criterion.options || []) })}>
+            {QUESTION_TYPES.map(t => <option key={`${criterion.id}-${t.value}`} value={t.value}>{t.label}</option>)}
+          </StyledSelect>
         </div>
         {criterion.type === "multiple_choice" && (
-          <OptionsEditor options={criterion.options || []} onChange={(opts) => onChange({ ...criterion, options: opts })} />
+          <OptionsEditor options={criterion.options || []} onChange={opts => onChange({ ...criterion, options: opts })} />
         )}
       </div>
-      <button onClick={() => onChange({ ...criterion, required: !criterion.required })} className={`mt-1 shrink-0 transition-colors ${criterion.required ? "text-green-600" : "text-gray-300"}`}>
+      <button onClick={() => onChange({ ...criterion, required: !criterion.required })} className="mt-1 shrink-0 transition-colors"
+        style={{ color: criterion.required ? "rgb(var(--primary-600))" : "rgb(var(--primary-200))" }}
+      >
         {criterion.required ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
       </button>
-      <button onClick={onDelete} className="mt-1 shrink-0 text-gray-300 hover:text-red-500 transition-colors"><Trash2 size={16} /></button>
+      <button onClick={onDelete} className="mt-1 shrink-0 transition-colors" style={{ color: "rgb(var(--primary-300))" }}
+        onMouseEnter={e => e.currentTarget.style.color = "#ef4444"}
+        onMouseLeave={e => e.currentTarget.style.color = "rgb(var(--primary-300))"}
+      >
+        <Trash2 size={16} />
+      </button>
     </div>
   );
 }
@@ -314,24 +520,35 @@ function SectionBlock({ section, onChange, onDelete, onMoveUp, onMoveDown }) {
   const updateCriterion = (idx, updated) => { const criteria = [...section.criteria]; criteria[idx] = updated; onChange({ ...section, criteria }); };
   const deleteCriterion = (idx) => onChange({ ...section, criteria: section.criteria.filter((_, i) => i !== idx) });
   const addCriterion    = () => onChange({ ...section, criteria: [...section.criteria, newCriterion()] });
+
   return (
-    <div className={`${card} p-5 space-y-4`}>
+    <div className={`${card} p-5 space-y-4`} style={cardBorder}>
       <div className="flex items-center gap-3">
-        <GripVertical size={18} className="text-gray-300 cursor-grab shrink-0" />
-        <input className={`${inputCls} font-semibold`} placeholder="Section title..." value={section.title} onChange={(e) => onChange({ ...section, title: e.target.value })} />
+        <GripVertical size={18} className="shrink-0 cursor-grab" style={{ color: "rgb(var(--primary-300))" }} />
+        <StyledInput
+          className="font-semibold"
+          placeholder="Section title..."
+          value={section.title}
+          onChange={e => onChange({ ...section, title: e.target.value })}
+        />
         <div className="flex items-center gap-1 shrink-0">
-          <button onClick={onMoveUp}   className={btnGhost}><ChevronUp   size={16} /></button>
-          <button onClick={onMoveDown} className={btnGhost}><ChevronDown size={16} /></button>
-          <button onClick={onDelete} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"><Trash2 size={15} /></button>
+          <GhostBtn onClick={onMoveUp}><ChevronUp size={16} /></GhostBtn>
+          <GhostBtn onClick={onMoveDown}><ChevronDown size={16} /></GhostBtn>
+          <button onClick={onDelete} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors" style={{ color: "rgb(var(--primary-400))" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "#dc2626"; e.currentTarget.style.backgroundColor = "#fef2f2"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "rgb(var(--primary-400))"; e.currentTarget.style.backgroundColor = "transparent"; }}
+          >
+            <Trash2 size={15} />
+          </button>
         </div>
       </div>
       <div className="space-y-2 pl-7">
         {section.criteria.map((c, idx) => (
-          <CriterionRow key={c.id} criterion={c} onChange={(updated) => updateCriterion(idx, updated)} onDelete={() => deleteCriterion(idx)} />
+          <CriterionRow key={c.id} criterion={c} onChange={updated => updateCriterion(idx, updated)} onDelete={() => deleteCriterion(idx)} />
         ))}
-        <button onClick={addCriterion} className={`${btnGhost} text-green-600 hover:text-green-700 mt-1`}>
+        <GhostBtn onClick={addCriterion} className="mt-1">
           <Plus size={15} /> Add Criterion
-        </button>
+        </GhostBtn>
       </div>
     </div>
   );
@@ -342,25 +559,25 @@ function SectionBlock({ section, onChange, onDelete, onMoveUp, onMoveDown }) {
 ══════════════════════════════════════════════════════════════════════════ */
 function RatingScaleCard({ settings, onChange }) {
   return (
-    <div className={`${card} p-5 space-y-4`}>
+    <div className={`${card} p-5 space-y-4`} style={cardBorder}>
       <div className="flex items-center gap-2 mb-1">
-        <BarChart2 size={16} className="text-green-600" />
-        <h3 className="text-sm font-semibold text-gray-800">Rating Scale Settings</h3>
+        <BarChart2 size={16} style={{ color: "rgb(var(--primary-600))" }} />
+        <h3 className="text-sm font-semibold" style={{ color: "rgb(var(--primary-800))" }}>Rating Scale Settings</h3>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Scale Type</label>
-          <select className={selectCls} value={settings.scale} onChange={(e) => onChange({ ...settings, scale: e.target.value })}>
-            {RATING_SCALES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+          <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "rgb(var(--primary-500))" }}>Scale Type</label>
+          <StyledSelect value={settings.scale} onChange={e => onChange({ ...settings, scale: e.target.value })}>
+            {RATING_SCALES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </StyledSelect>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Min Label</label>
-          <input className={inputCls} placeholder="e.g. Poor" value={settings.minLabel} onChange={(e) => onChange({ ...settings, minLabel: e.target.value })} />
+          <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "rgb(var(--primary-500))" }}>Min Label</label>
+          <StyledInput placeholder="e.g. Poor" value={settings.minLabel} onChange={e => onChange({ ...settings, minLabel: e.target.value })} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">Max Label</label>
-          <input className={inputCls} placeholder="e.g. Excellent" value={settings.maxLabel} onChange={(e) => onChange({ ...settings, maxLabel: e.target.value })} />
+          <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "rgb(var(--primary-500))" }}>Max Label</label>
+          <StyledInput placeholder="e.g. Excellent" value={settings.maxLabel} onChange={e => onChange({ ...settings, maxLabel: e.target.value })} />
         </div>
       </div>
     </div>
@@ -399,60 +616,65 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
 
   return (
     <div className="space-y-6">
+      {/* Editor Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold text-gray-900">{template?.id ? "Edit Template" : "New Template"}</h2>
-          <p className="text-sm text-gray-500">Define sections, criteria, and rating settings.</p>
+          <h2 className="text-lg font-bold" style={{ color: "rgb(var(--primary-800))" }}>
+            {template?.id ? "Edit Template" : "New Template"}
+          </h2>
+          <p className="text-sm" style={{ color: "rgb(var(--primary-500))" }}>Define sections, criteria, and rating settings.</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={onCancel} className={btnOutline}><X size={15} /> Cancel</button>
+          <OutlineBtn onClick={onCancel}><X size={15} /> Cancel</OutlineBtn>
           {template?.id && template?.status === "draft" && (
-            <button onClick={handlePublishClick} className={btnPrimary}><Send size={14} /> Publish</button>
+            <PrimaryBtn onClick={handlePublishClick}><Send size={14} /> Publish</PrimaryBtn>
           )}
-          <button onClick={() => onSave(form)} className={btnPrimary}>Save Template</button>
+          <PrimaryBtn onClick={() => onSave(form)}>Save Template</PrimaryBtn>
         </div>
       </div>
 
-      <div className={`${card} p-5`}>
+      {/* Meta fields */}
+      <div className={`${card} p-5`} style={cardBorder}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="sm:col-span-2 lg:col-span-2">
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Template Name *</label>
-            <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "rgb(var(--primary-500))" }}>Template Name *</label>
+            <StyledInput value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Course *</label>
-            <select className={selectCls} value={form.courseId} onChange={(e) => setForm({ ...form, courseId: e.target.value })}>
+            <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "rgb(var(--primary-500))" }}>Course *</label>
+            <StyledSelect value={form.courseId} onChange={e => setForm({ ...form, courseId: e.target.value })}>
               <option value="">Select course...</option>
-              {courses.map((c) => <option key={c.course_id} value={c.course_id}>{c.course_code}</option>)}
-            </select>
+              {courses.map(c => <option key={c.course_id} value={c.course_id}>{c.course_code}</option>)}
+            </StyledSelect>
           </div>
           <div className="sm:col-span-2">
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Description</label>
-            <textarea rows={2} className={`${inputCls} resize-none`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+            <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "rgb(var(--primary-500))" }}>Description</label>
+            <StyledTextarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5">Academic Year</label>
-            <input className={inputCls} value={form.academicYear} onChange={(e) => setForm({ ...form, academicYear: e.target.value })} />
+            <label className="block text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "rgb(var(--primary-500))" }}>Academic Year</label>
+            <StyledInput value={form.academicYear} onChange={e => setForm({ ...form, academicYear: e.target.value })} />
           </div>
         </div>
       </div>
 
+      {/* Sections */}
       <div className="space-y-4">
         {form.sections.map((sec, idx) => (
-          <SectionBlock key={sec.id} section={sec} onChange={(u) => updateSection(idx, u)} onDelete={() => deleteSection(idx)} onMoveUp={() => moveSection(idx, -1)} onMoveDown={() => moveSection(idx, 1)} />
+          <SectionBlock key={sec.id} section={sec} onChange={u => updateSection(idx, u)} onDelete={() => deleteSection(idx)} onMoveUp={() => moveSection(idx, -1)} onMoveDown={() => moveSection(idx, 1)} />
         ))}
-        <button onClick={() => setForm({ ...form, sections: [...form.sections, newSection()] })} className={btnOutline}>
+        <OutlineBtn onClick={() => setForm({ ...form, sections: [...form.sections, newSection()] })}>
           <Plus size={15} /> Add Section
-        </button>
+        </OutlineBtn>
       </div>
 
-      <RatingScaleCard settings={form.ratingSettings} onChange={(rs) => setForm({ ...form, ratingSettings: rs })} />
+      <RatingScaleCard settings={form.ratingSettings} onChange={rs => setForm({ ...form, ratingSettings: rs })} />
     </div>
   );
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TEMPLATE CARD (Coordinator Version — no active toggle)
+   TEMPLATE CARD — unified with CoordinatorNarratives card style
 ══════════════════════════════════════════════════════════════════════════ */
 function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onViewResponses, responseCount }) {
   const sectionCount  = Array.isArray(template.sections) ? template.sections.length  : (template.sections  || 0);
@@ -464,80 +686,110 @@ function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onV
   const isPublished = template.status === "published";
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-5 flex flex-col gap-4 hover:shadow-md hover:border-green-300 transition-all duration-200">
+    <div
+      className={`${card} flex flex-col overflow-hidden group transition-all duration-200`}
+      style={cardBorder}
+      onMouseEnter={hoverCard.enter}
+      onMouseLeave={hoverCard.leave}
+    >
       {/* Header */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-gray-900 text-base leading-snug line-clamp-2" title={template.name}>
-            {template.name}
-          </h3>
-          <div className="flex items-center gap-1.5 mt-1">
-            <BookOpen size={13} className="text-green-600 shrink-0" />
-            <span className="text-xs text-gray-500 font-medium truncate">{template.courseCode || "-"}</span>
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold truncate leading-snug" style={{ color: "rgb(var(--primary-800))" }} title={template.name}>
+              {template.name}
+            </p>
+            {template.courseCode && (
+              <div className="flex items-center gap-1.5 mt-1">
+                <BookOpen size={12} style={{ color: "rgb(var(--primary-500))" }} className="shrink-0" />
+                <span className="text-xs truncate" style={{ color: "rgb(var(--primary-500))" }}>{template.courseCode}</span>
+              </div>
+            )}
           </div>
+          {/* Status badge — published uses primary; draft uses amber (semantic) */}
+          <span
+            className={`shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+              isPublished ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-amber-50 text-amber-600 border-amber-200"
+            }`}
+            style={isPublished ? {
+              backgroundColor: "rgb(var(--primary-50))",
+              color: "rgb(var(--primary-700))",
+              border: "1px solid rgb(var(--primary-200))",
+            } : {}}
+          >
+            {isPublished ? <CheckCircle2 size={11} /> : <FileText size={11} />}
+            {isPublished ? "Published" : "Draft"}
+          </span>
         </div>
-        <span className={`shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-          isPublished
-            ? "bg-green-100 text-green-700 border-green-200"
-            : "bg-amber-50 text-amber-600 border-amber-200"
-        }`}>
-          {isPublished ? <CheckCircle2 size={11} /> : <FileText size={11} />}
-          {isPublished ? "Published" : "Draft"}
-        </span>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div className="flex flex-col items-center justify-center bg-gray-50 rounded-lg py-2.5 px-2 border border-gray-100">
-          <Layers     size={14} className="text-green-500 mb-1" />
-          <span className="text-lg font-bold text-gray-800 leading-none">{sectionCount}</span>
-          <span className="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wide">Sections</span>
+      {/* Stats — approved uses primary vars; pending/revision stay semantic */}
+      <div className="px-5 pb-4 grid grid-cols-3 gap-2">
+        <div className="flex flex-col items-center rounded-lg py-2" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
+          <Layers size={13} style={{ color: "rgb(var(--primary-500))" }} className="mb-1" />
+          <span className="text-lg font-bold leading-none" style={{ color: "rgb(var(--primary-800))" }}>{sectionCount}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: "rgb(var(--primary-500))" }}>Sections</span>
         </div>
-        <div className="flex flex-col items-center justify-center bg-gray-50 rounded-lg py-2.5 px-2 border border-gray-100">
-          <ListChecks size={14} className="text-green-500 mb-1" />
-          <span className="text-lg font-bold text-gray-800 leading-none">{criteriaCount}</span>
-          <span className="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wide">Criteria</span>
+        <div className="flex flex-col items-center rounded-lg py-2" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
+          <ListChecks size={13} style={{ color: "rgb(var(--primary-500))" }} className="mb-1" />
+          <span className="text-lg font-bold leading-none" style={{ color: "rgb(var(--primary-800))" }}>{criteriaCount}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: "rgb(var(--primary-500))" }}>Criteria</span>
         </div>
-        <div className="flex flex-col items-center justify-center bg-gray-50 rounded-lg py-2.5 px-2 border border-gray-100">
-          <ClipboardList size={14} className="text-green-500 mb-1" />
-          <span className="text-lg font-bold text-gray-800 leading-none">{responseCount ?? 0}</span>
-          <span className="text-[10px] text-gray-400 mt-0.5 uppercase tracking-wide">Responses</span>
+        <div className="flex flex-col items-center rounded-lg py-2" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
+          <ClipboardList size={13} style={{ color: "rgb(var(--primary-500))" }} className="mb-1" />
+          <span className="text-lg font-bold leading-none" style={{ color: "rgb(var(--primary-800))" }}>{responseCount ?? 0}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide mt-0.5" style={{ color: "rgb(var(--primary-500))" }}>Responses</span>
         </div>
       </div>
 
       {/* Created date */}
-      <div className="flex items-center gap-1.5 text-xs text-gray-400">
-        <Calendar size={11} />
-        <span>Created {createdDate}</span>
+      <div className="px-5 pb-3">
+        <p className="text-xs" style={{ color: "rgb(var(--primary-500))" }}>
+          <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>
+            <Calendar size={11} className="inline mr-1" />
+            {createdDate}
+          </span>
+        </p>
       </div>
 
-      {/* Actions */}
-      <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-gray-100">
-        <button onClick={(e) => { e.stopPropagation(); onEdit(template.id); }} className={`${btnGhost} flex-1 justify-center`} title="Edit">
-          <Edit2 size={14} /><span className="text-xs whitespace-nowrap">Edit</span>
-        </button>
-        <button onClick={(e) => { e.stopPropagation(); onPreview(template.id); }} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-blue-500 hover:text-blue-700 hover:bg-blue-50 transition-colors flex-1 justify-center text-sm" title="Preview">
-          <Eye size={14} /><span className="text-xs whitespace-nowrap">Preview</span>
-        </button>
-        <button onClick={(e) => { e.stopPropagation(); onDuplicate(template); }} className={`${btnGhost} flex-1 justify-center`} title="Duplicate">
-          <Copy size={14} /><span className="text-xs whitespace-nowrap">Duplicate</span>
-        </button>
+      {/* Action row */}
+      <div className="px-5 pb-3 flex items-center gap-1" style={{ borderTop: "1px solid rgb(var(--primary-50))", paddingTop: "12px" }}>
+        <GhostBtn onClick={e => { e.stopPropagation(); onEdit(template.id); }} className="flex-1 justify-center">
+          <Edit2 size={13} /><span className="text-xs">Edit</span>
+        </GhostBtn>
+        <GhostBtn onClick={e => { e.stopPropagation(); onPreview(template.id); }} className="flex-1 justify-center">
+          <Eye size={13} /><span className="text-xs">Preview</span>
+        </GhostBtn>
+        <GhostBtn onClick={e => { e.stopPropagation(); onDuplicate(template); }} className="flex-1 justify-center">
+          <Copy size={13} /><span className="text-xs">Duplicate</span>
+        </GhostBtn>
         {template.status === "draft" && (
-          <button onClick={(e) => { e.stopPropagation(); onPublish(template); }} className={`${btnPrimary} flex-1 justify-center`} title="Publish">
-            <Send size={14} /><span className="text-xs whitespace-nowrap">Publish</span>
+          <button
+            onClick={e => { e.stopPropagation(); onPublish(template); }}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-all duration-150 flex-1 justify-center"
+            style={{ backgroundColor: "rgb(var(--primary-600))" }}
+            onMouseEnter={hoverPrimary.enter}
+            onMouseLeave={hoverPrimary.leave}
+          >
+            <Send size={12} /><span>Publish</span>
           </button>
         )}
       </div>
 
-      {/* View Responses button */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onViewResponses(template); }}
-        className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg border border-green-200 bg-green-50 hover:bg-green-100 text-green-700 text-sm font-medium transition-colors"
-      >
-        <ClipboardList size={14} />
-        View Responses
-        <ChevronRight size={13} className="ml-auto" />
-      </button>
+      {/* View Responses CTA */}
+      <div className="mt-auto px-5 pb-5">
+        <button
+          onClick={e => { e.stopPropagation(); onViewResponses(template); }}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-lg active:scale-[0.98] transition-all duration-150 shadow-sm group-hover:shadow-md"
+          style={{ backgroundColor: "rgb(var(--primary-600))" }}
+          onMouseEnter={hoverPrimary.enter}
+          onMouseLeave={hoverPrimary.leave}
+        >
+          <ClipboardList className="w-4 h-4" />
+          View Responses
+          <ChevronRight className="w-4 h-4 ml-auto" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -550,9 +802,9 @@ function RatingAnswer({ value }) {
   return (
     <div className="flex items-center gap-1 mt-1">
       {Array.from({ length: max }, (_, i) => (
-        <Star key={i} size={16} className={i < value ? "text-yellow-400 fill-yellow-400" : "text-gray-200 fill-gray-200"} />
+        <Star key={i} size={16} className={i < value ? "fill-yellow-400 text-yellow-400" : "fill-gray-200 text-gray-200"} />
       ))}
-      <span className="ml-1.5 text-xs text-gray-500 font-medium">{value} / {max}</span>
+      <span className="ml-1.5 text-xs font-medium" style={{ color: "rgb(var(--primary-500))" }}>{value} / {max}</span>
     </div>
   );
 }
@@ -562,7 +814,7 @@ function YesNoAnswer({ value }) {
   return (
     <div className="mt-1">
       {isYes ? (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border bg-green-100 text-green-700 border-green-200">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: "rgb(var(--primary-50))", color: "rgb(var(--primary-700))", border: "1px solid rgb(var(--primary-200))" }}>
           <CheckCircle2 size={12} /> Yes
         </span>
       ) : (
@@ -576,8 +828,8 @@ function YesNoAnswer({ value }) {
 
 function TextAnswer({ value }) {
   return (
-    <div className="mt-1 px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700 leading-relaxed">
-      {value || <span className="italic text-gray-400">No response provided.</span>}
+    <div className="mt-1 px-3 py-2.5 rounded-lg text-sm leading-relaxed" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))", color: "rgb(var(--primary-700))" }}>
+      {value || <span className="italic" style={{ color: "rgb(var(--primary-400))" }}>No response provided.</span>}
     </div>
   );
 }
@@ -585,9 +837,10 @@ function TextAnswer({ value }) {
 function MultipleChoiceAnswer({ value }) {
   return (
     <div className="mt-1 flex items-center gap-2">
-      <ListChecks size={14} className="text-green-600 shrink-0" />
-      <span className="text-sm text-gray-800">
-        Selected: <span className="font-semibold text-green-700">{value || "—"}</span>
+      <ListChecks size={14} style={{ color: "rgb(var(--primary-600))" }} className="shrink-0" />
+      <span className="text-sm" style={{ color: "rgb(var(--primary-800))" }}>
+        Selected:{" "}
+        <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>{value || "—"}</span>
       </span>
     </div>
   );
@@ -600,12 +853,12 @@ function AnswerBlock({ answer }) {
       case "yesno":           return <YesNoAnswer          value={answer.yesno_value} />;
       case "text":            return <TextAnswer           value={answer.text_value} />;
       case "multiple_choice": return <MultipleChoiceAnswer value={answer.selected_option} />;
-      default:                return <span className="text-xs text-gray-400 italic">Unknown type</span>;
+      default:                return <span className="text-xs italic" style={{ color: "rgb(var(--primary-400))" }}>Unknown type</span>;
     }
   };
   return (
-    <div className="py-3 px-4 border-b border-gray-100 last:border-b-0">
-      <p className="text-sm font-semibold text-gray-800">{answer.criterion_title}</p>
+    <div className="py-3 px-4" style={{ borderBottom: "1px solid rgb(var(--primary-50))" }}>
+      <p className="text-sm font-semibold" style={{ color: "rgb(var(--primary-800))" }}>{answer.criterion_title}</p>
       {renderValue()}
     </div>
   );
@@ -649,30 +902,35 @@ function ResponseModal({ responseId, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" style={{ border: "1px solid rgb(var(--primary-100))" }}>
+        <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ borderBottom: "1px solid rgb(var(--primary-100))" }}>
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center">
-              <ClipboardList size={16} className="text-green-600" />
+            <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+              <ClipboardList size={16} style={{ color: "rgb(var(--primary-600))" }} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-gray-900">Evaluation Response</h2>
-              <p className="text-xs text-gray-500">Submitted supervisor feedback</p>
+              <h2 className="text-base font-bold" style={{ color: "rgb(var(--primary-800))" }}>Evaluation Response</h2>
+              <p className="text-xs" style={{ color: "rgb(var(--primary-500))" }}>Submitted supervisor feedback</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors"><X size={18} /></button>
+          <button onClick={onClose} className="transition-colors" style={{ color: "rgb(var(--primary-400))" }}
+            onMouseEnter={e => e.currentTarget.style.color = "rgb(var(--primary-700))"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgb(var(--primary-400))"}
+          >
+            <X size={18} />
+          </button>
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
           {loading ? (
             <div className="flex items-center justify-center py-16">
-              <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+              <div className="w-8 h-8 rounded-full animate-spin" style={{ border: "2px solid rgb(var(--primary-500))", borderTopColor: "transparent" }} />
             </div>
           ) : !data ? (
-            <p className="text-sm text-gray-500 text-center py-10">Failed to load response details.</p>
+            <p className="text-sm text-center py-10" style={{ color: "rgb(var(--primary-500))" }}>Failed to load response details.</p>
           ) : (
             <>
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+              <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
                     { Icon: User,      label: "Student",          value: data.response.student_name },
@@ -681,31 +939,31 @@ function ResponseModal({ responseId, onClose }) {
                     { Icon: Calendar,  label: "Submitted",        value: submittedDate },
                   ].map(({ Icon, label, value }) => (
                     <div key={label} className="flex items-start gap-2.5">
-                      <Icon size={14} className="mt-0.5 shrink-0 text-green-600" />
+                      <Icon size={14} className="mt-0.5 shrink-0" style={{ color: "rgb(var(--primary-600))" }} />
                       <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-                        <p className="text-sm font-semibold text-gray-800">{value}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "rgb(var(--primary-400))" }}>{label}</p>
+                        <p className="text-sm font-semibold" style={{ color: "rgb(var(--primary-800))" }}>{value}</p>
                       </div>
                     </div>
                   ))}
                 </div>
-                <div className="flex items-start gap-2.5 border-t border-gray-200 pt-3">
-                  <BookOpen size={14} className="mt-0.5 shrink-0 text-green-600" />
+                <div className="flex items-start gap-2.5 pt-3" style={{ borderTop: "1px solid rgb(var(--primary-200))" }}>
+                  <BookOpen size={14} className="mt-0.5 shrink-0" style={{ color: "rgb(var(--primary-600))" }} />
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Template</p>
-                    <p className="text-sm font-semibold text-gray-800">{data.response.template_name}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "rgb(var(--primary-400))" }}>Template</p>
+                    <p className="text-sm font-semibold" style={{ color: "rgb(var(--primary-800))" }}>{data.response.template_name}</p>
                   </div>
                 </div>
               </div>
 
               {Object.keys(sections).length === 0 ? (
-                <p className="text-sm text-gray-400 italic text-center py-6">No answers recorded.</p>
+                <p className="text-sm italic text-center py-6" style={{ color: "rgb(var(--primary-400))" }}>No answers recorded.</p>
               ) : (
                 Object.entries(sections).map(([sectionTitle, answers]) => (
-                  <div key={sectionTitle} className="border border-gray-200 rounded-xl overflow-hidden">
-                    <div className="bg-gray-50 border-b border-gray-200 px-4 py-2.5 flex items-center gap-2">
-                      <div className="h-2 w-2 rounded-full shrink-0 bg-green-500" />
-                      <h4 className="text-xs font-bold uppercase tracking-widest text-green-700">{sectionTitle}</h4>
+                  <div key={sectionTitle} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgb(var(--primary-100))" }}>
+                    <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: "rgb(var(--primary-50))", borderBottom: "1px solid rgb(var(--primary-100))" }}>
+                      <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: "rgb(var(--primary-500))" }} />
+                      <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgb(var(--primary-700))" }}>{sectionTitle}</h4>
                     </div>
                     <div>{answers.map((ans, i) => <AnswerBlock key={i} answer={ans} />)}</div>
                   </div>
@@ -715,8 +973,27 @@ function ResponseModal({ responseId, onClose }) {
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100 flex justify-end shrink-0">
-          <button onClick={onClose} className={btnOutline}><X size={14} /> Close</button>
+        <div className="px-6 py-4 flex justify-end shrink-0" style={{ borderTop: "1px solid rgb(var(--primary-100))" }}>
+          <OutlineBtn onClick={onClose}><X size={14} /> Close</OutlineBtn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SUMMARY CARD — mirrors CoordinatorNarratives SummaryCard
+══════════════════════════════════════════════════════════════════════════ */
+function SummaryCard({ title, value, icon: Icon, accent, loading }) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition-shadow duration-200" style={{ border: "1px solid rgb(var(--primary-50))" }}>
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "rgb(var(--primary-500))" }}>{title}</p>
+          <p className={`text-3xl font-bold ${accent}`}>{loading ? "—" : value}</p>
+        </div>
+        <div className="p-3 rounded-lg" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+          <Icon className="w-5 h-5" style={{ color: "rgb(var(--primary-600))" }} />
         </div>
       </div>
     </div>
@@ -736,14 +1013,11 @@ function FormsTab({ onViewResponses }) {
   const [loading,      setLoading]      = useState(false);
   const [responseCounts, setResponseCounts] = useState({});
 
-  // Publish state
   const [confirmTarget,    setConfirmTarget]    = useState(null);
   const [confirmOpen,      setConfirmOpen]      = useState(false);
   const [publishLoading,   setPublishLoading]   = useState(false);
   const [publishLink,      setPublishLink]      = useState(null);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
-
-  // Preview state
   const [previewTemplate,  setPreviewTemplate]  = useState(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
@@ -756,14 +1030,10 @@ function FormsTab({ onViewResponses }) {
       ]);
       setTemplates(tplRes.data);
       setCourses(courseRes.data);
-
-      // Fetch response counts per template
       try {
         const countsRes = await api.get("/evaluations/responses/counts");
         const countsMap = {};
-        (countsRes.data || []).forEach((item) => {
-          countsMap[item.template_id] = item.count;
-        });
+        (countsRes.data || []).forEach(item => { countsMap[item.template_id] = item.count; });
         setResponseCounts(countsMap);
       } catch (_) {}
     } catch (err) {
@@ -786,19 +1056,16 @@ function FormsTab({ onViewResponses }) {
 
   const handleSave = async (form) => {
     try {
-      const cleanedSections = (form.sections || []).map((section) => ({
+      const cleanedSections = (form.sections || []).map(section => ({
         title: section.title,
-        criteria: (section.criteria || []).map((criterion) => ({
+        criteria: (section.criteria || []).map(criterion => ({
           title:    criterion.title,
           type:     criterion.type,
           required: criterion.required,
-          options:  (criterion.options || []).map((opt) => resolveOptionText(opt, "")).filter((opt) => opt.trim() !== ""),
+          options:  (criterion.options || []).map(opt => resolveOptionText(opt, "")).filter(opt => opt.trim() !== ""),
         })),
       }));
-      const payload = {
-        name: form.name, description: form.description, courseId: form.courseId,
-        academicYear: form.academicYear, ratingSettings: form.ratingSettings, sections: cleanedSections,
-      };
+      const payload = { name: form.name, description: form.description, courseId: form.courseId, academicYear: form.academicYear, ratingSettings: form.ratingSettings, sections: cleanedSections };
       if (editTarget?.id) {
         await api.put(`/evaluation-templates/${editTarget.id}`, payload);
       } else {
@@ -818,7 +1085,7 @@ function FormsTab({ onViewResponses }) {
     } catch (err) { console.error("Error duplicating:", err); }
   };
 
-  const handlePublish = (template) => { setConfirmTarget(template); setConfirmOpen(true); };
+  const handlePublish        = (template) => { setConfirmTarget(template); setConfirmOpen(true); };
   const handlePublishConfirm = async () => {
     if (!confirmTarget) return;
     try {
@@ -852,11 +1119,17 @@ function FormsTab({ onViewResponses }) {
     } catch (err) { console.error("Error loading preview:", err); }
   };
 
-  const filtered = templates.filter((t) => {
+  const filtered = templates.filter(t => {
     const matchSearch = (t.name || "").toLowerCase().includes(search.toLowerCase()) || (t.courseCode || "").toLowerCase().includes(search.toLowerCase());
     const matchStatus = filterStatus === "All" || (filterStatus === "Published" ? t.status === "published" : t.status === "draft");
     return matchSearch && matchStatus;
   });
+
+  const stats = {
+    total:     templates.length,
+    published: templates.filter(t => t.status === "published").length,
+    draft:     templates.filter(t => t.status === "draft").length,
+  };
 
   if (editorView) {
     return (
@@ -868,52 +1141,89 @@ function FormsTab({ onViewResponses }) {
   }
 
   return (
-    <div className="space-y-5">
-      {/* Toolbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 flex-1">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className={`${inputCls} pl-9`} placeholder="Search templates or courses..." value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          <div className="flex items-center gap-1.5">
-            {["All", "Published", "Draft"].map((s) => (
-              <button key={s} onClick={() => setFilterStatus(s)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${filterStatus === s ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-200 hover:border-green-300"}`}
-              >{s}</button>
-            ))}
+    <div className="space-y-6">
+      {/* Summary cards — mirrors CoordinatorNarratives layout */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition-shadow duration-200" style={{ border: "1px solid rgb(var(--primary-50))" }}>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "rgb(var(--primary-500))" }}>Total Templates</p>
+              <p className="text-3xl font-bold" style={{ color: "rgb(var(--primary-800))" }}>{loading ? "—" : stats.total}</p>
+            </div>
+            <div className="p-3 rounded-lg" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+              <FileText className="w-5 h-5" style={{ color: "rgb(var(--primary-600))" }} />
+            </div>
           </div>
         </div>
-        <button className={btnPrimary} onClick={openNew}><Plus size={15} /> New Template</button>
+        <SummaryCard title="Published" value={stats.published} icon={CheckCircle2} accent="text-amber-600" loading={loading} />
+        <SummaryCard title="Drafts" value={stats.draft} icon={FileText} accent="text-red-500" loading={loading} />
       </div>
 
-      {/* Summary */}
-      {!loading && templates.length > 0 && (
-        <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span>{templates.length} total</span>
-          <span className="w-px h-4 bg-gray-200" />
-          <span className="text-green-600 font-medium">{templates.filter((t) => t.status === "published").length} published</span>
-          <span className="w-px h-4 bg-gray-200" />
-          <span className="text-amber-600">{templates.filter((t) => t.status === "draft").length} drafts</span>
+      {/* Toolbar */}
+      <div className="bg-white rounded-2xl shadow-sm px-6 py-4" style={{ border: "1px solid rgb(var(--primary-50))" }}>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+          <h2 className="text-lg font-bold" style={{ color: "rgb(var(--primary-800))" }}>Evaluation Templates</h2>
+          <div className="flex items-center gap-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: "rgb(var(--primary-400))" }} />
+              <input
+                type="text"
+                placeholder="Search templates or courses…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-2 text-sm rounded-lg w-64 transition outline-none"
+                style={{ border: "1px solid rgb(var(--primary-200))", backgroundColor: "rgba(var(--primary-50), 0.4)", color: "rgb(var(--primary-800))" }}
+                onFocus={e => { e.target.style.boxShadow = "0 0 0 2px rgb(var(--primary-300))"; e.target.style.borderColor = "rgb(var(--primary-300))"; }}
+                onBlur={e => { e.target.style.boxShadow = "none"; e.target.style.borderColor = "rgb(var(--primary-200))"; }}
+              />
+            </div>
+            {/* Filter pills */}
+            <div className="flex items-center gap-1">
+              {["All", "Published", "Draft"].map(s => (
+                <button
+                  key={s}
+                  onClick={() => setFilterStatus(s)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
+                  style={filterStatus === s
+                    ? { backgroundColor: "rgb(var(--primary-600))", color: "white", border: "1px solid rgb(var(--primary-600))" }
+                    : { backgroundColor: "white", color: "rgb(var(--primary-600))", border: "1px solid rgb(var(--primary-200))" }
+                  }
+                  onMouseEnter={e => { if (filterStatus !== s) e.currentTarget.style.borderColor = "rgb(var(--primary-400))"; }}
+                  onMouseLeave={e => { if (filterStatus !== s) e.currentTarget.style.borderColor = "rgb(var(--primary-200))"; }}
+                >{s}</button>
+              ))}
+            </div>
+            <PrimaryBtn onClick={openNew}><Plus size={15} /> New Template</PrimaryBtn>
+          </div>
         </div>
-      )}
+        {search.trim() && !loading && (
+          <p className="text-xs mt-2" style={{ color: "rgb(var(--primary-500))" }}>
+            Showing{" "}
+            <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>{filtered.length}</span>
+            {" "}of {templates.length} templates
+          </p>
+        )}
+      </div>
 
       {/* Grid */}
-      {loading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-            <Layers size={24} className="text-gray-400" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {loading ? (
+          Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
+        ) : filtered.length === 0 ? (
+          <div className="col-span-full py-20 flex flex-col items-center gap-3 text-center">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+              <FileText className="w-8 h-8" style={{ color: "rgb(var(--primary-300))" }} />
+            </div>
+            <p className="text-base font-semibold" style={{ color: "rgb(var(--primary-800))" }}>
+              {search ? "No matching templates" : "No templates yet"}
+            </p>
+            <p className="text-sm max-w-xs" style={{ color: "rgb(var(--primary-500))" }}>
+              {search ? "Try adjusting your search or filter." : "Create your first evaluation template to get started."}
+            </p>
           </div>
-          <p className="text-gray-500 font-medium">No templates found</p>
-          <p className="text-gray-400 text-sm mt-1">Try adjusting your search or filters.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((t) => (
+        ) : (
+          filtered.map(t => (
             <TemplateCard
               key={t.id} template={t}
               onEdit={openEdit}
@@ -923,9 +1233,9 @@ function FormsTab({ onViewResponses }) {
               onViewResponses={onViewResponses}
               responseCount={responseCounts[t.id] ?? 0}
             />
-          ))}
-        </div>
-      )}
+          ))
+        )}
+      </div>
 
       <PublishConfirmDialog open={confirmOpen} template={confirmTarget} onCancel={handlePublishCancel} onConfirm={handlePublishConfirm} loading={publishLoading} />
       <PublishLinkModal open={publishModalOpen} link={publishLink} onClose={handlePublishModalClose} />
@@ -947,9 +1257,7 @@ function ResponsesTab({ filteredTemplateId, filteredTemplateName, onClearFilter 
   const fetchResponses = useCallback(async () => {
     try {
       setLoading(true);
-      const url = filteredTemplateId
-        ? `/evaluations/responses?templateId=${filteredTemplateId}`
-        : "/evaluations/responses";
+      const url = filteredTemplateId ? `/evaluations/responses?templateId=${filteredTemplateId}` : "/evaluations/responses";
       const res = await api.get(url);
       setResponses(res.data);
     } catch (err) {
@@ -961,96 +1269,126 @@ function ResponsesTab({ filteredTemplateId, filteredTemplateName, onClearFilter 
 
   useEffect(() => { fetchResponses(); }, [fetchResponses]);
 
-  const filtered = responses.filter((r) => {
+  const filtered = responses.filter(r => {
     const q = search.toLowerCase();
     return (r.student_name || "").toLowerCase().includes(q) || (r.supervisor_name || "").toLowerCase().includes(q);
   });
 
-  const formatDate = (dateStr) =>
+  const formatDate = dateStr =>
     dateStr ? new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
 
   return (
     <div className="space-y-5">
       {/* Filter banner */}
       {filteredTemplateId && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-sm">
-          <Filter size={14} className="text-green-600 shrink-0" />
-          <span className="text-green-800">
-            Showing responses for: <span className="font-semibold">{filteredTemplateName || "Selected Template"}</span>
+        <div className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-200))" }}>
+          <Filter size={14} style={{ color: "rgb(var(--primary-600))" }} className="shrink-0" />
+          <span style={{ color: "rgb(var(--primary-800))" }}>
+            Showing responses for:{" "}
+            <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>{filteredTemplateName || "Selected Template"}</span>
           </span>
-          <button onClick={onClearFilter} className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium bg-white border border-green-300 text-green-700 hover:bg-green-100 transition-colors">
+          <button
+            onClick={onClearFilter}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold bg-white transition-colors"
+            style={{ border: "1px solid rgb(var(--primary-200))", color: "rgb(var(--primary-600))" }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgb(var(--primary-50))"}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = "white"}
+          >
             <X size={12} /> Clear Filter
           </button>
         </div>
       )}
 
-      {/* Search + count */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className={`${inputCls} pl-9`} placeholder="Search by student or supervisor..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      {/* Toolbar */}
+      <div className="bg-white rounded-2xl shadow-sm px-6 py-4" style={{ border: "1px solid rgb(var(--primary-50))" }}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 className="text-lg font-bold" style={{ color: "rgb(var(--primary-800))" }}>Supervisor Responses</h2>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: "rgb(var(--primary-400))" }} />
+              <input
+                type="text"
+                placeholder="Search by student or supervisor…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-2 text-sm rounded-lg w-64 transition outline-none"
+                style={{ border: "1px solid rgb(var(--primary-200))", backgroundColor: "rgba(var(--primary-50), 0.4)", color: "rgb(var(--primary-800))" }}
+                onFocus={e => { e.target.style.boxShadow = "0 0 0 2px rgb(var(--primary-300))"; e.target.style.borderColor = "rgb(var(--primary-300))"; }}
+                onBlur={e => { e.target.style.boxShadow = "none"; e.target.style.borderColor = "rgb(var(--primary-200))"; }}
+              />
+            </div>
+            {!loading && (
+              <span className="text-sm shrink-0" style={{ color: "rgb(var(--primary-500))" }}>
+                <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>{responses.length}</span>{" "}
+                response{responses.length !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
         </div>
-        {!loading && (
-          <span className="text-sm text-gray-500 shrink-0">
-            <span className="font-semibold text-green-700">{responses.length}</span>{" "}
-            response{responses.length !== 1 ? "s" : ""}
-          </span>
-        )}
       </div>
 
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 rounded-full animate-spin" style={{ border: "2px solid rgb(var(--primary-500))", borderTopColor: "transparent" }} />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-            <ClipboardList size={24} className="text-gray-400" />
+        <div className="col-span-full py-20 flex flex-col items-center gap-3 text-center">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+            <ClipboardList className="w-8 h-8" style={{ color: "rgb(var(--primary-300))" }} />
           </div>
-          <p className="text-gray-500 font-medium">
+          <p className="text-base font-semibold" style={{ color: "rgb(var(--primary-800))" }}>
             {search ? "No results match your search." : "No supervisor evaluations submitted yet."}
           </p>
           {search && (
-            <button onClick={() => setSearch("")} className="mt-2 text-sm text-green-600 hover:text-green-800 hover:underline transition-colors">
+            <button onClick={() => setSearch("")} className="mt-1 text-sm underline transition-colors" style={{ color: "rgb(var(--primary-600))" }}>
               Clear search
             </button>
           )}
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden" style={{ border: "1px solid rgb(var(--primary-50))" }}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Student</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Supervisor</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Template</th>
-                  <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Submitted</th>
-                  <th className="text-right px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Actions</th>
+                <tr style={{ borderBottom: "1px solid rgb(var(--primary-100))", backgroundColor: "rgb(var(--primary-50))" }}>
+                  {["Student", "Supervisor", "Template", "Submitted", ""].map(h => (
+                    <th key={h} className={`text-left px-5 py-3 text-xs font-semibold uppercase tracking-wide ${h === "Template" ? "hidden md:table-cell" : h === "Submitted" ? "hidden sm:table-cell" : ""} ${h === "" ? "text-right" : ""}`}
+                      style={{ color: "rgb(var(--primary-500))" }}
+                    >{h}</th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-5 py-3.5"><span className="font-medium text-gray-900">{r.student_name}</span></td>
-                    <td className="px-5 py-3.5 text-gray-600">{r.supervisor_name}</td>
-                    <td className="px-5 py-3.5 text-gray-500 hidden md:table-cell">
-                      <span className="inline-flex items-center gap-1.5">
-                        <BookOpen size={12} className="text-green-500 shrink-0" />
+              <tbody>
+                {filtered.map(r => (
+                  <tr key={r.id} className="transition-colors"
+                    style={{ borderBottom: "1px solid rgb(var(--primary-50))" }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgb(var(--primary-50))"}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}
+                  >
+                    <td className="px-5 py-3.5">
+                      <span className="font-semibold" style={{ color: "rgb(var(--primary-800))" }}>{r.student_name}</span>
+                    </td>
+                    <td className="px-5 py-3.5" style={{ color: "rgb(var(--primary-600))" }}>{r.supervisor_name}</td>
+                    <td className="px-5 py-3.5 hidden md:table-cell">
+                      <span className="inline-flex items-center gap-1.5" style={{ color: "rgb(var(--primary-500))" }}>
+                        <BookOpen size={12} style={{ color: "rgb(var(--primary-500))" }} className="shrink-0" />
                         {r.template_name}
                       </span>
                     </td>
-                    <td className="px-5 py-3.5 text-gray-500 hidden sm:table-cell">
-                      <span className="inline-flex items-center gap-1.5">
-                        <Calendar size={12} className="text-gray-400 shrink-0" />
+                    <td className="px-5 py-3.5 hidden sm:table-cell">
+                      <span className="inline-flex items-center gap-1.5" style={{ color: "rgb(var(--primary-500))" }}>
+                        <Calendar size={12} style={{ color: "rgb(var(--primary-400))" }} className="shrink-0" />
                         {formatDate(r.submitted_at)}
                       </span>
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <button
                         onClick={() => { setSelectedId(r.id); setModalOpen(true); }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150 active:scale-[0.98]"
+                        style={{ backgroundColor: "rgb(var(--primary-50))", color: "rgb(var(--primary-700))", border: "1px solid rgb(var(--primary-200))" }}
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = "rgb(var(--primary-100))"; e.currentTarget.style.borderColor = "rgb(var(--primary-300))"; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = "rgb(var(--primary-50))"; e.currentTarget.style.borderColor = "rgb(var(--primary-200))"; }}
                       >
                         <Eye size={13} /> View
                       </button>
@@ -1090,54 +1428,68 @@ export default function CoordinatorEvaluationPage() {
   };
 
   return (
-    <div className="space-y-6 p-6 max-w-7xl mx-auto">
-      {/* Page header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-green-600 flex items-center justify-center shadow-sm">
-            <ClipboardList size={20} className="text-white" />
-          </div>
+    <div
+      className="min-h-screen p-6"
+      style={{ background: "linear-gradient(to bottom right, rgb(var(--primary-50)), white)" }}
+    >
+      <div className="max-w-7xl mx-auto space-y-6">
+
+        {/* Page Header — mirrors CoordinatorNarratives header */}
+        <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Evaluations</h1>
-            <p className="text-sm text-gray-500 mt-0.5">Manage evaluation forms and review supervisor responses.</p>
+            <h1 className="text-3xl font-bold tracking-tight" style={{ color: "rgb(var(--primary-800))" }}>
+              Evaluations
+            </h1>
+            <p className="mt-1 text-sm" style={{ color: "rgb(var(--primary-500))" }}>
+              Manage evaluation forms and review supervisor responses.
+            </p>
+          </div>
+          <div
+            className="hidden lg:flex items-center gap-2 text-xs font-medium bg-white rounded-lg px-3 py-2 shadow-sm"
+            style={{ color: "rgb(var(--primary-400))", border: "1px solid rgb(var(--primary-100))" }}
+          >
+            <ClipboardList className="w-3.5 h-3.5" />
+            {activeTab === "forms" ? "Forms" : "Responses"}
           </div>
         </div>
-      </div>
 
-      {/* Tab navigation */}
-      <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-        {[
-          { key: "forms",     label: "Evaluation Forms", icon: FileText },
-          { key: "responses", label: "Responses",        icon: ClipboardList },
-        ].map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`relative inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-              activeTab === key
-                ? "bg-white text-green-700 shadow-sm border border-gray-200"
-                : "text-gray-500 hover:text-gray-700"
-            }`}
-          >
-            <Icon size={15} />
-            {label}
-            {key === "responses" && selectedTemplateId && (
-              <span className="w-2 h-2 rounded-full bg-green-500 absolute top-1.5 right-1.5" />
-            )}
-          </button>
-        ))}
-      </div>
+        {/* Tab navigation — same pill style as CoordinatorNarratives */}
+        <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+          {[
+            { key: "forms",     label: "Evaluation Forms", icon: FileText },
+            { key: "responses", label: "Responses",        icon: ClipboardList },
+          ].map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className="relative inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200"
+              style={activeTab === key
+                ? { backgroundColor: "white", color: "rgb(var(--primary-700))", boxShadow: "0 1px 3px 0 rgb(0 0 0 / 0.1)", border: "1px solid rgb(var(--primary-100))" }
+                : { color: "rgb(var(--primary-500))", border: "1px solid transparent" }
+              }
+              onMouseEnter={e => { if (activeTab !== key) e.currentTarget.style.color = "rgb(var(--primary-700))"; }}
+              onMouseLeave={e => { if (activeTab !== key) e.currentTarget.style.color = "rgb(var(--primary-500))"; }}
+            >
+              <Icon size={15} />
+              {label}
+              {key === "responses" && selectedTemplateId && (
+                <span className="w-2 h-2 rounded-full absolute top-1.5 right-1.5" style={{ backgroundColor: "rgb(var(--primary-600))" }} />
+              )}
+            </button>
+          ))}
+        </div>
 
-      {/* Tab content */}
-      {activeTab === "forms" ? (
-        <FormsTab onViewResponses={handleViewResponses} />
-      ) : (
-        <ResponsesTab
-          filteredTemplateId={selectedTemplateId}
-          filteredTemplateName={selectedTemplateName}
-          onClearFilter={handleClearFilter}
-        />
-      )}
+        {/* Tab content */}
+        {activeTab === "forms" ? (
+          <FormsTab onViewResponses={handleViewResponses} />
+        ) : (
+          <ResponsesTab
+            filteredTemplateId={selectedTemplateId}
+            filteredTemplateName={selectedTemplateName}
+            onClearFilter={handleClearFilter}
+          />
+        )}
+      </div>
     </div>
   );
 }
