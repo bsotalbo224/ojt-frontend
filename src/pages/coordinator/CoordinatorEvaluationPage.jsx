@@ -37,7 +37,7 @@ const resolveOptionText = (opt, fallback = "") => {
 };
 
 /* ══════════════════════════════════════════════════════════════════════════
-   SHARED STYLE TOKENS — unified with CoordinatorNarratives design system
+   SHARED STYLE TOKENS
 ══════════════════════════════════════════════════════════════════════════ */
 const card       = "bg-white rounded-2xl shadow-sm";
 const cardBorder = { border: "1px solid rgb(var(--primary-50))" };
@@ -45,7 +45,6 @@ const cardBorder = { border: "1px solid rgb(var(--primary-50))" };
 const btnPrimary = {
   base: "inline-flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold transition-all duration-150 shadow-sm",
   style: { backgroundColor: "rgb(var(--primary-600))" },
-  hoverStyle: { backgroundColor: "rgb(var(--primary-700))" },
 };
 
 const btnOutline = {
@@ -58,7 +57,6 @@ const btnGhost = {
   style: { color: "rgb(var(--primary-500))" },
 };
 
-// Inline hover helpers — attach to onMouseEnter/onMouseLeave
 const hoverPrimary = {
   enter: (e) => (e.currentTarget.style.backgroundColor = "rgb(var(--primary-700))"),
   leave: (e) => (e.currentTarget.style.backgroundColor = "rgb(var(--primary-600))"),
@@ -275,7 +273,6 @@ function PublishLinkModal({ open, link, onClose }) {
           </button>
         </div>
 
-        {/* Link input — Google Forms-style */}
         <div className="space-y-2">
           <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: "rgb(var(--primary-500))" }}>
             Supervisor Evaluation Link
@@ -616,7 +613,6 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
 
   return (
     <div className="space-y-6">
-      {/* Editor Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold" style={{ color: "rgb(var(--primary-800))" }}>
@@ -633,7 +629,6 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
         </div>
       </div>
 
-      {/* Meta fields */}
       <div className={`${card} p-5`} style={cardBorder}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="sm:col-span-2">
@@ -658,7 +653,6 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
         </div>
       </div>
 
-      {/* Sections */}
       <div className="space-y-4">
         {form.sections.map((sec, idx) => (
           <SectionBlock key={sec.id} section={sec} onChange={u => updateSection(idx, u)} onDelete={() => deleteSection(idx)} onMoveUp={() => moveSection(idx, -1)} onMoveDown={() => moveSection(idx, 1)} />
@@ -674,13 +668,16 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TEMPLATE CARD — unified with CoordinatorNarratives card style
+   TEMPLATE CARD
 ══════════════════════════════════════════════════════════════════════════ */
 function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onViewResponses, responseCount }) {
   const sectionCount  = Array.isArray(template.sections) ? template.sections.length  : (template.sections  || 0);
   const criteriaCount = Array.isArray(template.criteria) ? template.criteria.length  : (template.criteria  || 0);
-  const createdDate   = template.createdAt
-    ? new Date(template.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+
+  // Prefer created_at from backend, fall back to createdAt
+  const rawDate = template.created_at || template.createdAt;
+  const createdDate = rawDate
+    ? new Date(rawDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
     : "-";
 
   const isPublished = template.status === "published";
@@ -706,16 +703,18 @@ function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onV
               </div>
             )}
           </div>
-          {/* Status badge — published uses primary; draft uses amber (semantic) */}
+          {/* Status badge */}
           <span
-            className={`shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-              isPublished ? "bg-amber-50 text-amber-600 border-amber-200" : "bg-amber-50 text-amber-600 border-amber-200"
-            }`}
+            className="shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border"
             style={isPublished ? {
               backgroundColor: "rgb(var(--primary-50))",
               color: "rgb(var(--primary-700))",
               border: "1px solid rgb(var(--primary-200))",
-            } : {}}
+            } : {
+              backgroundColor: "#fffbeb",
+              color: "#d97706",
+              border: "1px solid #fde68a",
+            }}
           >
             {isPublished ? <CheckCircle2 size={11} /> : <FileText size={11} />}
             {isPublished ? "Published" : "Draft"}
@@ -723,7 +722,7 @@ function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onV
         </div>
       </div>
 
-      {/* Stats — approved uses primary vars; pending/revision stay semantic */}
+      {/* Stats */}
       <div className="px-5 pb-4 grid grid-cols-3 gap-2">
         <div className="flex flex-col items-center rounded-lg py-2" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
           <Layers size={13} style={{ color: "rgb(var(--primary-500))" }} className="mb-1" />
@@ -982,25 +981,6 @@ function ResponseModal({ responseId, onClose }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   SUMMARY CARD — mirrors CoordinatorNarratives SummaryCard
-══════════════════════════════════════════════════════════════════════════ */
-function SummaryCard({ title, value, icon: Icon, accent, loading }) {
-  return (
-    <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition-shadow duration-200" style={{ border: "1px solid rgb(var(--primary-50))" }}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "rgb(var(--primary-500))" }}>{title}</p>
-          <p className={`text-3xl font-bold ${accent}`}>{loading ? "—" : value}</p>
-        </div>
-        <div className="p-3 rounded-lg" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
-          <Icon className="w-5 h-5" style={{ color: "rgb(var(--primary-600))" }} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════════════════════════
    TAB 1: FORMS
 ══════════════════════════════════════════════════════════════════════════ */
 function FormsTab({ onViewResponses }) {
@@ -1119,17 +1099,22 @@ function FormsTab({ onViewResponses }) {
     } catch (err) { console.error("Error loading preview:", err); }
   };
 
-  const filtered = templates.filter(t => {
-    const matchSearch = (t.name || "").toLowerCase().includes(search.toLowerCase()) || (t.courseCode || "").toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === "All" || (filterStatus === "Published" ? t.status === "published" : t.status === "draft");
-    return matchSearch && matchStatus;
-  });
-
-  const stats = {
-    total:     templates.length,
-    published: templates.filter(t => t.status === "published").length,
-    draft:     templates.filter(t => t.status === "draft").length,
-  };
+  // ── FILTERING LOGIC ──────────────────────────────────────────────────────
+  // Step 1: Only show active templates (isActive === 1 or true)
+  // Step 2: Apply search filter across name and courseCode
+  // Step 3: Apply status dropdown filter
+  const filtered = templates
+    .filter(t => t.isActive === 1 || t.isActive === true)
+    .filter(t => {
+      const q = search.toLowerCase();
+      const matchSearch =
+        (t.name || "").toLowerCase().includes(q) ||
+        (t.courseCode || "").toLowerCase().includes(q);
+      const matchStatus =
+        filterStatus === "All" ||
+        (filterStatus === "Published" ? t.status === "published" : t.status === "draft");
+      return matchSearch && matchStatus;
+    });
 
   if (editorView) {
     return (
@@ -1142,28 +1127,11 @@ function FormsTab({ onViewResponses }) {
 
   return (
     <div className="space-y-6">
-      {/* Summary cards — mirrors CoordinatorNarratives layout */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl shadow-sm p-5 hover:shadow-md transition-shadow duration-200" style={{ border: "1px solid rgb(var(--primary-50))" }}>
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "rgb(var(--primary-500))" }}>Total Templates</p>
-              <p className="text-3xl font-bold" style={{ color: "rgb(var(--primary-800))" }}>{loading ? "—" : stats.total}</p>
-            </div>
-            <div className="p-3 rounded-lg" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
-              <FileText className="w-5 h-5" style={{ color: "rgb(var(--primary-600))" }} />
-            </div>
-          </div>
-        </div>
-        <SummaryCard title="Published" value={stats.published} icon={CheckCircle2} accent="text-amber-600" loading={loading} />
-        <SummaryCard title="Drafts" value={stats.draft} icon={FileText} accent="text-red-500" loading={loading} />
-      </div>
-
       {/* Toolbar */}
       <div className="bg-white rounded-2xl shadow-sm px-6 py-4" style={{ border: "1px solid rgb(var(--primary-50))" }}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
           <h2 className="text-lg font-bold" style={{ color: "rgb(var(--primary-800))" }}>Evaluation Templates</h2>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             {/* Search */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: "rgb(var(--primary-400))" }} />
@@ -1172,36 +1140,52 @@ function FormsTab({ onViewResponses }) {
                 placeholder="Search templates or courses…"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="pl-9 pr-4 py-2 text-sm rounded-lg w-64 transition outline-none"
+                className="pl-9 pr-4 py-2 text-sm rounded-lg w-56 transition outline-none"
                 style={{ border: "1px solid rgb(var(--primary-200))", backgroundColor: "rgba(var(--primary-50), 0.4)", color: "rgb(var(--primary-800))" }}
                 onFocus={e => { e.target.style.boxShadow = "0 0 0 2px rgb(var(--primary-300))"; e.target.style.borderColor = "rgb(var(--primary-300))"; }}
                 onBlur={e => { e.target.style.boxShadow = "none"; e.target.style.borderColor = "rgb(var(--primary-200))"; }}
               />
             </div>
-            {/* Filter pills */}
-            <div className="flex items-center gap-1">
-              {["All", "Published", "Draft"].map(s => (
-                <button
-                  key={s}
-                  onClick={() => setFilterStatus(s)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors"
-                  style={filterStatus === s
-                    ? { backgroundColor: "rgb(var(--primary-600))", color: "white", border: "1px solid rgb(var(--primary-600))" }
-                    : { backgroundColor: "white", color: "rgb(var(--primary-600))", border: "1px solid rgb(var(--primary-200))" }
-                  }
-                  onMouseEnter={e => { if (filterStatus !== s) e.currentTarget.style.borderColor = "rgb(var(--primary-400))"; }}
-                  onMouseLeave={e => { if (filterStatus !== s) e.currentTarget.style.borderColor = "rgb(var(--primary-200))"; }}
-                >{s}</button>
-              ))}
+
+            {/* Status dropdown filter */}
+            <div className="relative">
+              <Filter
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ color: "rgb(var(--primary-400))" }}
+              />
+              <select
+                value={filterStatus}
+                onChange={e => setFilterStatus(e.target.value)}
+                className="pl-8 pr-8 py-2 text-sm rounded-lg appearance-none outline-none transition cursor-pointer"
+                style={{
+                  border: "1px solid rgb(var(--primary-200))",
+                  backgroundColor: "rgba(var(--primary-50), 0.4)",
+                  color: "rgb(var(--primary-700))",
+                  fontWeight: 600,
+                }}
+                onFocus={e => { e.target.style.boxShadow = "0 0 0 2px rgb(var(--primary-300))"; e.target.style.borderColor = "rgb(var(--primary-300))"; }}
+                onBlur={e => { e.target.style.boxShadow = "none"; e.target.style.borderColor = "rgb(var(--primary-200))"; }}
+              >
+                <option value="All">All</option>
+                <option value="Published">Published</option>
+                <option value="Draft">Draft</option>
+              </select>
             </div>
+
             <PrimaryBtn onClick={openNew}><Plus size={15} /> New Template</PrimaryBtn>
           </div>
         </div>
-        {search.trim() && !loading && (
+
+        {/* Result count hint */}
+        {!loading && (search.trim() || filterStatus !== "All") && (
           <p className="text-xs mt-2" style={{ color: "rgb(var(--primary-500))" }}>
             Showing{" "}
             <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>{filtered.length}</span>
-            {" "}of {templates.length} templates
+            {" "}template{filtered.length !== 1 ? "s" : ""}
+            {filterStatus !== "All" && (
+              <span> · <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>{filterStatus}</span></span>
+            )}
           </p>
         )}
       </div>
@@ -1216,10 +1200,12 @@ function FormsTab({ onViewResponses }) {
               <FileText className="w-8 h-8" style={{ color: "rgb(var(--primary-300))" }} />
             </div>
             <p className="text-base font-semibold" style={{ color: "rgb(var(--primary-800))" }}>
-              {search ? "No matching templates" : "No templates yet"}
+              {search || filterStatus !== "All" ? "No matching templates" : "No templates yet"}
             </p>
             <p className="text-sm max-w-xs" style={{ color: "rgb(var(--primary-500))" }}>
-              {search ? "Try adjusting your search or filter." : "Create your first evaluation template to get started."}
+              {search || filterStatus !== "All"
+                ? "Try adjusting your search or filter."
+                : "Create your first evaluation template to get started."}
             </p>
           </div>
         ) : (
@@ -1434,7 +1420,7 @@ export default function CoordinatorEvaluationPage() {
     >
       <div className="max-w-7xl mx-auto space-y-6">
 
-        {/* Page Header — mirrors CoordinatorNarratives header */}
+        {/* Page Header */}
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight" style={{ color: "rgb(var(--primary-800))" }}>
@@ -1453,7 +1439,7 @@ export default function CoordinatorEvaluationPage() {
           </div>
         </div>
 
-        {/* Tab navigation — same pill style as CoordinatorNarratives */}
+        {/* Tab navigation */}
         <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
           {[
             { key: "forms",     label: "Evaluation Forms", icon: FileText },
