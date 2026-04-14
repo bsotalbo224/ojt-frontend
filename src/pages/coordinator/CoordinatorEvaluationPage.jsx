@@ -6,7 +6,7 @@ import {
   Building2, Send, Copy, Link2, Check, Layers, AlignLeft,
   ChevronUp, ChevronDown, GripVertical, ToggleLeft, ToggleRight,
   Plus, Trash2, Edit2, BarChart2, CheckSquare, AlignCenter,
-  FileText, Filter, ChevronRight,
+  FileText, Filter, ChevronRight, Settings,
 } from "lucide-react";
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -303,6 +303,133 @@ function PublishLinkModal({ open, link, onClose }) {
               <Copy size={14} /> {copied ? "Copied!" : "Copy Link"}
             </PrimaryBtn>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   TEMPLATE SETTINGS MODAL (NEW)
+══════════════════════════════════════════════════════════════════════════ */
+function TemplateSettingsModal({ open, template, onClose, onUpdate }) {
+  const [accepting, setAccepting] = useState(
+    template?.isAcceptingResponses === 1 || template?.isAcceptingResponses === true
+  );
+  const [toggling, setToggling] = useState(false);
+  const [copied,   setCopied]   = useState(false);
+
+  // Sync local state when template prop changes
+  useEffect(() => {
+    setAccepting(template?.isAcceptingResponses === 1 || template?.isAcceptingResponses === true);
+  }, [template]);
+
+  const handleToggle = async () => {
+    try {
+      setToggling(true);
+      await api.put(`/evaluation-templates/${template.id}/toggle-accepting`);
+      const next = !accepting;
+      setAccepting(next);
+      onUpdate?.({ ...template, isAcceptingResponses: next ? 1 : 0 });
+    } catch (err) {
+      console.error("Error toggling accepting responses:", err);
+    } finally {
+      setToggling(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!template?.link) return;
+    navigator.clipboard.writeText(template.link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (!open || !template) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5" style={{ border: "1px solid rgb(var(--primary-100))" }}>
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
+              <Settings size={18} style={{ color: "rgb(var(--primary-600))" }} />
+            </div>
+            <div>
+              <h2 className="text-base font-bold" style={{ color: "rgb(var(--primary-800))" }}>Template Settings</h2>
+              <p className="text-xs mt-0.5 truncate max-w-55" style={{ color: "rgb(var(--primary-500))" }}>{template.name}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="transition-colors mt-0.5" style={{ color: "rgb(var(--primary-400))" }}
+            onMouseEnter={e => e.currentTarget.style.color = "rgb(var(--primary-700))"}
+            onMouseLeave={e => e.currentTarget.style.color = "rgb(var(--primary-400))"}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Accepting Responses Toggle */}
+        <div className="rounded-xl p-4 flex items-center justify-between gap-4" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: "rgb(var(--primary-800))" }}>Accepting Responses</p>
+            <p className="text-xs mt-0.5" style={{ color: "rgb(var(--primary-500))" }}>
+              {accepting ? "Supervisors can currently submit evaluations." : "Submissions are currently paused."}
+            </p>
+          </div>
+          <button
+            onClick={handleToggle}
+            disabled={toggling}
+            className="shrink-0 transition-colors disabled:opacity-60"
+            style={{ color: accepting ? "rgb(var(--primary-600))" : "rgb(var(--primary-300))" }}
+          >
+            {toggling ? (
+              <span className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin inline-block" />
+            ) : accepting ? (
+              <ToggleRight size={32} />
+            ) : (
+              <ToggleLeft size={32} />
+            )}
+          </button>
+        </div>
+
+        {/* Link Display */}
+        {template.link && (
+          <div className="space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: "rgb(var(--primary-500))" }}>
+              Evaluation Link
+            </label>
+            <div className="flex items-center gap-2 rounded-xl px-3 py-2.5" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-200))" }}>
+              <Link2 size={14} style={{ color: "rgb(var(--primary-400))" }} className="shrink-0" />
+              <input
+                readOnly
+                value={template.link}
+                className="flex-1 bg-transparent text-xs outline-none cursor-text truncate"
+                style={{ color: "rgb(var(--primary-700))" }}
+                onFocus={e => e.target.select()}
+              />
+              <button
+                onClick={handleCopy}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all"
+                style={{
+                  backgroundColor: copied ? "rgb(var(--primary-100))" : "white",
+                  color: "rgb(var(--primary-700))",
+                  border: "1px solid rgb(var(--primary-200))",
+                }}
+                onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgb(var(--primary-100))"}
+                onMouseLeave={e => { if (!copied) e.currentTarget.style.backgroundColor = "white"; }}
+              >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex justify-end pt-1">
+          <OutlineBtn onClick={onClose}><X size={14} /> Close</OutlineBtn>
         </div>
       </div>
     </div>
@@ -668,19 +795,30 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
-   TEMPLATE CARD
+   TEMPLATE CARD  (REFACTORED)
 ══════════════════════════════════════════════════════════════════════════ */
-function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onViewResponses, responseCount }) {
+function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onViewResponses, onOpenSettings, responseCount }) {
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const sectionCount  = Array.isArray(template.sections) ? template.sections.length  : (template.sections  || 0);
   const criteriaCount = Array.isArray(template.criteria) ? template.criteria.length  : (template.criteria  || 0);
 
-  // Prefer created_at from backend, fall back to createdAt
+  // ── FIX 3: Use isActive instead of status for badge ──────────────────────
+  const isActive = template.isActive === 1 || template.isActive === true;
+
+  // ── FIX 4: Correct date display ──────────────────────────────────────────
   const rawDate = template.created_at || template.createdAt;
   const createdDate = rawDate
     ? new Date(rawDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : "-";
+    : "—";
 
-  const isPublished = template.status === "published";
+  const handleCopyLink = (e) => {
+    e.stopPropagation();
+    if (!template.link) return;
+    navigator.clipboard.writeText(template.link);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  };
 
   return (
     <div
@@ -689,9 +827,9 @@ function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onV
       onMouseEnter={hoverCard.enter}
       onMouseLeave={hoverCard.leave}
     >
-      {/* Header */}
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-3">
+      {/* ── Header ── */}
+      <div className="p-5 pb-3">
+        <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold truncate leading-snug" style={{ color: "rgb(var(--primary-800))" }} title={template.name}>
               {template.name}
@@ -703,10 +841,10 @@ function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onV
               </div>
             )}
           </div>
-          {/* Status badge */}
+          {/* ── FIX 3: isActive badge ── */}
           <span
             className="shrink-0 flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border"
-            style={isPublished ? {
+            style={isActive ? {
               backgroundColor: "rgb(var(--primary-50))",
               color: "rgb(var(--primary-700))",
               border: "1px solid rgb(var(--primary-200))",
@@ -716,14 +854,14 @@ function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onV
               border: "1px solid #fde68a",
             }}
           >
-            {isPublished ? <CheckCircle2 size={11} /> : <FileText size={11} />}
-            {isPublished ? "Published" : "Draft"}
+            {isActive ? <CheckCircle2 size={11} /> : <FileText size={11} />}
+            {isActive ? "Active" : "Inactive"}
           </span>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="px-5 pb-4 grid grid-cols-3 gap-2">
+      {/* ── Stats ── */}
+      <div className="px-5 pb-3 grid grid-cols-3 gap-2">
         <div className="flex flex-col items-center rounded-lg py-2" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
           <Layers size={13} style={{ color: "rgb(var(--primary-500))" }} className="mb-1" />
           <span className="text-lg font-bold leading-none" style={{ color: "rgb(var(--primary-800))" }}>{sectionCount}</span>
@@ -741,42 +879,99 @@ function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onV
         </div>
       </div>
 
-      {/* Created date */}
-      <div className="px-5 pb-3">
+      {/* ── Created date ── */}
+      <div className="px-5 pb-2">
         <p className="text-xs" style={{ color: "rgb(var(--primary-500))" }}>
-          <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>
-            <Calendar size={11} className="inline mr-1" />
-            {createdDate}
-          </span>
+          <Calendar size={11} className="inline mr-1" />
+          <span className="font-semibold" style={{ color: "rgb(var(--primary-700))" }}>{createdDate}</span>
         </p>
       </div>
 
-      {/* Action row */}
-      <div className="px-5 pb-3 flex items-center gap-1" style={{ borderTop: "1px solid rgb(var(--primary-50))", paddingTop: "12px" }}>
-        <GhostBtn onClick={e => { e.stopPropagation(); onEdit(template.id); }} className="flex-1 justify-center">
-          <Edit2 size={13} /><span className="text-xs">Edit</span>
-        </GhostBtn>
-        <GhostBtn onClick={e => { e.stopPropagation(); onPreview(template.id); }} className="flex-1 justify-center">
-          <Eye size={13} /><span className="text-xs">Preview</span>
-        </GhostBtn>
-        <GhostBtn onClick={e => { e.stopPropagation(); onDuplicate(template); }} className="flex-1 justify-center">
-          <Copy size={13} /><span className="text-xs">Duplicate</span>
-        </GhostBtn>
-        {template.status === "draft" && (
-          <button
-            onClick={e => { e.stopPropagation(); onPublish(template); }}
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-all duration-150 flex-1 justify-center"
-            style={{ backgroundColor: "rgb(var(--primary-600))" }}
-            onMouseEnter={hoverPrimary.enter}
-            onMouseLeave={hoverPrimary.leave}
+      {/* ── FIX 2: Link row ── */}
+      {template.link && (
+        <div className="px-5 pb-3">
+          <div
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs"
+            style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}
           >
-            <Send size={12} /><span>Publish</span>
-          </button>
-        )}
+            <Link2 size={11} style={{ color: "rgb(var(--primary-400))" }} className="shrink-0" />
+            <span
+              className="truncate flex-1 font-mono"
+              style={{ color: "rgb(var(--primary-600))" }}
+              title={template.link}
+            >
+              {template.link}
+            </span>
+            <button
+              onClick={handleCopyLink}
+              className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold transition-all"
+              style={{
+                backgroundColor: linkCopied ? "rgb(var(--primary-100))" : "white",
+                color: "rgb(var(--primary-700))",
+                border: "1px solid rgb(var(--primary-200))",
+              }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = "rgb(var(--primary-100))"}
+              onMouseLeave={e => { if (!linkCopied) e.currentTarget.style.backgroundColor = "white"; }}
+            >
+              {linkCopied ? <Check size={10} /> : <Copy size={10} />}
+              {linkCopied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── FIX 1: Action buttons — flex-wrap, min-w, no overflow ── */}
+      <div className="px-5 pb-3 mt-auto" style={{ borderTop: "1px solid rgb(var(--primary-50))", paddingTop: "12px" }}>
+        <div className="flex flex-wrap gap-2">
+          {/* Edit */}
+          <GhostBtn
+            onClick={e => { e.stopPropagation(); onEdit(template.id); }}
+            className="flex-1 min-w-18 justify-center"
+          >
+            <Edit2 size={13} /><span className="text-xs">Edit</span>
+          </GhostBtn>
+
+          {/* Preview */}
+          <GhostBtn
+            onClick={e => { e.stopPropagation(); onPreview(template.id); }}
+            className="flex-1 min-w-18 justify-center"
+          >
+            <Eye size={13} /><span className="text-xs">Preview</span>
+          </GhostBtn>
+
+          {/* Duplicate */}
+          <GhostBtn
+            onClick={e => { e.stopPropagation(); onDuplicate(template); }}
+            className="flex-1 min-w-18 justify-center"
+          >
+            <Copy size={13} /><span className="text-xs">Duplicate</span>
+          </GhostBtn>
+
+          {/* Publish — only for draft */}
+          {template.status === "draft" && (
+            <button
+              onClick={e => { e.stopPropagation(); onPublish(template); }}
+              className="inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-semibold transition-all duration-150 flex-1 min-w-18"
+              style={{ backgroundColor: "rgb(var(--primary-600))" }}
+              onMouseEnter={hoverPrimary.enter}
+              onMouseLeave={hoverPrimary.leave}
+            >
+              <Send size={12} /><span>Publish</span>
+            </button>
+          )}
+
+          {/* FIX 5: Settings button */}
+          <GhostBtn
+            onClick={e => { e.stopPropagation(); onOpenSettings(template); }}
+            className="flex-1 min-w-18 justify-center"
+          >
+            <Settings size={13} /><span className="text-xs">Settings</span>
+          </GhostBtn>
+        </div>
       </div>
 
-      {/* View Responses CTA */}
-      <div className="mt-auto px-5 pb-5">
+      {/* ── View Responses CTA ── */}
+      <div className="px-5 pb-5">
         <button
           onClick={e => { e.stopPropagation(); onViewResponses(template); }}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-lg active:scale-[0.98] transition-all duration-150 shadow-sm group-hover:shadow-md"
@@ -1001,6 +1196,10 @@ function FormsTab({ onViewResponses }) {
   const [previewTemplate,  setPreviewTemplate]  = useState(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
+  // FIX 6: Settings modal state
+  const [settingsTemplate,  setSettingsTemplate]  = useState(null);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -1099,10 +1298,25 @@ function FormsTab({ onViewResponses }) {
     } catch (err) { console.error("Error loading preview:", err); }
   };
 
-  // ── FILTERING LOGIC ──────────────────────────────────────────────────────
-  // Step 1: Only show active templates (isActive === 1 or true)
-  // Step 2: Apply search filter across name and courseCode
-  // Step 3: Apply status dropdown filter
+  // FIX 6: Settings handlers
+  const handleOpenSettings = (template) => {
+    setSettingsTemplate(template);
+    setSettingsModalOpen(true);
+  };
+  const handleSettingsClose = () => {
+    setSettingsModalOpen(false);
+    setSettingsTemplate(null);
+  };
+  const handleSettingsUpdate = (updatedTemplate) => {
+    // Optimistically update template in list without full refetch
+    setTemplates(prev => prev.map(t => t.id === updatedTemplate.id ? { ...t, ...updatedTemplate } : t));
+    setSettingsTemplate(updatedTemplate);
+  };
+
+  // ── FIX 7: Filtering logic ────────────────────────────────────────────────
+  // Step 1: only show active templates (isActive === 1 or true)
+  // Step 2: apply search filter
+  // Step 3: apply status dropdown
   const filtered = templates
     .filter(t => t.isActive === 1 || t.isActive === true)
     .filter(t => {
@@ -1217,6 +1431,7 @@ function FormsTab({ onViewResponses }) {
               onPublish={handlePublish}
               onPreview={handlePreview}
               onViewResponses={onViewResponses}
+              onOpenSettings={handleOpenSettings}
               responseCount={responseCounts[t.id] ?? 0}
             />
           ))
@@ -1226,6 +1441,14 @@ function FormsTab({ onViewResponses }) {
       <PublishConfirmDialog open={confirmOpen} template={confirmTarget} onCancel={handlePublishCancel} onConfirm={handlePublishConfirm} loading={publishLoading} />
       <PublishLinkModal open={publishModalOpen} link={publishLink} onClose={handlePublishModalClose} />
       <TemplatePreviewModal open={previewModalOpen} template={previewTemplate} onClose={() => { setPreviewModalOpen(false); setPreviewTemplate(null); }} />
+
+      {/* FIX 6: Settings modal */}
+      <TemplateSettingsModal
+        open={settingsModalOpen}
+        template={settingsTemplate}
+        onClose={handleSettingsClose}
+        onUpdate={handleSettingsUpdate}
+      />
     </div>
   );
 }
