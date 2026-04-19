@@ -353,7 +353,7 @@ const StudentPreviewModal = ({ student, onClose }) => {
           <div className="flex items-center gap-4">
             <Avatar
               name={`${student.f_name} ${student.l_name}`}
-              src={student.photo ? `${API_URL}${student.photo}` : ""}
+              src={student.photo || ""}
               size="lg"
             />
             <div>
