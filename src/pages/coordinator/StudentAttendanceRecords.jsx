@@ -11,7 +11,7 @@ import Avatar from '../../components/ui/Avatar';
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// "verified" uses CSS vars; "discrepancy" is semantic amber — kept as Tailwind
+// "verified" uses CSS vars; "flagged" is semantic amber — kept as Tailwind
 
 const LOCATION_CONFIG = {
   verified: {
@@ -28,8 +28,8 @@ const LOCATION_CONFIG = {
     checkColor : null,          // rendered inline
     rowHighlight: '',
   },
-  discrepancy: {
-    label      : 'Discrepancy',
+  flagged: {
+    label      : 'Flagged',
     pill       : 'bg-amber-50 text-amber-700 border border-amber-200',
     pillHover  : 'hover:bg-amber-100 hover:border-amber-300',
     usePrimary : false,
@@ -43,11 +43,11 @@ const LOCATION_CONFIG = {
   },
 };
 
-const STATUS_OPTIONS = ['verified', 'discrepancy'];
+const STATUS_OPTIONS = ['verified', 'flagged'];
 
 const FILTER_OPTIONS = [
   { value: 'all',             label: 'All Records'      },
-  { value: 'discrepancy',     label: 'With Discrepancy' },
+  { value: 'flagged',         label: 'Flagged'          },
   { value: 'complete',        label: 'Complete Records' },
   { value: 'missing_timeout', label: 'Missing Time-Out' },
 ];
@@ -314,7 +314,7 @@ const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) =
 
   const hours      = computeHours(record.time_in, record.time_out);
   const isUpdating = updatingId === record.attendance_id;
-  const isDiscrepancy = record.location_status === 'discrepancy';
+  const isFlagged  = record.location_status === 'flagged';
 
   useEffect(() => { setNote(record.coordinator_note ?? ''); }, [record.attendance_id]);
 
@@ -355,16 +355,16 @@ const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) =
 
         {/* Modal Header */}
         <div
-          className={`flex items-center justify-between px-6 py-4 shrink-0 ${isDiscrepancy ? 'bg-linear-to-r from-amber-50 to-white' : ''}`}
-          style={!isDiscrepancy ? {
+          className={`flex items-center justify-between px-6 py-4 shrink-0 ${isFlagged ? 'bg-linear-to-r from-amber-50 to-white' : ''}`}
+          style={!isFlagged ? {
             borderBottom: `1px solid rgb(var(--primary-100))`,
             background:   `linear-gradient(to right, rgb(var(--primary-50)), white)`,
           } : { borderBottom: '1px solid #fde68a' }}
         >
           <div className="flex items-center gap-3">
             <div
-              className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-sm ${isDiscrepancy ? 'bg-linear-to-br from-amber-400 to-amber-600' : ''}`}
-              style={!isDiscrepancy ? { background: `linear-gradient(to bottom right, rgb(var(--primary-400)), rgb(var(--primary-600)))` } : {}}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center shadow-sm ${isFlagged ? 'bg-linear-to-br from-amber-400 to-amber-600' : ''}`}
+              style={!isFlagged ? { background: `linear-gradient(to bottom right, rgb(var(--primary-400)), rgb(var(--primary-600)))` } : {}}
             >
               <Calendar className="w-4 h-4 text-white" />
             </div>
@@ -374,9 +374,9 @@ const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) =
               </h2>
               <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
                 Attendance Record · {formatDate(record.attendance_date)}
-                {isDiscrepancy && (
+                {isFlagged && (
                   <span className="ml-2 inline-flex items-center gap-1 text-amber-600 font-semibold">
-                    <AlertTriangle className="w-3 h-3" />Discrepancy flagged
+                    <AlertTriangle className="w-3 h-3" />Flagged
                   </span>
                 )}
               </p>
@@ -496,7 +496,7 @@ const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) =
                   updating={isUpdating}
                 />
               </div>
-              {record.location_status === 'discrepancy' && (
+              {record.location_status === 'flagged' && (
                 <div className="flex items-start gap-2 mt-1 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-700 leading-relaxed">
@@ -633,10 +633,10 @@ const StudentAttendance = () => {
   }, [allRecords]);
 
   const stats = useMemo(() => ({
-    total:       allRecords.length,
-    verified:    allRecords.filter((r) => r.location_status === 'verified').length,
-    discrepancy: allRecords.filter((r) => r.location_status === 'discrepancy').length,
-    missingOut:  allRecords.filter((r) => isMissingTimeOut(r.time_out)).length,
+    total:      allRecords.length,
+    verified:   allRecords.filter((r) => r.location_status === 'verified').length,
+    flagged:    allRecords.filter((r) => r.location_status === 'flagged').length,
+    missingOut: allRecords.filter((r) => isMissingTimeOut(r.time_out)).length,
   }), [allRecords]);
 
   const filtered = useMemo(() => {
@@ -646,7 +646,7 @@ const StudentAttendance = () => {
       const matchesDate   = !dateFilter || r.attendance_date?.startsWith(dateFilter);
       const matchesStatus =
         statusFilter === 'all'             ||
-        (statusFilter === 'discrepancy'     && r.location_status === 'discrepancy') ||
+        (statusFilter === 'flagged'         && r.location_status === 'flagged') ||
         (statusFilter === 'complete'        && r.time_in && !isMissingTimeOut(r.time_out)) ||
         (statusFilter === 'missing_timeout' && isMissingTimeOut(r.time_out));
       return matchesSearch && matchesDate && matchesStatus;
@@ -664,7 +664,7 @@ const StudentAttendance = () => {
       setSelected((prev) => prev?.attendance_id === id ? { ...prev, location_status: newStatus } : prev);
       await updateAttendanceLocationStatus(id, newStatus);
       const label = LOCATION_CONFIG[newStatus]?.label ?? newStatus;
-      showToast(`Status updated to ${label}`, newStatus === 'discrepancy' ? 'warning' : 'success');
+      showToast(`Status updated to ${label}`, newStatus === 'flagged' ? 'warning' : 'success');
     } catch (err) {
       console.error('Failed to update location status:', err);
       showToast('Failed to update status. Please try again.', 'warning');
@@ -715,15 +715,15 @@ const StudentAttendance = () => {
                     </p>
                   )}
                 </div>
-                {/* Mini stats — verified uses primary; discrepancy/missing are semantic */}
+                {/* Mini stats — verified uses primary; flagged/missing are semantic */}
                 <div className="flex items-center gap-3 shrink-0 flex-wrap">
                   <div className="flex flex-col items-center rounded-lg px-4 py-2" style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}>
                     <span className="text-lg font-bold" style={{ color: `rgb(var(--primary-600))` }}>{stats.verified}</span>
                     <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: `rgb(var(--primary-500))` }}>Verified</span>
                   </div>
                   <div className="flex flex-col items-center bg-amber-50 border border-amber-100 rounded-lg px-4 py-2">
-                    <span className="text-lg font-bold text-amber-600">{stats.discrepancy}</span>
-                    <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide">Discrepancy</span>
+                    <span className="text-lg font-bold text-amber-600">{stats.flagged}</span>
+                    <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide">Flagged</span>
                   </div>
                   <div className="flex flex-col items-center bg-orange-50 border border-orange-100 rounded-lg px-4 py-2">
                     <span className="text-lg font-bold text-orange-500">{stats.missingOut}</span>
@@ -932,15 +932,15 @@ const StudentAttendance = () => {
                     <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-500))` }} />Verified
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <AlertTriangle className="w-3 h-3 text-amber-500" />Discrepancy
+                    <AlertTriangle className="w-3 h-3 text-amber-500" />Flagged
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-orange-500" />Missing T-Out
                   </span>
-                  {stats.discrepancy > 0 && (
+                  {stats.flagged > 0 && (
                     <span className="flex items-center gap-1 text-amber-600 font-medium">
                       <span className="w-1 h-3 inline-block bg-amber-400 rounded" />
-                      Discrepancy rows have an amber left border
+                      Flagged rows have an amber left border
                     </span>
                   )}
                 </div>
