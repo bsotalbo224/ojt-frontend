@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Lock, KeyRound, ShieldCheck, User, Mail, Eye, EyeOff,
   CheckCircle2, AlertCircle, Loader2, Settings, BadgeCheck, Palette,
-  ImagePlus, UploadCloud, X, CheckCircle, Sparkles,
+  ImagePlus, UploadCloud, X, CheckCircle, Sparkles, Clock, Plus, Trash2,
 } from "lucide-react";
 import api from "../../api/axios";
 import { THEMES } from "../../components/themes/themes";
@@ -342,6 +342,17 @@ export default function SettingsPage() {
   const [logoError,     setLogoError]     = useState("");
   const [logoDept,      setLogoDept]      = useState("");
 
+  // ── Required Hours state ──────────────────────────────────────────────────
+  const [requiredHoursList,    setRequiredHoursList]    = useState([]);
+  const [loadingHours,         setLoadingHours]         = useState(false);
+  const [hoursSuccess,         setHoursSuccess]         = useState("");
+  const [hoursError,           setHoursError]           = useState("");
+  const [newHoursLabel,        setNewHoursLabel]        = useState("");
+  const [newHoursValue,        setNewHoursValue]        = useState("");
+  const [addingHours,          setAddingHours]          = useState(false);
+  const [deletingHoursId,      setDeletingHoursId]      = useState(null);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const refreshUser = useCallback(async () => {
     const res = await api.get("/auth/me");
     const raw = res.data?.user ?? res.data;
@@ -389,6 +400,27 @@ export default function SettingsPage() {
     })();
   }, [user?.role]);
 
+  // ── Fetch required hours when role is admin or coordinator ────────────────
+  const fetchRequiredHours = useCallback(async () => {
+    setLoadingHours(true);
+    setHoursError("");
+    try {
+      const res = await api.get("/required-hours");
+      setRequiredHoursList(res.data?.data ?? res.data ?? []);
+    } catch {
+      setHoursError("Failed to load required hours. Please try again.");
+    } finally {
+      setLoadingHours(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user?.role === "admin" || user?.role === "coordinator") {
+      fetchRequiredHours();
+    }
+  }, [user?.role, fetchRequiredHours]);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const role        = user?.role;
   const roleDisplay = ROLE_LABELS[user?.role?.toLowerCase()] || user?.role?.charAt(0).toUpperCase() + user?.role?.slice(1);
 
@@ -410,7 +442,8 @@ export default function SettingsPage() {
     }
   };
 
-  const isAdmin = role === "admin";
+  const isAdmin       = role === "admin";
+  const isCoordinator = role === "coordinator";
   const clearMessages = () => { setSuccessMsg(""); setErrorMsg(""); };
 
   const handleFirstLogin = async (e) => {
@@ -524,6 +557,48 @@ export default function SettingsPage() {
       setUploadingLogo(false);
     }
   };
+
+  // ── Required Hours handlers ───────────────────────────────────────────────
+  const handleAddHours = async (e) => {
+    e.preventDefault();
+    setHoursError("");
+    setHoursSuccess("");
+    const trimmedLabel = newHoursLabel.trim();
+    const parsedValue  = Number(newHoursValue);
+    if (!trimmedLabel)           { setHoursError("Please enter a label for this hours entry."); return; }
+    if (!newHoursValue || isNaN(parsedValue) || parsedValue <= 0) {
+      setHoursError("Please enter a valid number of hours greater than 0.");
+      return;
+    }
+    setAddingHours(true);
+    try {
+      await api.post("/required-hours", { label: trimmedLabel, hours: parsedValue });
+      setHoursSuccess("Required hours entry added successfully!");
+      setNewHoursLabel("");
+      setNewHoursValue("");
+      await fetchRequiredHours();
+    } catch (err) {
+      setHoursError(err?.response?.data?.message || "Failed to add required hours. Please try again.");
+    } finally {
+      setAddingHours(false);
+    }
+  };
+
+  const handleDeleteHours = async (id) => {
+    setHoursError("");
+    setHoursSuccess("");
+    setDeletingHoursId(id);
+    try {
+      await api.delete(`/required-hours/${id}`);
+      setHoursSuccess("Required hours entry deleted successfully!");
+      await fetchRequiredHours();
+    } catch (err) {
+      setHoursError(err?.response?.data?.message || "Failed to delete required hours. Please try again.");
+    } finally {
+      setDeletingHoursId(null);
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   if (loadingUser) {
     return (
@@ -926,6 +1001,210 @@ export default function SettingsPage() {
             </div>
           </>
         )}
+
+        {/* ── Required Hours Settings (admin + coordinator) ────────────────── */}
+        {(isAdmin || isCoordinator) && (
+          <div
+            className="bg-white rounded-2xl shadow p-6 space-y-5"
+            style={{ border: `1px solid rgb(var(--primary-100))` }}
+          >
+            <SectionHeader
+              icon={Clock}
+              title="Required Hours Settings"
+              subtitle="Manage the required OJT hours options available to students"
+            />
+
+            {/* Section-level feedback */}
+            {hoursSuccess && (
+              <div
+                className="flex items-center gap-2.5 text-sm rounded-xl px-4 py-3 shadow-sm"
+                style={{
+                  backgroundColor: `rgb(var(--primary-50))`,
+                  border:          `1px solid rgb(var(--primary-200))`,
+                  color:           `rgb(var(--primary-700))`,
+                }}
+              >
+                <CheckCircle size={17} className="shrink-0" />{hoursSuccess}
+              </div>
+            )}
+            {hoursError && (
+              <div className="flex items-center gap-2.5 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl px-4 py-3 shadow-sm">
+                <AlertCircle size={17} className="shrink-0" />{hoursError}
+              </div>
+            )}
+
+            {/* Existing entries list */}
+            <div className="space-y-2">
+              <label className="block text-sm font-semibold text-gray-600">Current Entries</label>
+
+              {loadingHours ? (
+                <div
+                  className="flex items-center gap-2 text-gray-400 text-sm py-3 px-4 rounded-xl"
+                  style={{
+                    border:          `1px solid rgb(var(--primary-200))`,
+                    backgroundColor: `rgb(var(--primary-50) / 0.4)`,
+                  }}
+                >
+                  <Loader2 size={15} className="animate-spin" />Loading required hours…
+                </div>
+              ) : requiredHoursList.length === 0 ? (
+                <div
+                  className="flex items-center gap-2 text-gray-400 text-sm py-3 px-4 rounded-xl"
+                  style={{
+                    border:          `1px dashed rgb(var(--primary-200))`,
+                    backgroundColor: `rgb(var(--primary-50) / 0.3)`,
+                  }}
+                >
+                  <Clock size={15} className="shrink-0" />
+                  No required hours entries yet. Add one below.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {requiredHoursList.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl"
+                      style={{
+                        backgroundColor: `rgb(var(--primary-50) / 0.6)`,
+                        border:          `1px solid rgb(var(--primary-100))`,
+                      }}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="p-1.5 bg-white rounded-lg shadow-sm shrink-0"
+                          style={{ border: `1px solid rgb(var(--primary-100))` }}
+                        >
+                          <Clock size={14} style={{ color: `rgb(var(--primary-600))` }} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">
+                            {entry.label}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {entry.hours} {entry.hours === 1 ? "hour" : "hours"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={deletingHoursId === entry.id}
+                        onClick={() => handleDeleteHours(entry.id)}
+                        className="shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{
+                          color:           "#ef4444",
+                          borderColor:     "#fecaca",
+                          backgroundColor: "#fff5f5",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (deletingHoursId !== entry.id) {
+                            e.currentTarget.style.backgroundColor = "#fee2e2";
+                            e.currentTarget.style.borderColor     = "#fca5a5";
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "#fff5f5";
+                          e.currentTarget.style.borderColor     = "#fecaca";
+                        }}
+                      >
+                        {deletingHoursId === entry.id
+                          ? <Loader2 size={13} className="animate-spin" />
+                          : <Trash2 size={13} />}
+                        {deletingHoursId === entry.id ? "Deleting…" : "Delete"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Add new entry form */}
+            <form onSubmit={handleAddHours} className="space-y-4">
+              <div
+                className="p-4 rounded-xl space-y-3"
+                style={{
+                  backgroundColor: `rgb(var(--primary-50) / 0.4)`,
+                  border:          `1px solid rgb(var(--primary-100))`,
+                }}
+              >
+                <p className="text-sm font-semibold text-gray-700">Add New Entry</p>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-gray-500">Label</label>
+                  <input
+                    type="text"
+                    value={newHoursLabel}
+                    onChange={(e) => setNewHoursLabel(e.target.value)}
+                    placeholder="e.g. 4-year course, 2-year course"
+                    className="w-full px-4 py-2.5 rounded-xl text-gray-800 placeholder-gray-400 outline-none transition text-sm"
+                    style={{
+                      border:          `1px solid rgb(var(--primary-200))`,
+                      backgroundColor: "white",
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.boxShadow   = `0 0 0 2px rgb(var(--primary-400))`;
+                      e.target.style.borderColor = "transparent";
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.boxShadow   = "none";
+                      e.target.style.borderColor = `rgb(var(--primary-200))`;
+                    }}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-gray-500">Required Hours</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={newHoursValue}
+                    onChange={(e) => setNewHoursValue(e.target.value)}
+                    placeholder="e.g. 486"
+                    className="w-full px-4 py-2.5 rounded-xl text-gray-800 placeholder-gray-400 outline-none transition text-sm"
+                    style={{
+                      border:          `1px solid rgb(var(--primary-200))`,
+                      backgroundColor: "white",
+                    }}
+                    onFocus={(e) => {
+                      e.target.style.boxShadow   = `0 0 0 2px rgb(var(--primary-400))`;
+                      e.target.style.borderColor = "transparent";
+                    }}
+                    onBlur={(e) => {
+                      e.target.style.boxShadow   = "none";
+                      e.target.style.borderColor = `rgb(var(--primary-200))`;
+                    }}
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={addingHours}
+                className="w-full flex items-center justify-center gap-2 text-white font-semibold py-2.5 rounded-xl transition text-sm shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: addingHours
+                    ? `rgb(var(--primary-300))`
+                    : `rgb(var(--primary-600))`,
+                }}
+                onMouseEnter={(e) => {
+                  if (!addingHours)
+                    e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = addingHours
+                    ? `rgb(var(--primary-300))`
+                    : `rgb(var(--primary-600))`;
+                }}
+              >
+                {addingHours
+                  ? <><Loader2 size={16} className="animate-spin" />Adding…</>
+                  : <><Plus size={16} />Add Required Hours</>}
+              </button>
+            </form>
+          </div>
+        )}
+        {/* ── End Required Hours Settings ───────────────────────────────────── */}
 
         <div
           className="bg-white rounded-2xl shadow p-6 space-y-5"
