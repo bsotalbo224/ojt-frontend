@@ -20,6 +20,11 @@ const api = {
     return res.data;
   },
 
+  getRequiredHours: async () => {
+    const res = await apiClient.get("/api/required-hours");
+    return res.data;
+  },
+
   createStudent: async (payload) => {
     const res = await apiClient.post("/student", payload);
     return res.data;
@@ -35,8 +40,6 @@ const api = {
     return res.data;
   },
 };
-
-const REQUIRED_HOURS_OPTIONS = [120, 240, 300, 360, 480, 600];
 
 const EMPTY_FORM = {
   f_name: '',
@@ -174,7 +177,7 @@ const ConfirmModal = ({ student, onConfirm, onCancel, loading }) => {
 
 // ─── Add / Edit Modal ─────────────────────────────────────────────────────────
 
-const StudentModal = ({ mode, student, courses, onClose, onSave }) => {
+const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, onSave }) => {
   const isEdit = mode === 'edit';
   const [form, setForm] = useState(
     isEdit
@@ -192,6 +195,16 @@ const StudentModal = ({ mode, student, courses, onClose, onSave }) => {
   const [apiError, setApiError] = useState('');
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  // Auto-fill ojt_hours_required when course changes, using course's required_hours as a default.
+  // The user can still override the value via the dropdown.
+  useEffect(() => {
+    if (!form.course_id) return;
+    const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
+    if (matched?.required_hours) {
+      setForm((f) => ({ ...f, ojt_hours_required: matched.required_hours }));
+    }
+  }, [form.course_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const validate = () => {
     const e = {};
@@ -262,10 +275,16 @@ const StudentModal = ({ mode, student, courses, onClose, onSave }) => {
             ))}
           </SelectField>
           <SelectField label="Required OJT Hours" id="ojt_hours_required" value={form.ojt_hours_required} onChange={set('ojt_hours_required')} error={errors.ojt_hours_required}>
-            <option value="">Select required hours…</option>
-            {REQUIRED_HOURS_OPTIONS.map((h) => (
-              <option key={h} value={h}>{h} hours</option>
-            ))}
+            {requiredHoursOptions.length === 0 ? (
+              <option value="" disabled>No options available</option>
+            ) : (
+              <>
+                <option value="">Select required hours…</option>
+                {requiredHoursOptions.map((h) => (
+                  <option key={h} value={h}>{h} hours</option>
+                ))}
+              </>
+            )}
           </SelectField>
           <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-100 rounded-lg">
             <AlertCircle className="w-4 h-4 text-green-500 shrink-0 mt-0.5" />
@@ -422,6 +441,9 @@ const AdminStudents = ({ isAdmin = true }) => {
   const [statusLoading, setStatusLoading] = useState(false);
   const [courses, setCourses] = useState([]);
 
+  // ── Required hours state ──
+  const [requiredHoursOptions, setRequiredHoursOptions] = useState([]);
+
   // ── ✅ Success notification state ──
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -448,7 +470,17 @@ const AdminStudents = ({ isAdmin = true }) => {
     }
   };
 
-  useEffect(() => { fetchStudents(); fetchCourses(); }, []);
+  const fetchRequiredHours = async () => {
+    try {
+      const data = await api.getRequiredHours();
+      setRequiredHoursOptions(Array.isArray(data) ? data : []);
+    } catch {
+      console.error('Failed to load required hours options');
+      setRequiredHoursOptions([]);
+    }
+  };
+
+  useEffect(() => { fetchStudents(); fetchCourses(); fetchRequiredHours(); }, []);
 
   // ── ✅ Auto-dismiss success message after 3 s ──
   useEffect(() => {
@@ -770,6 +802,7 @@ const AdminStudents = ({ isAdmin = true }) => {
         <StudentModal
           mode="add"
           courses={courses}
+          requiredHoursOptions={requiredHoursOptions}
           onClose={() => setModal(null)}
           onSave={handleAdd}
         />
@@ -779,6 +812,7 @@ const AdminStudents = ({ isAdmin = true }) => {
           mode="edit"
           student={modal.student}
           courses={courses}
+          requiredHoursOptions={requiredHoursOptions}
           onClose={() => setModal(null)}
           onSave={handleEdit}
         />

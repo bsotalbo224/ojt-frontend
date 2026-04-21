@@ -9,6 +9,7 @@ import {
   Loader2,
   AlertCircle,
   Building2,
+  Clock,
 } from 'lucide-react';
 import apiClient from '../../api/axios';
 
@@ -25,6 +26,7 @@ const CourseModal = ({ isOpen, onClose, course, onSave, departments }) => {
   const [formData, setFormData] = useState({
     course_name: '',
     department_id: '',
+    required_hours: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -34,11 +36,13 @@ const CourseModal = ({ isOpen, onClose, course, onSave, departments }) => {
       setFormData({
         course_name: course.course_name || '',
         department_id: course.department_id || '',
+        required_hours: course.required_hours !== undefined && course.required_hours !== null ? course.required_hours : '',
       });
     } else {
       setFormData({
         course_name: '',
         department_id: '',
+        required_hours: '',
       });
     }
     setError('');
@@ -56,12 +60,22 @@ const CourseModal = ({ isOpen, onClose, course, onSave, departments }) => {
       setError('Please select a department');
       return;
     }
+    if (formData.required_hours === '' || formData.required_hours === null) {
+      setError('Required hours is required');
+      return;
+    }
+    const parsedHours = Number(formData.required_hours);
+    if (!Number.isInteger(parsedHours) || parsedHours <= 0) {
+      setError('Required hours must be a positive whole number');
+      return;
+    }
 
     setLoading(true);
     try {
       const payload = {
         course_name: formData.course_name.trim(),
         department_id: Number(formData.department_id),
+        required_hours: parsedHours,
       };
 
       if (course) {
@@ -162,6 +176,27 @@ const CourseModal = ({ isOpen, onClose, course, onSave, departments }) => {
                 No departments available. Please add departments first.
               </p>
             )}
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-green-700 uppercase tracking-wide">
+              Required Hours
+            </label>
+            <div className="relative">
+              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-green-400 pointer-events-none" />
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={formData.required_hours}
+                onChange={(e) => setFormData({ ...formData, required_hours: e.target.value })}
+                onKeyDown={(e) => {
+                  if (['.', 'e', 'E', '+', '-'].includes(e.key)) e.preventDefault();
+                }}
+                className="w-full pl-9 pr-3.5 py-2.5 rounded-lg border border-green-200 text-sm text-green-900 placeholder-green-300 bg-white transition-all duration-150 outline-none focus:border-green-400 focus:ring-2 focus:ring-green-100"
+                placeholder="e.g., 300"
+              />
+            </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-green-50 bg-green-50/30 -mx-6 px-6 py-4 -mb-5 rounded-b-2xl">
