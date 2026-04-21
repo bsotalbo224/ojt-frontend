@@ -197,14 +197,22 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   // Auto-fill ojt_hours_required when course changes, using course's required_hours as a default.
-  // The user can still override the value via the dropdown.
+  // Only fills if the field is currently empty so user overrides are preserved.
+  // Depends on both form.course_id and courses so it runs once courses are loaded.
   useEffect(() => {
-    if (!form.course_id) return;
+    if (!form.course_id || courses.length === 0) return;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
-    if (matched?.required_hours) {
+    if (matched?.required_hours && !form.ojt_hours_required) {
       setForm((f) => ({ ...f, ojt_hours_required: matched.required_hours }));
     }
-  }, [form.course_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form.course_id, courses]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Derive the default hours for the currently selected course (used for the dynamic option label).
+  const selectedCourseDefault = (() => {
+    if (!form.course_id || courses.length === 0) return null;
+    const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
+    return matched?.required_hours ?? null;
+  })();
 
   const validate = () => {
     const e = {};
@@ -280,11 +288,20 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
             ) : (
               <>
                 <option value="">Select required hours…</option>
-                {requiredHoursOptions.map((opt) => (
-                  <option key={opt.id} value={opt.hours}>
-                    {opt.hours} hours
+                {/* Dynamic "course default" option — only shown when a course with required_hours is selected */}
+                {selectedCourseDefault && (
+                  <option value={selectedCourseDefault}>
+                    Use Course Default ({selectedCourseDefault} hrs)
                   </option>
-                ))}
+                )}
+                {requiredHoursOptions
+                  /* Exclude the course-default value from the regular list to avoid duplicates */
+                  .filter((opt) => String(opt.hours) !== String(selectedCourseDefault))
+                  .map((opt) => (
+                    <option key={opt.id} value={opt.hours}>
+                      {opt.hours} hours
+                    </option>
+                  ))}
               </>
             )}
           </SelectField>
@@ -379,17 +396,6 @@ const TabNav = ({ activeTab, onChange, isAdmin }) => {
 
 // ─── Success Toast ────────────────────────────────────────────────────────────
 
-/**
- * SuccessToast
- *
- * A non-intrusive banner that slides in from the top whenever `message` is
- * truthy. The parent controls visibility — this component is purely
- * presentational so it stays reusable across AdminStudents & CoordinatorStudents.
- *
- * Props:
- *   message  – string | ''   Non-empty string = visible; '' = hidden
- *   onClose  – () => void    Called when the × button is clicked
- */
 const SuccessToast = ({ message, onClose }) => {
   if (!message) return null;
 
@@ -412,7 +418,6 @@ const SuccessToast = ({ message, onClose }) => {
         <p className="text-sm font-medium text-green-800">{message}</p>
       </div>
 
-      {/* Manual dismiss */}
       <button
         onClick={onClose}
         aria-label="Dismiss notification"
