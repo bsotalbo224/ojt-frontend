@@ -51,7 +51,8 @@ const CoordinatorDashboard = () => {
     fetch('/api/notifications')
       .then((res) => res.json())
       .then((data) => {
-        const filtered = (data ?? [])
+        const list = data?.notifications ?? [];
+        const filtered = list
           .filter((n) => n.type === 'log' || n.type === 'narrative')
           .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
           .slice(0, 3)
@@ -133,43 +134,47 @@ const CoordinatorDashboard = () => {
   // ── Stat cards ─────────────────────────────────────────────────────────────
   const statCards = [
     {
-      title: 'Total Students',
-      value: totalStudents,
-      pct: studentPct,
-      icon: Users,
+      title:    'Total Students',
+      subtitle: 'Total in department',
+      value:    totalStudents,
+      pct:      studentPct,
+      icon:     Users,
       usePrimary: true,
       to: '/coordinator/students',
     },
     {
-      title: 'Ongoing OJT',
-      value: ongoing,
-      pct: ongoingPct,
-      icon: Activity,
+      title:    'Ongoing OJT',
+      subtitle: 'Students assigned',
+      value:    ongoing,
+      pct:      ongoingPct,
+      icon:     Activity,
       usePrimary: true,
       to: '/coordinator/students',
     },
     {
-      title: 'Submitted Daily Logs',
-      value: submittedLogs,
-      pct: logPct,
-      icon: FileText,
+      title:    'Submitted Daily Logs',
+      subtitle: 'Awaiting review',
+      value:    submittedLogs,
+      pct:      logPct,
+      icon:     FileText,
       usePrimary: false,
       accentColor: '#f97316',
       iconBgColor: '#fff7ed',
-      barColor: '#fdba74',
-      textColor: '#c2410c',
+      barColor:    '#fdba74',
+      textColor:   '#c2410c',
       to: '/coordinator/daily-logs',
     },
     {
-      title: 'Submitted Narratives',
-      value: submittedNarratives,
-      pct: narrativePct,
-      icon: BookOpen,
+      title:    'Submitted Narratives',
+      subtitle: 'Awaiting review',
+      value:    submittedNarratives,
+      pct:      narrativePct,
+      icon:     BookOpen,
       usePrimary: false,
       accentColor: '#a855f7',
       iconBgColor: '#faf5ff',
-      barColor: '#d8b4fe',
-      textColor: '#7e22ce',
+      barColor:    '#d8b4fe',
+      textColor:   '#7e22ce',
       to: '/coordinator/narratives',
     },
   ];
@@ -185,7 +190,7 @@ const CoordinatorDashboard = () => {
   // ── Hours ──────────────────────────────────────────────────────────────────
   const avgHours      = stats?.avgHoursLogged ?? 0;
   const requiredHours = stats?.requiredHours  ?? 0;
-  const hoursPct      = Math.min(100, Math.max(0, requiredHours ? Math.round((avgHours / requiredHours) * 100) : 0));
+  const hoursPct      = Math.min(100, Math.max(0, requiredHours > 0 ? Math.round((avgHours / requiredHours) * 100) : 0));
 
   // ── Quick actions ──────────────────────────────────────────────────────────
   const quickActions = [
@@ -330,7 +335,7 @@ const CoordinatorDashboard = () => {
                     />
                   </div>
                   <p className="text-xs mt-1" style={{ color: `rgb(var(--primary-400))` }}>
-                    {card.pct}% of target
+                    {card.subtitle}
                   </p>
                 </div>
               ))
@@ -447,7 +452,7 @@ const CoordinatorDashboard = () => {
                   Students needing attention
                 </p>
                 <p className="text-xs" style={{ color: `rgb(var(--primary-400))` }}>
-                  Flagged attendance and pending submissions
+                  Flagged attendance and submitted items
                 </p>
               </div>
               <span
@@ -651,7 +656,10 @@ const CoordinatorDashboard = () => {
                 <div className="flex items-center gap-1.5 mt-4">
                   <CheckCircle className="w-4 h-4 shrink-0" style={{ color: `rgb(var(--primary-500))` }} />
                   <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
-                    Students are on track — {100 - hoursPct}% of required hours remaining on average.
+                    {requiredHours === 0
+                      ? 'No required hours data available.'
+                      : `Students are on track — ${100 - hoursPct}% of required hours remaining on average.`
+                    }
                   </p>
                 </div>
               </>
