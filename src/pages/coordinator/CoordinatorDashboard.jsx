@@ -48,57 +48,35 @@ const CoordinatorDashboard = () => {
   }, []);
 
   useEffect(() => {
-    fetch('/api/notifications')
-      .then((res) => res.json())
-      .then((data) => {
-        const list = data?.notifications ?? [];
+    if (!stats) return;
 
-        // Step 1: Smart filter — use type if present, else keyword-match message/title
-        const isLogOrNarrative = (n) => {
-          if (n.type) {
-            return n.type === 'log' || n.type === 'narrative';
-          }
-          const haystack = `${n.message ?? ''} ${n.title ?? ''}`.toLowerCase();
-          return haystack.includes('log') || haystack.includes('narrative');
-        };
+    const list = stats.recentActivity;
+    if (!list || list.length === 0) {
+      setRecentActivity([]);
+      return;
+    }
 
-        // Step 2: Sort newest first, filter, then fall back to any 3 if nothing matched
-        const sorted = [...list].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-        const matched = sorted.filter(isLogOrNarrative);
-        const candidates = matched.length > 0 ? matched.slice(0, 3) : sorted.slice(0, 3);
+    const mapped = list.map((n) => {
+      const firstName = n.f_name ?? '';
+      const lastName  = n.l_name ?? '';
+      const fullName  = `${firstName} ${lastName}`.trim() || 'Unknown user';
+      const initials  = (firstName[0] ?? '') + (lastName[0] ?? '');
+      const type      = n.type === 'narrative' ? 'narrative' : 'log';
+      const action    = type === 'narrative' ? 'submitted a narrative' : 'submitted a daily log';
 
-        // Step 3: Resolve type for items that may be missing it
-        const resolveType = (n) => {
-          if (n.type === 'log') return 'log';
-          if (n.type === 'narrative') return 'narrative';
-          const haystack = `${n.message ?? ''} ${n.title ?? ''}`.toLowerCase();
-          if (haystack.includes('narrative')) return 'narrative';
-          return 'log';
-        };
+      return {
+        initials:  initials.toUpperCase() || fullName.slice(0, 2).toUpperCase(),
+        name:      fullName,
+        action,
+        status:    'green',
+        usePrimary: type === 'log',
+        avatarBg:  type === 'narrative' ? '#faf5ff' : '#fff7ed',
+        avatarText: type === 'narrative' ? '#7e22ce' : '#c2410c',
+      };
+    });
 
-        // Step 4: Map to UI shape
-        const filtered = candidates.map((n) => {
-          const resolvedType = resolveType(n);
-          const fullName = n.name || n.title || 'Unknown user';
-          const parts = fullName.trim().split(/\s+/);
-          const initials =
-            parts.length >= 2
-              ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
-              : fullName.slice(0, 2).toUpperCase();
-          return {
-            initials,
-            name: fullName,
-            action: n.message ?? (resolvedType === 'log' ? 'submitted a daily log' : 'submitted a narrative'),
-            status: n.status === 'flagged' ? 'red' : n.status === 'pending' ? 'yellow' : 'green',
-            usePrimary: resolvedType === 'log',
-            avatarBg: resolvedType === 'narrative' ? '#faf5ff' : '#fff7ed',
-            avatarText: resolvedType === 'narrative' ? '#7e22ce' : '#c2410c',
-          };
-        });
-        setRecentActivity(filtered);
-      })
-      .catch(() => setRecentActivity([]));
-  }, []);
+    setRecentActivity(mapped);
+  }, [stats]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const totalStudents       = stats?.totalStudents       ?? 0;
