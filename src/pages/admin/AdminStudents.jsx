@@ -21,7 +21,7 @@ const api = {
   },
 
   getRequiredHours: async () => {
-    const res = await apiClient.get("/api/required-hours");
+    const res = await apiClient.get("/required-hours");
     return res.data;
   },
 
@@ -280,8 +280,10 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
             ) : (
               <>
                 <option value="">Select required hours…</option>
-                {requiredHoursOptions.map((h) => (
-                  <option key={h} value={h}>{h} hours</option>
+                {requiredHoursOptions.map((opt) => (
+                  <option key={opt.id} value={opt.hours}>
+                    {opt.hours} hours
+                  </option>
                 ))}
               </>
             )}
@@ -472,10 +474,13 @@ const AdminStudents = ({ isAdmin = true }) => {
 
   const fetchRequiredHours = async () => {
     try {
-      const data = await api.getRequiredHours();
-      setRequiredHoursOptions(Array.isArray(data) ? data : []);
-    } catch {
-      console.error('Failed to load required hours options');
+      const res = await apiClient.get("/required-hours");
+
+      const data = res.data?.data ?? res.data ?? [];
+
+      setRequiredHoursOptions(data);
+    } catch (err) {
+      console.error("Failed to load required hours:", err);
       setRequiredHoursOptions([]);
     }
   };
