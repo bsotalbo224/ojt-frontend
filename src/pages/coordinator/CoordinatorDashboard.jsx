@@ -37,6 +37,7 @@ const HoverButton = ({ children, baseStyle, hoverStyle, className, disabled, onC
 const CoordinatorDashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [recentActivity, setRecentActivity] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -46,17 +47,47 @@ const CoordinatorDashboard = () => {
     });
   }, []);
 
+  useEffect(() => {
+    fetch('/api/notifications')
+      .then((res) => res.json())
+      .then((data) => {
+        const filtered = (data ?? [])
+          .filter((n) => n.type === 'log' || n.type === 'narrative')
+          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+          .slice(0, 3)
+          .map((n) => {
+            const fullName = n.name ?? n.title ?? '';
+            const parts = fullName.trim().split(/\s+/);
+            const initials =
+              parts.length >= 2
+                ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+                : fullName.slice(0, 2).toUpperCase();
+            return {
+              initials,
+              name: fullName,
+              action: n.message ?? (n.type === 'log' ? 'submitted a daily log' : 'submitted a narrative'),
+              status: n.status === 'flagged' ? 'red' : n.status === 'pending' ? 'yellow' : 'green',
+              usePrimary: n.type === 'log',
+              avatarBg: n.type === 'narrative' ? '#faf5ff' : '#fff7ed',
+              avatarText: n.type === 'narrative' ? '#7e22ce' : '#c2410c',
+            };
+          });
+        setRecentActivity(filtered);
+      })
+      .catch(() => setRecentActivity([]));
+  }, []);
+
   // ── Derived values ─────────────────────────────────────────────────────────
-  const totalStudents     = stats?.totalStudents     ?? 0;
-  const ongoing           = stats?.ongoing           ?? 0;
-  const pendingLogs       = stats?.pendingLogs       ?? 0;
-  const pendingNarratives = stats?.pendingNarratives ?? 0;
+  const totalStudents       = stats?.totalStudents       ?? 0;
+  const ongoing             = stats?.ongoing             ?? 0;
+  const submittedLogs       = stats?.submittedLogs       ?? 0;
+  const submittedNarratives = stats?.submittedNarratives ?? 0;
 
   const clamp = (v, max) => Math.min(100, Math.max(0, max ? Math.round((v / max) * 100) : 0));
   const studentPct   = clamp(totalStudents, 150);
   const ongoingPct   = clamp(ongoing, totalStudents || 1);
-  const logPct       = clamp(pendingLogs, 50);
-  const narrativePct = clamp(pendingNarratives, 50);
+  const logPct       = clamp(submittedLogs, 50);
+  const narrativePct = clamp(submittedNarratives, 50);
 
   // ── Attention-derived values (sourced from stats) ─────────────────────────
   const flaggedAttendance    = stats?.flaggedAttendance    ?? 0;
@@ -76,7 +107,7 @@ const CoordinatorDashboard = () => {
       to:         '/coordinator/attendance',
     },
     {
-      label:      'Pending Daily Logs',
+      label:      'Submitted Daily Logs',
       value:      attentionPendingLogs,
       pct:        clamp(attentionPendingLogs, 50),
       accentColor:'#f97316',
@@ -87,7 +118,7 @@ const CoordinatorDashboard = () => {
       to:         '/coordinator/daily-logs',
     },
     {
-      label:      'Pending Narratives',
+      label:      'Submitted Narratives',
       value:      attentionNarratives,
       pct:        clamp(attentionNarratives, 50),
       accentColor:'#a855f7',
@@ -118,8 +149,8 @@ const CoordinatorDashboard = () => {
       to: '/coordinator/students',
     },
     {
-      title: 'Pending Daily Logs',
-      value: pendingLogs,
+      title: 'Submitted Daily Logs',
+      value: submittedLogs,
       pct: logPct,
       icon: FileText,
       usePrimary: false,
@@ -130,8 +161,8 @@ const CoordinatorDashboard = () => {
       to: '/coordinator/daily-logs',
     },
     {
-      title: 'Pending Narratives',
-      value: pendingNarratives,
+      title: 'Submitted Narratives',
+      value: submittedNarratives,
       pct: narrativePct,
       icon: BookOpen,
       usePrimary: false,
@@ -151,24 +182,17 @@ const CoordinatorDashboard = () => {
     { label: 'Assign Companies',    icon: Building2,  to: '/coordinator/students',   usePrimary: false, ringColor: '#eff6ff', iconColor: '#3b82f6' },
   ];
 
-  // ── Recent activity ────────────────────────────────────────────────────────
-  const recentActivity = [
-    { initials: 'JD', name: 'Juan Dela Cruz',   action: 'submitted a daily log',    status: 'green',  usePrimary: true },
-    { initials: 'MA', name: 'Maria Andres',     action: 'narrative pending review', status: 'yellow', usePrimary: false, avatarBg: '#faf5ff', avatarText: '#7e22ce' },
-    { initials: 'RC', name: 'Rizal Concepcion', action: 'log revision requested',   status: 'red',    usePrimary: false, avatarBg: '#fff7ed', avatarText: '#c2410c' },
-  ];
-
   // ── Hours ──────────────────────────────────────────────────────────────────
-  const avgHours      = stats?.avgHoursLogged ?? 342;
-  const requiredHours = stats?.requiredHours  ?? 486;
-  const hoursPct      = Math.round((avgHours / requiredHours) * 100);
+  const avgHours      = stats?.avgHoursLogged ?? 0;
+  const requiredHours = stats?.requiredHours  ?? 0;
+  const hoursPct      = Math.min(100, Math.max(0, requiredHours ? Math.round((avgHours / requiredHours) * 100) : 0));
 
   // ── Quick actions ──────────────────────────────────────────────────────────
   const quickActions = [
     {
       label: 'Create evaluation',
       icon: PlusCircle,
-      to: '/coordinator/evaluations',
+      to: '/coordinator/evaluation',
       disabled: false,
       baseStyle: { backgroundColor: `rgb(var(--primary-600))`, color: '#fff' },
       hoverStyle: { backgroundColor: `rgb(var(--primary-700))` },
@@ -412,7 +436,7 @@ const CoordinatorDashboard = () => {
             </div>
           </div>
 
-          {/* ── Students Needing Attention (REPLACES Deployment Progress) ── */}
+          {/* ── Students Needing Attention ── */}
           <div
             className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-200"
             style={{ border: `1px solid rgb(var(--primary-100))` }}
