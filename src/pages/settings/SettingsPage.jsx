@@ -343,14 +343,13 @@ export default function SettingsPage() {
   const [logoDept,      setLogoDept]      = useState("");
 
   // ── Required Hours state ──────────────────────────────────────────────────
-  const [requiredHoursList,    setRequiredHoursList]    = useState([]);
-  const [loadingHours,         setLoadingHours]         = useState(false);
-  const [hoursSuccess,         setHoursSuccess]         = useState("");
-  const [hoursError,           setHoursError]           = useState("");
-  const [newHoursLabel,        setNewHoursLabel]        = useState("");
-  const [newHoursValue,        setNewHoursValue]        = useState("");
-  const [addingHours,          setAddingHours]          = useState(false);
-  const [deletingHoursId,      setDeletingHoursId]      = useState(null);
+  const [requiredHoursList, setRequiredHoursList] = useState([]);
+  const [loadingHours,      setLoadingHours]      = useState(false);
+  const [hoursSuccess,      setHoursSuccess]      = useState("");
+  const [hoursError,        setHoursError]        = useState("");
+  const [newHoursValue,     setNewHoursValue]     = useState("");
+  const [addingHours,       setAddingHours]       = useState(false);
+  const [deletingHoursId,   setDeletingHoursId]   = useState(null);
   // ─────────────────────────────────────────────────────────────────────────
 
   const refreshUser = useCallback(async () => {
@@ -563,22 +562,36 @@ export default function SettingsPage() {
     e.preventDefault();
     setHoursError("");
     setHoursSuccess("");
-    const trimmedLabel = newHoursLabel.trim();
-    const parsedValue  = Number(newHoursValue);
-    if (!trimmedLabel)           { setHoursError("Please enter a label for this hours entry."); return; }
+
+    const parsedValue = Number(newHoursValue);
     if (!newHoursValue || isNaN(parsedValue) || parsedValue <= 0) {
       setHoursError("Please enter a valid number of hours greater than 0.");
       return;
     }
+
+    // Client-side duplicate check
+    const isDuplicate = requiredHoursList.some(
+      (entry) => Number(entry.hours) === parsedValue
+    );
+    if (isDuplicate) {
+      setHoursError(`An entry for ${parsedValue} hours already exists.`);
+      return;
+    }
+
     setAddingHours(true);
     try {
-      await api.post("/required-hours", { label: trimmedLabel, hours: parsedValue });
+      await api.post("/required-hours", { hours: parsedValue });
       setHoursSuccess("Required hours entry added successfully!");
-      setNewHoursLabel("");
       setNewHoursValue("");
       await fetchRequiredHours();
     } catch (err) {
-      setHoursError(err?.response?.data?.message || "Failed to add required hours. Please try again.");
+      // Surface backend duplicate / validation errors
+      const msg = err?.response?.data?.message || "";
+      if (err?.response?.status === 409 || /duplicate|already exists/i.test(msg)) {
+        setHoursError(`An entry for ${parsedValue} hours already exists.`);
+      } else {
+        setHoursError(msg || "Failed to add required hours. Please try again.");
+      }
     } finally {
       setAddingHours(false);
     }
@@ -1076,14 +1089,9 @@ export default function SettingsPage() {
                         >
                           <Clock size={14} style={{ color: `rgb(var(--primary-600))` }} />
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-800 truncate">
-                            {entry.label}
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            {entry.hours} {entry.hours === 1 ? "hour" : "hours"}
-                          </p>
-                        </div>
+                        <p className="text-sm font-semibold text-gray-800">
+                          {entry.hours} {Number(entry.hours) === 1 ? "hour" : "hours"}
+                        </p>
                       </div>
 
                       <button
@@ -1118,7 +1126,7 @@ export default function SettingsPage() {
               )}
             </div>
 
-            {/* Add new entry form */}
+            {/* Add new entry form — hours only, no label */}
             <form onSubmit={handleAddHours} className="space-y-4">
               <div
                 className="p-4 rounded-xl space-y-3"
@@ -1128,29 +1136,6 @@ export default function SettingsPage() {
                 }}
               >
                 <p className="text-sm font-semibold text-gray-700">Add New Entry</p>
-
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-semibold text-gray-500">Label</label>
-                  <input
-                    type="text"
-                    value={newHoursLabel}
-                    onChange={(e) => setNewHoursLabel(e.target.value)}
-                    placeholder="e.g. 4-year course, 2-year course"
-                    className="w-full px-4 py-2.5 rounded-xl text-gray-800 placeholder-gray-400 outline-none transition text-sm"
-                    style={{
-                      border:          `1px solid rgb(var(--primary-200))`,
-                      backgroundColor: "white",
-                    }}
-                    onFocus={(e) => {
-                      e.target.style.boxShadow   = `0 0 0 2px rgb(var(--primary-400))`;
-                      e.target.style.borderColor = "transparent";
-                    }}
-                    onBlur={(e) => {
-                      e.target.style.boxShadow   = "none";
-                      e.target.style.borderColor = `rgb(var(--primary-200))`;
-                    }}
-                  />
-                </div>
 
                 <div className="space-y-1.5">
                   <label className="block text-xs font-semibold text-gray-500">Required Hours</label>
