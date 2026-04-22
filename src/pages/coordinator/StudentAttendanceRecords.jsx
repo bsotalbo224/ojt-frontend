@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, MapPin, AlertTriangle, Eye, Filter,
   CheckCircle, Clock, X, Navigation,
-  ChevronDown, RefreshCw, TrendingUp,
+  ChevronDown, TrendingUp,
 } from 'lucide-react';
 import { getCoordinatorAttendance } from '../../api/attendance';
 import Avatar from '../../components/ui/Avatar';
@@ -14,37 +14,37 @@ const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const LOCATION_CONFIG = {
   verified: {
-    label      : 'Verified',
-    pill       : '',
-    pillHover  : '',
-    usePrimary : true,
-    icon       : CheckCircle,
-    dot        : null,
-    optionIcon : CheckCircle,
+    label: 'Verified',
+    pill: '',
+    pillHover: '',
+    usePrimary: true,
+    icon: CheckCircle,
+    dot: null,
+    optionIcon: CheckCircle,
     optionColor: null,
-    optionBg   : '',
-    checkColor : null,
+    optionBg: '',
+    checkColor: null,
     rowHighlight: '',
   },
   flagged: {
-    label      : 'Flagged',
-    pill       : 'bg-amber-50 text-amber-700 border border-amber-200',
-    pillHover  : 'hover:bg-amber-100 hover:border-amber-300',
-    usePrimary : false,
-    icon       : AlertTriangle,
-    dot        : 'bg-amber-400',
-    optionIcon : AlertTriangle,
+    label: 'Flagged',
+    pill: 'bg-amber-50 text-amber-700 border border-amber-200',
+    pillHover: 'hover:bg-amber-100 hover:border-amber-300',
+    usePrimary: false,
+    icon: AlertTriangle,
+    dot: 'bg-amber-400',
+    optionIcon: AlertTriangle,
     optionColor: 'text-amber-600',
-    optionBg   : 'hover:bg-amber-50',
-    checkColor : 'text-amber-600',
+    optionBg: 'hover:bg-amber-50',
+    checkColor: 'text-amber-600',
     rowHighlight: 'bg-amber-50/40 border-l-4 border-l-amber-400',
   },
 };
 
 const FILTER_OPTIONS = [
-  { value: 'all',             label: 'All Records'      },
-  { value: 'flagged',         label: 'Flagged'          },
-  { value: 'complete',        label: 'Complete Records' },
+  { value: 'all', label: 'All Records' },
+  { value: 'flagged', label: 'Flagged' },
+  { value: 'complete', label: 'Complete Records' },
   { value: 'missing_timeout', label: 'Missing Time-Out' },
 ];
 
@@ -64,7 +64,7 @@ const formatTime = (timeStr) => {
   try {
     const [h, m] = timeStr.split(':').map(Number);
     const period = h >= 12 ? 'PM' : 'AM';
-    const hour   = h % 12 || 12;
+    const hour = h % 12 || 12;
     return `${hour}:${String(m).padStart(2, '0')} ${period}`;
   } catch { return timeStr; }
 };
@@ -75,7 +75,7 @@ const computeHours = (timeIn, timeOut) => {
     const toMins = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
     const diff = toMins(timeOut) - toMins(timeIn);
     if (diff <= 0) return null;
-    const hrs  = Math.floor(diff / 60);
+    const hrs = Math.floor(diff / 60);
     const mins = diff % 60;
     return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
   } catch { return null; }
@@ -86,19 +86,19 @@ const formatDate = (dateStr, opts = {}) => {
   return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', ...opts });
 };
 
-// ─── LocationStatusBadge (read-only) ─────────────────────────────────────────
+// ─── LocationStatusBadge (read-only, used in modal) ──────────────────────────
 
 const LocationStatusBadge = ({ status }) => {
   const config = LOCATION_CONFIG[status] ?? LOCATION_CONFIG.verified;
-  const Icon   = config.icon;
+  const Icon = config.icon;
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap select-none ${!config.usePrimary ? config.pill : ''}`}
       style={config.usePrimary ? {
         backgroundColor: `rgb(var(--primary-100))`,
-        color:           `rgb(var(--primary-700))`,
-        border:          `1px solid rgb(var(--primary-200))`,
+        color: `rgb(var(--primary-700))`,
+        border: `1px solid rgb(var(--primary-200))`,
       } : {}}
     >
       <Icon className="w-3 h-3" />
@@ -107,17 +107,61 @@ const LocationStatusBadge = ({ status }) => {
   );
 };
 
+// ─── LocationStatusDropdown (editable, used in table) ────────────────────────
+
+const LocationStatusDropdown = ({ status, onChange, disabled }) => {
+  const isFlagged = status === 'flagged';
+
+  return (
+    <div className="relative inline-block">
+      <select
+        value={status}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="appearance-none pl-7 pr-7 py-1.5 text-xs font-semibold rounded-full cursor-pointer outline-none transition-all duration-150 disabled:opacity-60 disabled:cursor-not-allowed"
+        style={isFlagged ? {
+          backgroundColor: 'rgb(255 251 235)',
+          color: 'rgb(180 83 9)',
+          border: '1px solid rgb(253 230 138)',
+        } : {
+          backgroundColor: `rgb(var(--primary-100))`,
+          color: `rgb(var(--primary-700))`,
+          border: `1px solid rgb(var(--primary-200))`,
+        }}
+        onFocus={e => { e.target.style.boxShadow = isFlagged ? '0 0 0 2px rgb(253 230 138)' : `0 0 0 2px rgb(var(--primary-300))`; }}
+        onBlur={e => { e.target.style.boxShadow = 'none'; }}
+      >
+        <option value="verified">Verified</option>
+        <option value="flagged">Flagged</option>
+      </select>
+
+      {/* Left icon */}
+      <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
+        {isFlagged
+          ? <AlertTriangle className="w-3 h-3 text-amber-600" />
+          : <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-600))` }} />
+        }
+      </div>
+
+      {/* Right chevron */}
+      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+        style={{ color: isFlagged ? 'rgb(180 83 9)' : `rgb(var(--primary-500))` }}
+      />
+    </div>
+  );
+};
+
 // ─── MapPlaceholder ───────────────────────────────────────────────────────────
 
 const MapPlaceholder = ({ latitude, longitude }) => {
   const hasCoords = latitude != null && longitude != null;
-  const mapsUrl   = hasCoords ? `https://maps.google.com/?q=${latitude},${longitude}` : null;
+  const mapsUrl = hasCoords ? `https://maps.google.com/?q=${latitude},${longitude}` : null;
 
   return (
     <div
       className="w-full h-44 rounded-xl overflow-hidden relative"
       style={{
-        border:     `1px solid rgb(var(--primary-200))`,
+        border: `1px solid rgb(var(--primary-200))`,
         background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100)))`,
       }}
     >
@@ -153,15 +197,25 @@ const MapPlaceholder = ({ latitude, longitude }) => {
             </div>
           </div>
 
+
           <a
             href={mapsUrl}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Open location in Google Maps"
             className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 bg-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-md transition-all duration-150 group"
-            style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-100))` }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'white'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)'; }}
+            style={{
+              color: `rgb(var(--primary-700))`,
+              border: `1px solid rgb(var(--primary-100))`
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`;
+              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = 'white';
+              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
+            }}
           >
             <Navigation className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             Open in Maps
@@ -187,7 +241,7 @@ const MapPlaceholder = ({ latitude, longitude }) => {
 // ─── DetailsModal (read-only) ─────────────────────────────────────────────────
 
 const DetailsModal = ({ record, onClose }) => {
-  const hours     = computeHours(record.time_in, record.time_out);
+  const hours = computeHours(record.time_in, record.time_out);
   const isFlagged = record.location_status === 'flagged';
 
   useEffect(() => {
@@ -222,7 +276,7 @@ const DetailsModal = ({ record, onClose }) => {
           className={`flex items-center justify-between px-6 py-4 shrink-0 ${isFlagged ? 'bg-linear-to-r from-amber-50 to-white' : ''}`}
           style={!isFlagged ? {
             borderBottom: `1px solid rgb(var(--primary-100))`,
-            background:   `linear-gradient(to right, rgb(var(--primary-50)), white)`,
+            background: `linear-gradient(to right, rgb(var(--primary-50)), white)`,
           } : { borderBottom: '1px solid #fde68a' }}
         >
           <div className="flex items-center gap-3">
@@ -315,8 +369,8 @@ const DetailsModal = ({ record, onClose }) => {
                 <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${record.distance_meters > 100 ? 'bg-amber-50 text-amber-700 border border-amber-100' : ''}`}
                   style={record.distance_meters <= 100 ? {
                     backgroundColor: `rgb(var(--primary-50))`,
-                    color:           `rgb(var(--primary-700))`,
-                    border:          `1px solid rgb(var(--primary-100))`,
+                    color: `rgb(var(--primary-700))`,
+                    border: `1px solid rgb(var(--primary-100))`,
                   } : {}}
                 >
                   <Navigation className="w-3.5 h-3.5 shrink-0" />
@@ -401,28 +455,59 @@ const EmptyTableState = ({ hasFilter }) => (
 
 const StudentAttendance = () => {
   const { studentId } = useParams();
-  const navigate      = useNavigate();
+  const navigate = useNavigate();
 
-  const [allRecords,   setAllRecords]   = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState(false);
-  const [selected,     setSelected]     = useState(null);
-  const [search,       setSearch]       = useState('');
-  const [dateFilter,   setDateFilter]   = useState('');
+  const [allRecords, setAllRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [updatingIds, setUpdatingIds] = useState(new Set());
 
   useEffect(() => {
     getCoordinatorAttendance()
       .then((data) => {
         const studentRecords = (Array.isArray(data) ? data : [])
           .filter((r) => String(r.student_id) === String(studentId))
-          .map(({ coordinator_note: _note, ...rest }) => rest); // strip coordinator notes
+          .map(({ coordinator_note: _note, ...rest }) => rest);
         studentRecords.sort((a, b) => new Date(b.attendance_date) - new Date(a.attendance_date));
         setAllRecords(studentRecords);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [studentId]);
+
+  // ─── Status update handler ──────────────────────────────────────────────────
+
+  const handleStatusChange = useCallback(async (attendanceId, newStatus) => {
+    setUpdatingIds((prev) => new Set(prev).add(attendanceId));
+    try {
+      const response = await fetch(`/api/attendance/${attendanceId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location_status: newStatus }),
+      });
+      if (!response.ok) throw new Error('Failed to update status');
+
+      setAllRecords((prev) =>
+        prev.map((r) =>
+          r.attendance_id === attendanceId ? { ...r, location_status: newStatus } : r
+        )
+      );
+    } catch (err) {
+      console.error('Status update failed:', err);
+    } finally {
+      setUpdatingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(attendanceId);
+        return next;
+      });
+    }
+  }, []);
+
+  // ─── Derived state ──────────────────────────────────────────────────────────
 
   const student = useMemo(() => {
     if (allRecords.length === 0) return null;
@@ -431,9 +516,9 @@ const StudentAttendance = () => {
   }, [allRecords]);
 
   const stats = useMemo(() => ({
-    total:      allRecords.length,
-    verified:   allRecords.filter((r) => r.location_status === 'verified').length,
-    flagged:    allRecords.filter((r) => r.location_status === 'flagged').length,
+    total: allRecords.length,
+    verified: allRecords.filter((r) => r.location_status === 'verified').length,
+    flagged: allRecords.filter((r) => r.location_status === 'flagged').length,
     missingOut: allRecords.filter((r) => isMissingTimeOut(r.time_out)).length,
   }), [allRecords]);
 
@@ -441,11 +526,11 @@ const StudentAttendance = () => {
     const q = search.trim().toLowerCase();
     return allRecords.filter((r) => {
       const matchesSearch = !q || formatDate(r.attendance_date).toLowerCase().includes(q);
-      const matchesDate   = !dateFilter || r.attendance_date?.startsWith(dateFilter);
+      const matchesDate = !dateFilter || r.attendance_date?.startsWith(dateFilter);
       const matchesStatus =
-        statusFilter === 'all'             ||
-        (statusFilter === 'flagged'         && r.location_status === 'flagged') ||
-        (statusFilter === 'complete'        && r.time_in && !isMissingTimeOut(r.time_out)) ||
+        statusFilter === 'all' ||
+        (statusFilter === 'flagged' && r.location_status === 'flagged') ||
+        (statusFilter === 'complete' && r.time_in && !isMissingTimeOut(r.time_out)) ||
         (statusFilter === 'missing_timeout' && isMissingTimeOut(r.time_out));
       return matchesSearch && matchesDate && matchesStatus;
     });
@@ -534,7 +619,7 @@ const StudentAttendance = () => {
                       className="pl-9 pr-3 py-2 text-sm rounded-lg transition cursor-pointer outline-none"
                       style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50) / 0.4)`, color: `rgb(var(--primary-800))` }}
                       onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                      onBlur={e =>  { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                      onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     />
                   </div>
                   {/* Status filter */}
@@ -546,7 +631,7 @@ const StudentAttendance = () => {
                       className="pl-9 pr-8 py-2 text-sm rounded-lg outline-none appearance-none cursor-pointer transition"
                       style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50) / 0.4)`, color: `rgb(var(--primary-800))` }}
                       onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                      onBlur={e =>  { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                      onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     >
                       {FILTER_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
@@ -616,9 +701,10 @@ const StudentAttendance = () => {
                     <EmptyTableState hasFilter={hasFilter} />
                   ) : (
                     filtered.map((rec) => {
-                      const hours      = computeHours(rec.time_in, rec.time_out);
+                      const hours = computeHours(rec.time_in, rec.time_out);
                       const missingOut = isMissingTimeOut(rec.time_out);
-                      const config     = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
+                      const config = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
+                      const isUpdating = updatingIds.has(rec.attendance_id);
 
                       return (
                         <tr
@@ -653,7 +739,13 @@ const StudentAttendance = () => {
                             )}
                           </td>
                           <td className="py-4 px-4">
-                            <LocationStatusBadge status={rec.location_status} />
+                            <div className={`transition-opacity duration-150 ${isUpdating ? 'opacity-50 pointer-events-none' : ''}`}>
+                              <LocationStatusDropdown
+                                status={rec.location_status}
+                                onChange={(newStatus) => handleStatusChange(rec.attendance_id, newStatus)}
+                                disabled={isUpdating}
+                              />
+                            </div>
                           </td>
                           <td className="py-4 px-4">
                             <button
