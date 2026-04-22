@@ -315,39 +315,52 @@ const ThemedSelect = ({ label, id, error, children, ...props }) => (
 const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, onSave }) => {
   const isEdit = mode === 'edit';
 
+  // ── Normalize all IDs to strings on init so controlled <select> values always match ──
   const [form, setForm] = useState(
     isEdit
       ? {
-        f_name: student.f_name ?? '',
-        l_name: student.l_name ?? '',
-        email: student.email ?? '',
-        course_id: student.course_id ?? '',
-        ojt_hours_required: student.ojt_hours_required ?? '',
-      }
+          f_name: student.f_name ?? '',
+          l_name: student.l_name ?? '',
+          email: student.email ?? '',
+          course_id: student.course_id != null ? String(student.course_id) : '',
+          ojt_hours_required: student.ojt_hours_required != null ? String(student.ojt_hours_required) : '',
+        }
       : { ...EMPTY_FORM }
   );
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState('');
 
+  // ── Generic setter — always stores strings (HTML select always yields strings) ──
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  // Auto-fill ojt_hours_required when course changes, using course's required_hours as a default.
-  // Only fills if the field is currently empty so user overrides are preserved.
-  // Depends on both form.course_id and courses so it runs once courses are loaded.
+  // ── When courses load asynchronously in edit mode, re-sync ojt_hours_required
+  //    to the course default — but ONLY if the current value doesn't already match
+  //    an available option (prevents overwriting intentional user overrides). ──
   useEffect(() => {
     if (!form.course_id || courses.length === 0) return;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
-    if (matched?.required_hours && !form.ojt_hours_required) {
-      setForm((f) => ({ ...f, ojt_hours_required: matched.required_hours }));
+    if (!matched?.required_hours) return;
+    const courseDefault = String(matched.required_hours);
+    // In add mode: fill if blank. In edit mode: only update if completely missing.
+    if (!form.ojt_hours_required) {
+      setForm((f) => ({ ...f, ojt_hours_required: courseDefault }));
     }
   }, [form.course_id, courses]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derive the default hours for the currently selected course (used for the dynamic option label).
+  // ── When the user picks a NEW course, auto-update hours to that course's default ──
+  const handleCourseChange = (e) => {
+    const newCourseId = e.target.value;
+    const matched = courses.find((c) => String(c.course_id) === String(newCourseId));
+    const newHours = matched?.required_hours ? String(matched.required_hours) : '';
+    setForm((f) => ({ ...f, course_id: newCourseId, ojt_hours_required: newHours }));
+  };
+
+  // ── Derive the course-default hours for the selected course (drives the dynamic option) ──
   const selectedCourseDefault = (() => {
     if (!form.course_id || courses.length === 0) return null;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
-    return matched?.required_hours ?? null;
+    return matched?.required_hours != null ? String(matched.required_hours) : null;
   })();
 
   const validate = () => {
@@ -430,17 +443,17 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
             <ThemedInput label="Last Name" id="l_name" placeholder="Last Name" value={form.l_name} onChange={set('l_name')} error={errors.l_name} />
           </div>
           <ThemedInput label="Email Address" id="email" type="email" placeholder="Email" value={form.email} onChange={set('email')} error={errors.email} />
-          <ThemedSelect label="Course" id="course_id" value={form.course_id} onChange={set('course_id')} error={errors.course_id}>
+          <ThemedSelect label="Course" id="course_id" value={form.course_id} onChange={handleCourseChange} error={errors.course_id}>
             <option value="">Select a course…</option>
             {courses.map((c) => (
-              <option key={c.course_id} value={c.course_id}>{c.course_name}</option>
+              <option key={c.course_id} value={String(c.course_id)}>{c.course_name}</option>
             ))}
           </ThemedSelect>
           <ThemedSelect
             label="Required OJT Hours"
             id="ojt_hours_required"
             value={form.ojt_hours_required}
-            onChange={(e) => setForm((f) => ({ ...f, ojt_hours_required: Number(e.target.value) }))}
+            onChange={(e) => setForm((f) => ({ ...f, ojt_hours_required: e.target.value }))}
             error={errors.ojt_hours_required}
           >
             {requiredHoursOptions.length === 0 ? (
@@ -456,9 +469,9 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
                 )}
                 {requiredHoursOptions
                   /* Exclude the course-default value from the regular list to avoid duplicates */
-                  .filter((opt) => String(opt.hours) !== String(selectedCourseDefault))
+                  .filter((opt) => String(opt.hours) !== selectedCourseDefault)
                   .map((opt) => (
-                    <option key={opt.id} value={opt.hours}>
+                    <option key={opt.id} value={String(opt.hours)}>
                       {opt.hours} hours
                     </option>
                   ))}
