@@ -1,31 +1,29 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, MapPin, AlertTriangle, Eye, Filter,
-  CheckCircle, Clock, X, StickyNote, Save, Navigation,
+  CheckCircle, Clock, X, Navigation,
   ChevronDown, RefreshCw, TrendingUp,
 } from 'lucide-react';
-import { getCoordinatorAttendance, updateAttendanceLocationStatus } from '../../api/attendance';
+import { getCoordinatorAttendance } from '../../api/attendance';
 import Avatar from '../../components/ui/Avatar';
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-// "verified" uses CSS vars; "flagged" is semantic amber — kept as Tailwind
 
 const LOCATION_CONFIG = {
   verified: {
     label      : 'Verified',
-    // pill/pillHover applied via inline style in the component
     pill       : '',
     pillHover  : '',
     usePrimary : true,
     icon       : CheckCircle,
-    dot        : null,          // rendered inline
+    dot        : null,
     optionIcon : CheckCircle,
-    optionColor: null,          // rendered inline
-    optionBg   : '',            // rendered inline
-    checkColor : null,          // rendered inline
+    optionColor: null,
+    optionBg   : '',
+    checkColor : null,
     rowHighlight: '',
   },
   flagged: {
@@ -42,8 +40,6 @@ const LOCATION_CONFIG = {
     rowHighlight: 'bg-amber-50/40 border-l-4 border-l-amber-400',
   },
 };
-
-const STATUS_OPTIONS = ['verified', 'flagged'];
 
 const FILTER_OPTIONS = [
   { value: 'all',             label: 'All Records'      },
@@ -90,139 +86,24 @@ const formatDate = (dateStr, opts = {}) => {
   return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', ...opts });
 };
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
+// ─── LocationStatusBadge (read-only) ─────────────────────────────────────────
 
-const Toast = ({ message, type = 'success', onDismiss }) => {
-  useEffect(() => { const t = setTimeout(onDismiss, 2500); return () => clearTimeout(t); }, [onDismiss]);
-
-  // success uses primary var; warning is amber (semantic)
-  const Icon = type === 'success' ? CheckCircle : AlertTriangle;
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      className={`fixed bottom-6 right-6 z-100 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-sm font-semibold ${type !== 'success' ? 'bg-amber-500 text-white' : 'text-white'}`}
-      style={type === 'success' ? { backgroundColor: `rgb(var(--primary-600))`, animation: 'slideUp 0.25s ease-out' } : { animation: 'slideUp 0.25s ease-out' }}
-    >
-      <Icon className="w-4 h-4 shrink-0" />
-      {message}
-      <button onClick={onDismiss} aria-label="Dismiss notification" className="ml-1 opacity-70 hover:opacity-100 transition-opacity">
-        <X className="w-3.5 h-3.5" />
-      </button>
-      <style>{`@keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }`}</style>
-    </div>
-  );
-};
-
-// ─── LocationStatusDropdown ───────────────────────────────────────────────────
-
-const LocationStatusDropdown = ({ status, onSelect, dropdownId, openId, setOpenId, size = 'sm', updating = false }) => {
+const LocationStatusBadge = ({ status }) => {
   const config = LOCATION_CONFIG[status] ?? LOCATION_CONFIG.verified;
-  const Icon   = updating ? RefreshCw : config.icon;
-  const isOpen = openId === dropdownId;
-  const ref    = useRef(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpenId(null); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [isOpen, setOpenId]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const h = (e) => { if (e.key === 'Escape') setOpenId(null); };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
-  }, [isOpen, setOpenId]);
-
-  const toggle       = (e) => { e.stopPropagation(); if (!updating) setOpenId(isOpen ? null : dropdownId); };
-  const handleSelect = (e, newStatus) => { e.stopPropagation(); onSelect(newStatus); setOpenId(null); };
-
-  const badgePadding = size === 'md' ? 'px-3 py-1.5' : 'px-2.5 py-1';
-  const badgeText    = size === 'md' ? 'text-sm'     : 'text-xs';
-  const iconSize     = size === 'md' ? 'w-3.5 h-3.5' : 'w-3 h-3';
+  const Icon   = config.icon;
 
   return (
-    <div className="relative inline-block" ref={ref}>
-      <button
-        type="button"
-        onClick={toggle}
-        disabled={updating}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-label={`Location status: ${config.label}. Click to change.`}
-        className={`inline-flex items-center gap-1.5 rounded-full font-semibold whitespace-nowrap select-none transition-all duration-150 focus:outline-none ${badgePadding} ${badgeText} ${updating ? 'opacity-70 cursor-wait' : 'cursor-pointer'} ${!config.usePrimary ? `${config.pill} ${config.pillHover}` : ''}`}
-        style={config.usePrimary ? {
-          backgroundColor: `rgb(var(--primary-100))`,
-          color:           `rgb(var(--primary-700))`,
-          border:          `1px solid rgb(var(--primary-200))`,
-          ...(isOpen ? {} : {}),
-        } : {}}
-        onMouseEnter={e => { if (config.usePrimary && !updating) { e.currentTarget.style.backgroundColor = `rgb(var(--primary-200))`; e.currentTarget.style.borderColor = `rgb(var(--primary-300))`; } }}
-        onMouseLeave={e => { if (config.usePrimary && !updating) { e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`; e.currentTarget.style.borderColor = `rgb(var(--primary-200))`; } }}
-      >
-        <Icon className={`${iconSize} ${updating ? 'animate-spin' : ''}`} />
-        {config.label}
-        {!updating && (
-          <ChevronDown className={`${iconSize} ml-0.5 opacity-60 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-        )}
-      </button>
-
-      {/* Dropdown panel */}
-      <div
-        className={`absolute left-0 top-[calc(100%+6px)] z-50 w-44 bg-white rounded-lg shadow-xl overflow-hidden transition-all duration-150 origin-top-left ${isOpen ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto' : 'opacity-0 scale-95 -translate-y-1 pointer-events-none'}`}
-        style={{ border: `1px solid rgb(var(--primary-100))` }}
-        role="listbox"
-        aria-label="Select location status"
-      >
-        <div
-          className="absolute -top-1.5 left-4 w-3 h-3 bg-white rotate-45"
-          style={{ borderLeft: `1px solid rgb(var(--primary-100))`, borderTop: `1px solid rgb(var(--primary-100))` }}
-        />
-        <div className="relative p-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wider px-3 pt-1.5 pb-1" style={{ color: `rgb(var(--primary-400))` }}>
-            Set Status
-          </p>
-          {STATUS_OPTIONS.map((opt) => {
-            const cfg = LOCATION_CONFIG[opt];
-            const OptionIcon = cfg.optionIcon;
-            const isSelected = status === opt;
-            return (
-              <button
-                key={opt}
-                role="option"
-                aria-selected={isSelected}
-                type="button"
-                onClick={(e) => handleSelect(e, opt)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-100 text-left ${!cfg.usePrimary ? cfg.optionBg : ''}`}
-                style={cfg.usePrimary && isSelected ? { backgroundColor: `rgb(var(--primary-50) / 0.8)` } : {}}
-                onMouseEnter={e => { if (cfg.usePrimary) e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; }}
-                onMouseLeave={e => { if (cfg.usePrimary) e.currentTarget.style.backgroundColor = isSelected ? `rgb(var(--primary-50) / 0.8)` : ''; }}
-              >
-                <OptionIcon
-                  className={`w-3.5 h-3.5 shrink-0 ${!cfg.usePrimary ? cfg.optionColor : ''}`}
-                  style={cfg.usePrimary ? { color: `rgb(var(--primary-600))` } : {}}
-                />
-                <span
-                  className={`flex-1 ${!cfg.usePrimary ? cfg.optionColor : ''}`}
-                  style={cfg.usePrimary ? { color: `rgb(var(--primary-600))` } : {}}
-                >
-                  {cfg.label}
-                </span>
-                {isSelected && (
-                  <CheckCircle
-                    className={`w-3.5 h-3.5 shrink-0 ${!cfg.usePrimary ? cfg.checkColor : ''}`}
-                    style={cfg.usePrimary ? { color: `rgb(var(--primary-600))` } : {}}
-                  />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap select-none ${!config.usePrimary ? config.pill : ''}`}
+      style={config.usePrimary ? {
+        backgroundColor: `rgb(var(--primary-100))`,
+        color:           `rgb(var(--primary-700))`,
+        border:          `1px solid rgb(var(--primary-200))`,
+      } : {}}
+    >
+      <Icon className="w-3 h-3" />
+      {config.label}
+    </span>
   );
 };
 
@@ -240,7 +121,6 @@ const MapPlaceholder = ({ latitude, longitude }) => {
         background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100)))`,
       }}
     >
-      {/* Grid overlay */}
       <div
         className="absolute inset-0 opacity-20"
         style={{
@@ -304,27 +184,11 @@ const MapPlaceholder = ({ latitude, longitude }) => {
   );
 };
 
-// ─── DetailsModal ─────────────────────────────────────────────────────────────
+// ─── DetailsModal (read-only) ─────────────────────────────────────────────────
 
-const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) => {
-  const [note,   setNote]   = useState(record.coordinator_note ?? '');
-  const [saving, setSaving] = useState(false);
-  const [saved,  setSaved]  = useState(false);
-  const [modalOpenId, setModalOpenId] = useState(null);
-
-  const hours      = computeHours(record.time_in, record.time_out);
-  const isUpdating = updatingId === record.attendance_id;
-  const isFlagged  = record.location_status === 'flagged';
-
-  useEffect(() => { setNote(record.coordinator_note ?? ''); }, [record.attendance_id]);
-
-  const handleSave = async () => {
-    setSaving(true);
-    await onSave(record.attendance_id, note);
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
+const DetailsModal = ({ record, onClose }) => {
+  const hours     = computeHours(record.time_in, record.time_out);
+  const isFlagged = record.location_status === 'flagged';
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
@@ -348,7 +212,7 @@ const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) =
       role="dialog" aria-modal="true" aria-labelledby="modal-title"
     >
       <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
         style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out' }}
       >
         <style>{`@keyframes modalIn { from { opacity: 0; transform: scale(0.97) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }`}</style>
@@ -394,169 +258,105 @@ const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) =
           </button>
         </div>
 
-        <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
+        <div className="overflow-y-auto p-6 space-y-5">
 
-          {/* Left panel */}
-          <div
-            className="flex-1 overflow-y-auto p-6 space-y-5 border-b lg:border-b-0 lg:border-r"
-            style={{ borderColor: `rgb(var(--primary-100))` }}
-          >
-            {/* Time Record */}
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
-                <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Time Record</h3>
-              </div>
-              <div className="rounded-xl p-5 space-y-3" style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}>
-                <DetailRow label="Date" value={formatDate(record.attendance_date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />
-                <DetailRow label="Time In" value={formatTime(record.time_in)} />
-                <DetailRow
-                  label="Time Out"
-                  value={
-                    record.time_out && !isMissingTimeOut(record.time_out) ? (
-                      formatTime(record.time_out)
-                    ) : (
-                      <span className="inline-flex items-center gap-1 text-amber-600 text-xs font-semibold bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
-                        <Clock className="w-3 h-3" />Not yet recorded
-                      </span>
-                    )
-                  }
-                />
-                <DetailRow
-                  label="Total Hours"
-                  value={
-                    hours ? (
-                      <span className="inline-flex items-center gap-1 font-bold" style={{ color: `rgb(var(--primary-700))` }}>
-                        <TrendingUp className="w-3.5 h-3.5" />{hours}
-                      </span>
-                    ) : (
-                      <span className="text-gray-400 text-xs italic">Cannot compute</span>
-                    )
-                  }
-                />
-              </div>
-            </section>
-
-            {/* Location Data */}
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <MapPin className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
-                <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Location Data</h3>
-              </div>
-              <div className="rounded-xl p-5 space-y-3" style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}>
-                <div className="grid grid-cols-2 gap-3">
-                  {[{ label: 'Latitude', value: record.latitude }, { label: 'Longitude', value: record.longitude }].map(({ label, value }) => (
-                    <div key={label} className="bg-white rounded-lg px-3 py-2" style={{ border: `1px solid rgb(var(--primary-100))` }}>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: `rgb(var(--primary-400))` }}>{label}</p>
-                      <p className="text-sm font-mono font-semibold" style={{ color: `rgb(var(--primary-800))` }}>{value ?? '—'}</p>
-                    </div>
-                  ))}
-                </div>
-                {record.distance_meters != null && (
-                  <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${record.distance_meters > 100 ? 'bg-amber-50 text-amber-700 border border-amber-100' : ''}`}
-                    style={record.distance_meters <= 100 ? {
-                      backgroundColor: `rgb(var(--primary-50))`,
-                      color:           `rgb(var(--primary-700))`,
-                      border:          `1px solid rgb(var(--primary-100))`,
-                    } : {}}
-                  >
-                    <Navigation className="w-3.5 h-3.5 shrink-0" />
-                    {record.distance_meters <= 100
-                      ? `Within range · ${record.distance_meters}m from site`
-                      : `${record.distance_meters}m from company site · Outside radius`}
-                  </div>
-                )}
-                <div className="pt-1">
-                  <MapPlaceholder latitude={record.latitude} longitude={record.longitude} />
-                </div>
-              </div>
-            </section>
-          </div>
-
-          {/* Right panel */}
-          <div
-            className="w-full lg:w-72 xl:w-80 shrink-0 flex flex-col overflow-y-auto p-6 space-y-5"
-            style={{ backgroundColor: `rgb(var(--primary-50) / 0.3)` }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <StickyNote className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
-              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Review</h3>
+          {/* Time Record */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <Clock className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
+              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Time Record</h3>
             </div>
+            <div className="rounded-xl p-5 space-y-3" style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}>
+              <DetailRow label="Date" value={formatDate(record.attendance_date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />
+              <DetailRow label="Time In" value={formatTime(record.time_in)} />
+              <DetailRow
+                label="Time Out"
+                value={
+                  record.time_out && !isMissingTimeOut(record.time_out) ? (
+                    formatTime(record.time_out)
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-amber-600 text-xs font-semibold bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
+                      <Clock className="w-3 h-3" />Not yet recorded
+                    </span>
+                  )
+                }
+              />
+              <DetailRow
+                label="Total Hours"
+                value={
+                  hours ? (
+                    <span className="inline-flex items-center gap-1 font-bold" style={{ color: `rgb(var(--primary-700))` }}>
+                      <TrendingUp className="w-3.5 h-3.5" />{hours}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400 text-xs italic">Cannot compute</span>
+                  )
+                }
+              />
+            </div>
+          </section>
 
-            <div className="bg-white rounded-xl p-4 space-y-3" style={{ border: `1px solid rgb(var(--primary-100))` }}>
-              <div>
-                <p className="text-xs font-medium mb-2" style={{ color: `rgb(var(--primary-500))` }}>Location Status</p>
-                <LocationStatusDropdown
-                  status={record.location_status}
-                  onSelect={(newStatus) => onStatusChange(record.attendance_id, newStatus)}
-                  dropdownId={`modal-${record.attendance_id}`}
-                  openId={modalOpenId}
-                  setOpenId={setModalOpenId}
-                  size="md"
-                  updating={isUpdating}
-                />
+          {/* Location Data */}
+          <section>
+            <div className="flex items-center gap-2 mb-3">
+              <MapPin className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
+              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Location Data</h3>
+            </div>
+            <div className="rounded-xl p-5 space-y-3" style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}>
+              <div className="grid grid-cols-2 gap-3">
+                {[{ label: 'Latitude', value: record.latitude }, { label: 'Longitude', value: record.longitude }].map(({ label, value }) => (
+                  <div key={label} className="bg-white rounded-lg px-3 py-2" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: `rgb(var(--primary-400))` }}>{label}</p>
+                    <p className="text-sm font-mono font-semibold" style={{ color: `rgb(var(--primary-800))` }}>{value ?? '—'}</p>
+                  </div>
+                ))}
               </div>
+              {record.distance_meters != null && (
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${record.distance_meters > 100 ? 'bg-amber-50 text-amber-700 border border-amber-100' : ''}`}
+                  style={record.distance_meters <= 100 ? {
+                    backgroundColor: `rgb(var(--primary-50))`,
+                    color:           `rgb(var(--primary-700))`,
+                    border:          `1px solid rgb(var(--primary-100))`,
+                  } : {}}
+                >
+                  <Navigation className="w-3.5 h-3.5 shrink-0" />
+                  {record.distance_meters <= 100
+                    ? `Within range · ${record.distance_meters}m from site`
+                    : `${record.distance_meters}m from company site · Outside radius`}
+                </div>
+              )}
+              <div className="pt-1">
+                <MapPlaceholder latitude={record.latitude} longitude={record.longitude} />
+              </div>
+            </div>
+          </section>
+
+          {/* Location Status */}
+          <section>
+            <div className="bg-white rounded-xl p-4" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+              <p className="text-xs font-medium mb-2" style={{ color: `rgb(var(--primary-500))` }}>Location Status</p>
+              <LocationStatusBadge status={record.location_status} />
               {record.location_status === 'flagged' && (
-                <div className="flex items-start gap-2 mt-1 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-2 mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-700 leading-relaxed">
-                    The recorded location does not match the expected company address. Please review and add a note if needed.
+                    The recorded location does not match the expected company address.
                   </p>
                 </div>
               )}
             </div>
+          </section>
 
-            <div className="flex-1 flex flex-col">
-              <label htmlFor="coordinator-note" className="block text-xs font-semibold mb-1.5" style={{ color: `rgb(var(--primary-700))` }}>
-                Coordinator Notes
-              </label>
-              <textarea
-                id="coordinator-note"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Add notes or remarks about this attendance record…"
-                rows={8}
-                className="w-full flex-1 text-sm bg-white rounded-lg px-3 py-2.5 resize-none outline-none transition leading-relaxed"
-                style={{
-                  color:       `rgb(var(--primary-800))`,
-                  border:      `1px solid rgb(var(--primary-200))`,
-                  '::placeholder': { color: `rgb(var(--primary-300))` },
-                }}
-                onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                onBlur={e =>  { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
-              />
-              <p className="text-xs mt-1 text-right" style={{ color: `rgb(var(--primary-400))` }} aria-live="polite">
-                {note.length} characters
-              </p>
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-white text-sm font-semibold rounded-lg active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150 shadow-sm"
-                style={{ backgroundColor: `rgb(var(--primary-600))` }}
-                onMouseEnter={e => { if (!saving) e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`; }}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
-              >
-                {saving ? (
-                  <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Saving…</>
-                ) : saved ? (
-                  <><CheckCircle className="w-4 h-4" />Saved!</>
-                ) : (
-                  <><Save className="w-4 h-4" />Save Notes</>
-                )}
-              </button>
-              <button
-                onClick={onClose}
-                className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg active:scale-[0.98] transition-all duration-150 bg-white"
-                style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
-                onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
-                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
-              >
-                Close
-              </button>
-            </div>
+          <div className="pt-1">
+            <button
+              onClick={onClose}
+              className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg active:scale-[0.98] transition-all duration-150 bg-white"
+              style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+            >
+              Close
+            </button>
           </div>
         </div>
       </div>
@@ -568,7 +368,7 @@ const DetailsModal = ({ record, onClose, onSave, onStatusChange, updatingId }) =
 
 const SkeletonRow = ({ delay = 0 }) => (
   <tr style={{ borderBottom: `1px solid rgb(var(--primary-50))`, animationDelay: `${delay}ms` }}>
-    {[24, 16, 16, 12, 24, 32, 16].map((w, i) => (
+    {[24, 16, 16, 12, 24, 16].map((w, i) => (
       <td key={i} className="py-4 px-4">
         <div
           className="h-4 rounded animate-pulse"
@@ -581,7 +381,7 @@ const SkeletonRow = ({ delay = 0 }) => (
 
 const EmptyTableState = ({ hasFilter }) => (
   <tr>
-    <td colSpan={7} className="py-20 text-center">
+    <td colSpan={6} className="py-20 text-center">
       <div className="flex flex-col items-center gap-3">
         <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: `rgb(var(--primary-50))` }}>
           <Calendar className="w-8 h-8" style={{ color: `rgb(var(--primary-300))` }} />
@@ -590,7 +390,7 @@ const EmptyTableState = ({ hasFilter }) => (
           {hasFilter ? 'No matching records' : 'No attendance records yet'}
         </p>
         <p className="text-sm max-w-xs" style={{ color: `rgb(var(--primary-500))` }}>
-          {hasFilter ? 'Try adjusting your search or filter.' : 'Attendance records will appear once the student starts logging.'}
+          {hasFilter ? 'Try adjusting your search or filter.' : 'Attendance records will appear once you start logging.'}
         </p>
       </div>
     </td>
@@ -610,15 +410,13 @@ const StudentAttendance = () => {
   const [search,       setSearch]       = useState('');
   const [dateFilter,   setDateFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [tableOpenId,  setTableOpenId]  = useState(null);
-  const [updatingId,   setUpdatingId]   = useState(null);
-  const [toast,        setToast]        = useState(null);
 
   useEffect(() => {
     getCoordinatorAttendance()
       .then((data) => {
         const studentRecords = (Array.isArray(data) ? data : [])
-          .filter((r) => String(r.student_id) === String(studentId));
+          .filter((r) => String(r.student_id) === String(studentId))
+          .map(({ coordinator_note: _note, ...rest }) => rest); // strip coordinator notes
         studentRecords.sort((a, b) => new Date(b.attendance_date) - new Date(a.attendance_date));
         setAllRecords(studentRecords);
       })
@@ -654,29 +452,6 @@ const StudentAttendance = () => {
   }, [allRecords, search, dateFilter, statusFilter]);
 
   const hasFilter = search.trim() !== '' || dateFilter !== '' || statusFilter !== 'all';
-
-  const showToast = useCallback((message, type = 'success') => setToast({ message, type }), []);
-
-  const handleStatusChange = useCallback(async (id, newStatus) => {
-    setUpdatingId(id);
-    try {
-      setAllRecords((prev) => prev.map((r) => r.attendance_id === id ? { ...r, location_status: newStatus } : r));
-      setSelected((prev) => prev?.attendance_id === id ? { ...prev, location_status: newStatus } : prev);
-      await updateAttendanceLocationStatus(id, newStatus);
-      const label = LOCATION_CONFIG[newStatus]?.label ?? newStatus;
-      showToast(`Status updated to ${label}`, newStatus === 'flagged' ? 'warning' : 'success');
-    } catch (err) {
-      console.error('Failed to update location status:', err);
-      showToast('Failed to update status. Please try again.', 'warning');
-    } finally {
-      setUpdatingId(null);
-    }
-  }, [showToast]);
-
-  const handleSaveNote = useCallback(async (id, note) => {
-    setAllRecords((prev) => prev.map((r) => r.attendance_id === id ? { ...r, coordinator_note: note } : r));
-    setSelected((prev) => prev?.attendance_id === id ? { ...prev, coordinator_note: note } : prev);
-  }, []);
 
   const clearFilters = useCallback(() => { setSearch(''); setDateFilter(''); setStatusFilter('all'); }, []);
 
@@ -715,7 +490,6 @@ const StudentAttendance = () => {
                     </p>
                   )}
                 </div>
-                {/* Mini stats — verified uses primary; flagged/missing are semantic */}
                 <div className="flex items-center gap-3 shrink-0 flex-wrap">
                   <div className="flex flex-col items-center rounded-lg px-4 py-2" style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}>
                     <span className="text-lg font-bold" style={{ color: `rgb(var(--primary-600))` }}>{stats.verified}</span>
@@ -816,7 +590,7 @@ const StudentAttendance = () => {
               <table className="w-full min-w-175">
                 <thead>
                   <tr style={{ backgroundColor: `rgb(var(--primary-50) / 0.6)` }}>
-                    {['Date', 'Time In', 'Time Out', 'Computed Hours', 'Location Status', 'Notes', 'Action'].map((col) => (
+                    {['Date', 'Time In', 'Time Out', 'Computed Hours', 'Location Status', 'Action'].map((col) => (
                       <th key={col} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: `rgb(var(--primary-600))` }}>
                         {col}
                       </th>
@@ -828,7 +602,7 @@ const StudentAttendance = () => {
                     Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} delay={i * 60} />)
                   ) : error ? (
                     <tr>
-                      <td colSpan={7} className="py-16 text-center">
+                      <td colSpan={6} className="py-16 text-center">
                         <div className="flex flex-col items-center gap-3">
                           <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center">
                             <AlertTriangle className="w-6 h-6 text-red-300" />
@@ -845,7 +619,6 @@ const StudentAttendance = () => {
                       const hours      = computeHours(rec.time_in, rec.time_out);
                       const missingOut = isMissingTimeOut(rec.time_out);
                       const config     = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
-                      const isUpdating = updatingId === rec.attendance_id;
 
                       return (
                         <tr
@@ -880,24 +653,7 @@ const StudentAttendance = () => {
                             )}
                           </td>
                           <td className="py-4 px-4">
-                            <LocationStatusDropdown
-                              status={rec.location_status}
-                              onSelect={(newStatus) => handleStatusChange(rec.attendance_id, newStatus)}
-                              dropdownId={`table-${rec.attendance_id}`}
-                              openId={tableOpenId}
-                              setOpenId={setTableOpenId}
-                              size="sm"
-                              updating={isUpdating}
-                            />
-                          </td>
-                          <td className="py-4 px-4 max-w-45">
-                            {rec.coordinator_note ? (
-                              <p className="text-xs line-clamp-2 leading-relaxed" style={{ color: `rgb(var(--primary-600))` }}>
-                                {rec.coordinator_note}
-                              </p>
-                            ) : (
-                              <span className="text-xs italic" style={{ color: `rgb(var(--primary-300))` }}>No notes</span>
-                            )}
+                            <LocationStatusBadge status={rec.location_status} />
                           </td>
                           <td className="py-4 px-4">
                             <button
@@ -954,13 +710,8 @@ const StudentAttendance = () => {
         <DetailsModal
           record={selected}
           onClose={() => setSelected(null)}
-          onSave={handleSaveNote}
-          onStatusChange={handleStatusChange}
-          updatingId={updatingId}
         />
       )}
-
-      {toast && <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </>
   );
 };
