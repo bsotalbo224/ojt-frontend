@@ -30,7 +30,7 @@ const EMPTY_FORM = {
 
 const studentsApi = {
   getCourses: async () => (await apiClient.get('/courses')).data,
-  getRequiredHours: async () => (await apiClient.get('/api/required-hours')).data,
+  getRequiredHours: async () => (await apiClient.get('/required-hours')).data,
   createStudent: async (payload) => (await apiClient.post('/student', payload)).data,
   updateStudent: async (id, payload) => (await apiClient.put(`/student/${id}`, payload)).data,
 };
