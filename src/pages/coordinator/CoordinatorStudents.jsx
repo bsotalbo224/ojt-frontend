@@ -376,134 +376,139 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
   };
 
   return (
-    <>
-      <div className="fixed inset-0 z-9998 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 pointer-events-none">
+    <div className="fixed inset-0 z-9998 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col"
+        style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out forwards' }}
+      >
+        {/* Header */}
         <div
-          className="pointer-events-auto w-full max-w-lg bg-white rounded-2xl shadow-xl flex flex-col max-h-[90vh]"
-          style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out forwards' }}
+          className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0"
+          style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
         >
-          {/* Header */}
-          <div
-            className="flex items-center justify-between px-6 pt-5 pb-4 shrink-0"
-            style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: `rgb(var(--primary-50))` }}>
-                {isEdit
-                  ? <Edit2 className="w-5 h-5" style={{ color: `rgb(var(--primary-600))` }} />
-                  : <Plus className="w-5 h-5" style={{ color: `rgb(var(--primary-600))` }} />
-                }
-              </div>
-              <div>
-                <h3 className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>
-                  {isEdit ? 'Edit Student' : 'Add New Student'}
-                </h3>
-                <p className="text-xs mt-0.5" style={{ color: `rgb(var(--primary-500))` }}>
-                  {isEdit ? 'Update student information' : 'Create a new student account'}
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors duration-150"
-              style={{ color: `rgb(var(--primary-400))` }}
-              onMouseEnter={e => { e.currentTarget.style.color = `rgb(var(--primary-700))`; e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; }}
-              onMouseLeave={e => { e.currentTarget.style.color = `rgb(var(--primary-400))`; e.currentTarget.style.backgroundColor = ''; }}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: `rgb(var(--primary-100))` }}
             >
-              <X className="w-4 h-4" />
-            </button>
+              {isEdit
+                ? <Edit2 className="w-5 h-5" style={{ color: `rgb(var(--primary-600))` }} />
+                : <Plus className="w-5 h-5" style={{ color: `rgb(var(--primary-600))` }} />
+              }
+            </div>
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: `rgb(var(--primary-900))` }}>
+                {isEdit ? 'Edit Student' : 'Add New Student'}
+              </h2>
+              <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
+                {isEdit ? 'Update student information' : 'Create a new student account'}
+              </p>
+            </div>
           </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center transition-colors"
+            style={{ color: `rgb(var(--primary-500))` }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = ''; }}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-            {apiError && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                <p className="text-sm text-red-600">{apiError}</p>
-              </div>
-            )}
-            <div className="grid grid-cols-2 gap-4">
-              <ThemedInput label="First Name" id="f_name" placeholder="First name" value={form.f_name} onChange={set('f_name')} error={errors.f_name} />
-              <ThemedInput label="Last Name" id="l_name" placeholder="Last name" value={form.l_name} onChange={set('l_name')} error={errors.l_name} />
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {apiError && (
+            <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <p className="text-sm text-red-600">{apiError}</p>
             </div>
-            <ThemedInput label="Email Address" id="email" type="email" placeholder="student@email.com" value={form.email} onChange={set('email')} error={errors.email} />
-            <ThemedSelect label="Course" id="course_id" value={form.course_id} onChange={set('course_id')} error={errors.course_id}>
-              <option value="">Select a course…</option>
-              {courses.map((c) => <option key={c.course_id} value={c.course_id}>{c.course_name}</option>)}
-            </ThemedSelect>
-            {/* ── FIX: requiredHoursOptions is [{ id, hours }] — render h.hours, not h ── */}
-            <ThemedSelect
-              label="Required OJT Hours"
-              id="ojt_hours_required"
-              value={form.ojt_hours_required}
-              onChange={(e) => setForm((f) => ({ ...f, ojt_hours_required: Number(e.target.value) }))}
-              error={errors.ojt_hours_required}
-            >
-              {requiredHoursOptions.length === 0 ? (
-                <option value="" disabled>No options available</option>
-              ) : (
-                <>
-                  <option value="">Select required hours…</option>
-                  {/* Dynamic "course default" option — only shown when a course with required_hours is selected */}
-                  {selectedCourseDefault && (
-                    <option value={selectedCourseDefault}>
-                      Use Course Default ({selectedCourseDefault} hrs)
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <ThemedInput label="First Name" id="f_name" placeholder="First Name" value={form.f_name} onChange={set('f_name')} error={errors.f_name} />
+            <ThemedInput label="Last Name" id="l_name" placeholder="Last Name" value={form.l_name} onChange={set('l_name')} error={errors.l_name} />
+          </div>
+          <ThemedInput label="Email Address" id="email" type="email" placeholder="Email" value={form.email} onChange={set('email')} error={errors.email} />
+          <ThemedSelect label="Course" id="course_id" value={form.course_id} onChange={set('course_id')} error={errors.course_id}>
+            <option value="">Select a course…</option>
+            {courses.map((c) => (
+              <option key={c.course_id} value={c.course_id}>{c.course_name}</option>
+            ))}
+          </ThemedSelect>
+          <ThemedSelect
+            label="Required OJT Hours"
+            id="ojt_hours_required"
+            value={form.ojt_hours_required}
+            onChange={(e) => setForm((f) => ({ ...f, ojt_hours_required: Number(e.target.value) }))}
+            error={errors.ojt_hours_required}
+          >
+            {requiredHoursOptions.length === 0 ? (
+              <option value="" disabled>No options available</option>
+            ) : (
+              <>
+                <option value="">Select required hours…</option>
+                {/* Dynamic "course default" option — only shown when a course with required_hours is selected */}
+                {selectedCourseDefault && (
+                  <option value={selectedCourseDefault}>
+                    Use Course Default ({selectedCourseDefault} hrs)
+                  </option>
+                )}
+                {requiredHoursOptions
+                  /* Exclude the course-default value from the regular list to avoid duplicates */
+                  .filter((opt) => String(opt.hours) !== String(selectedCourseDefault))
+                  .map((opt) => (
+                    <option key={opt.id} value={opt.hours}>
+                      {opt.hours} hours
                     </option>
-                  )}
-                  {requiredHoursOptions
-                    /* Exclude the course-default value from the regular list to avoid duplicates */
-                    .filter((h) => String(h.hours) !== String(selectedCourseDefault))
-                    .map((h) => (
-                      <option key={h.id} value={h.hours}>
-                        {h.hours} hours
-                      </option>
-                    ))}
-                </>
-              )}
-            </ThemedSelect>
-            {!isEdit && (
-              <div
-                className="flex items-start gap-2.5 p-3 rounded-lg"
-                style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
-              >
-                <Mail className="w-4 h-4 mt-0.5 shrink-0" style={{ color: `rgb(var(--primary-500))` }} />
-                <p className="text-xs leading-relaxed" style={{ color: `rgb(var(--primary-600))` }}>
-                  Login credentials will be automatically generated and sent to the student's email.
-                </p>
-              </div>
+                  ))}
+              </>
             )}
-          </div>
+          </ThemedSelect>
+          {!isEdit && (
+            <div
+              className="flex items-start gap-2 p-3 rounded-lg"
+              style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
+            >
+              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: `rgb(var(--primary-500))` }} />
+              <p className="text-xs leading-relaxed" style={{ color: `rgb(var(--primary-600))` }}>
+                Login credentials will be automatically generated and sent to the student's email.
+              </p>
+            </div>
+          )}
+        </div>
 
-          {/* Footer */}
-          <div
-            className="flex items-center justify-end gap-3 px-6 py-4 shrink-0 rounded-b-2xl"
-            style={{ borderTop: `1px solid rgb(var(--primary-50))`, backgroundColor: `rgb(var(--primary-50))` }}
+        {/* Footer */}
+        <div
+          className="flex items-center justify-end gap-3 px-6 py-4 shrink-0 rounded-b-2xl"
+          style={{ borderTop: `1px solid rgb(var(--primary-50))`, backgroundColor: `rgb(var(--primary-50), 0.3)` }}
+        >
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors"
+            style={{
+              border: `1px solid rgb(var(--primary-200))`,
+              color: `rgb(var(--primary-700))`,
+            }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
           >
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150"
-              style={{ color: `rgb(var(--primary-700))`, backgroundColor: 'white', border: `1px solid rgb(var(--primary-200))` }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-100))`}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={saving}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-semibold text-white transition-all duration-150 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-              style={{ backgroundColor: `rgb(var(--primary-600))` }}
-              onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`; }}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`; }}
-            >
-              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {isEdit ? 'Save Changes' : 'Create Student'}
-            </button>
-          </div>
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-lg text-white text-sm font-semibold transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ backgroundColor: `rgb(var(--primary-600))` }}
+            onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`; }}
+          >
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {isEdit ? 'Save Changes' : 'Create Student'}
+          </button>
         </div>
       </div>
-    </>
+    </div>
   );
 };
 
