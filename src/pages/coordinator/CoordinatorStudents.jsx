@@ -39,15 +39,13 @@ const studentsApi = {
 
 const isCompleted = (student) => student.hours_completed >= student.ojt_hours_required;
 
-// ✅ FIX: Converts "HH:mm:ss" → "h:mm AM/PM" without using new Date()
-// Avoids timezone shifts by doing pure string parsing + integer math.
 const formatTime12h = (timeStr) => {
   if (!timeStr) return '—';
   const [hourStr, minuteStr] = timeStr.split(':');
   const hour = parseInt(hourStr, 10);
   if (isNaN(hour)) return '—';
   const period = hour >= 12 ? 'PM' : 'AM';
-  const hour12 = hour % 12 || 12; // 0 → 12 (midnight), 12 → 12 (noon)
+  const hour12 = hour % 12 || 12;
   return `${hour12}:${minuteStr} ${period}`;
 };
 
@@ -335,14 +333,22 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
   // Auto-fill ojt_hours_required when course changes, using course's required_hours as a default.
-  // The user can still override the value via the dropdown.
+  // Only fills if the field is currently empty so user overrides are preserved.
+  // Depends on both form.course_id and courses so it runs once courses are loaded.
   useEffect(() => {
-    if (!form.course_id) return;
+    if (!form.course_id || courses.length === 0) return;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
-    if (matched?.required_hours) {
+    if (matched?.required_hours && !form.ojt_hours_required) {
       setForm((f) => ({ ...f, ojt_hours_required: matched.required_hours }));
     }
-  }, [form.course_id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form.course_id, courses]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Derive the default hours for the currently selected course (used for the dynamic option label).
+  const selectedCourseDefault = (() => {
+    if (!form.course_id || courses.length === 0) return null;
+    const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
+    return matched?.required_hours ?? null;
+  })();
 
   const validate = () => {
     const e = {};
@@ -432,7 +438,16 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
               ) : (
                 <>
                   <option value="">Select required hours…</option>
-                  {requiredHoursOptions.map((h) => <option key={h} value={h}>{h} hours</option>)}
+                  {/* Dynamic "course default" option — only shown when a course with required_hours is selected */}
+                  {selectedCourseDefault && (
+                    <option value={selectedCourseDefault}>
+                      Use Course Default ({selectedCourseDefault} hrs)
+                    </option>
+                  )}
+                  {requiredHoursOptions
+                    /* Exclude the course-default value from the regular list to avoid duplicates */
+                    .filter((h) => String(h) !== String(selectedCourseDefault))
+                    .map((h) => <option key={h} value={h}>{h} hours</option>)}
                 </>
               )}
             </ThemedSelect>
@@ -586,11 +601,7 @@ const CoordinatorStudents = () => {
       showToast(`Company assigned to ${selectedStudent.f_name} ${selectedStudent.l_name}`);
     } catch (err) {
       console.error('Assign company error:', err);
-
-      const message =
-        err.response?.data?.message ||
-        "Failed to assign company";
-
+      const message = err.response?.data?.message || 'Failed to assign company';
       showToast(message);
     } finally {
       setSubmitting(false);
@@ -848,7 +859,7 @@ const CoordinatorStudents = () => {
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
-                            {/* Assign / Change Company — kept semantic per original */}
+                            {/* Assign / Change Company */}
                             <button
                               onClick={() => openAssignModal(student)}
                               disabled={loading}
@@ -1060,16 +1071,12 @@ const CoordinatorStudents = () => {
                                     return date && !isNaN(date) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
                                   })()}
                                 </td>
-
-
                                 <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>
                                   {formatTime12h(rec.time_in)}
                                 </td>
-
                                 <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>
                                   {formatTime12h(rec.time_out)}
                                 </td>
-
                                 <td className="py-2.5 px-4 whitespace-nowrap cursor-default select-none">
                                   <span
                                     className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
