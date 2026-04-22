@@ -432,7 +432,14 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
               <option value="">Select a course…</option>
               {courses.map((c) => <option key={c.course_id} value={c.course_id}>{c.course_name}</option>)}
             </ThemedSelect>
-            <ThemedSelect label="Required OJT Hours" id="ojt_hours_required" value={form.ojt_hours_required} onChange={set('ojt_hours_required')} error={errors.ojt_hours_required}>
+            {/* ── FIX: requiredHoursOptions is [{ id, hours }] — render h.hours, not h ── */}
+            <ThemedSelect
+              label="Required OJT Hours"
+              id="ojt_hours_required"
+              value={form.ojt_hours_required}
+              onChange={(e) => setForm((f) => ({ ...f, ojt_hours_required: Number(e.target.value) }))}
+              error={errors.ojt_hours_required}
+            >
               {requiredHoursOptions.length === 0 ? (
                 <option value="" disabled>No options available</option>
               ) : (
@@ -446,8 +453,12 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
                   )}
                   {requiredHoursOptions
                     /* Exclude the course-default value from the regular list to avoid duplicates */
-                    .filter((h) => String(h) !== String(selectedCourseDefault))
-                    .map((h) => <option key={h} value={h}>{h} hours</option>)}
+                    .filter((h) => String(h.hours) !== String(selectedCourseDefault))
+                    .map((h) => (
+                      <option key={h.id} value={h.hours}>
+                        {h.hours} hours
+                      </option>
+                    ))}
                 </>
               )}
             </ThemedSelect>
