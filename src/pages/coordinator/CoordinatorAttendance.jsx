@@ -78,7 +78,7 @@ const StudentCard = ({ student, onClick }) => {
   const { records, full_name } = student;
 
   const verified = records.filter((r) => r.location_status === 'verified').length;
-  const discrepancy = records.filter((r) => r.location_status === 'discrepancy').length;
+  const flagged = records.filter((r) => r.location_status === 'flagged').length;
   const missingOut = records.filter((r) => isMissingTimeOut(r.time_out)).length;
 
   return (
@@ -117,7 +117,7 @@ const StudentCard = ({ student, onClick }) => {
         </div>
       </div>
 
-      {/* Stat Row — verified uses primary vars; discrepancy/missing-out are semantic */}
+      {/* Stat Row */}
       <div className="px-5 pb-4 grid grid-cols-3 gap-2 items-stretch">
         <div
           className="flex flex-col items-center justify-center rounded-lg py-2 min-h-14"
@@ -136,10 +136,10 @@ const StudentCard = ({ student, onClick }) => {
             Verified
           </span>
         </div>
-        {/* Discrepancy — amber is semantic */}
+        {/* Flagged — amber is semantic */}
         <div className="flex flex-col items-center justify-center bg-amber-50 border border-amber-100 rounded-lg py-2 min-h-14">
-          <span className="text-lg font-bold text-amber-600">{discrepancy}</span>
-          <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide text-center whitespace-nowrap">Discrepancy</span>
+          <span className="text-lg font-bold text-amber-600">{flagged}</span>
+          <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide text-center whitespace-nowrap">Flagged</span>
         </div>
         {/* Missing time-out — orange is semantic */}
         <div className="flex flex-col items-center justify-center bg-orange-50 border border-orange-100 rounded-lg py-2 min-h-14">
@@ -216,7 +216,6 @@ const EmptyState = ({ hasFilter }) => (
   </div>
 );
 
-/* ErrorState uses red — semantic, keep as Tailwind */
 const ErrorState = () => (
   <div className="col-span-full py-20 flex flex-col items-center gap-3 text-center">
     <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center">
@@ -248,7 +247,7 @@ const CoordinatorAttendance = () => {
 
   const stats = useMemo(() => ({
     totalStudents: students.length,
-    discrepancy: records.filter((r) => r.location_status === 'discrepancy').length,
+    flagged: records.filter((r) => r.location_status === 'flagged').length,
     missingOut: records.filter((r) => isMissingTimeOut(r.time_out)).length,
   }), [students, records]);
 
@@ -298,7 +297,6 @@ const CoordinatorAttendance = () => {
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Total students — primary themed */}
           <SummaryCard
             title="Total Students"
             value={stats.totalStudents}
@@ -306,10 +304,9 @@ const CoordinatorAttendance = () => {
             accent="text-gray-800"
             loading={loading}
           />
-          {/* Discrepancy + Missing — semantic colours passed via accent prop (Tailwind) */}
           <SummaryCard
-            title="With Discrepancy"
-            value={stats.discrepancy}
+            title="Flagged Attendance"
+            value={stats.flagged}
             icon={MapPin}
             accent="text-amber-600"
             loading={loading}
