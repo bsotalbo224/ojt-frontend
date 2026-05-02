@@ -98,6 +98,7 @@ const CoordinatorDashboard = () => {
   const attentionRows = [
     {
       label:      'Flagged Attendance',
+      sublabel:   'Students not in their assigned location',
       value:      flaggedAttendance,
       pct:        clamp(flaggedAttendance, 20),
       accentColor:'#ef4444',
@@ -109,6 +110,7 @@ const CoordinatorDashboard = () => {
     },
     {
       label:      'Submitted Daily Logs',
+      sublabel:   null,
       value:      attentionPendingLogs,
       pct:        clamp(attentionPendingLogs, 50),
       accentColor:'#f97316',
@@ -120,6 +122,7 @@ const CoordinatorDashboard = () => {
     },
     {
       label:      'Submitted Narratives',
+      sublabel:   null,
       value:      attentionNarratives,
       pct:        clamp(attentionNarratives, 50),
       accentColor:'#a855f7',
@@ -452,7 +455,7 @@ const CoordinatorDashboard = () => {
                   Students needing attention
                 </p>
                 <p className="text-xs" style={{ color: `rgb(var(--primary-400))` }}>
-                  Flagged attendance and submitted items
+                  Incomplete attendance sessions and pending submissions
                 </p>
               </div>
               <span
@@ -492,12 +495,22 @@ const CoordinatorDashboard = () => {
                               style={{ color: row.accentColor }}
                             />
                           </div>
-                          <span
-                            className="text-xs font-medium group-hover:underline"
-                            style={{ color: `rgb(var(--primary-700))` }}
-                          >
-                            {row.label}
-                          </span>
+                          <div className="flex flex-col">
+                            <span
+                              className="text-xs font-medium group-hover:underline leading-tight"
+                              style={{ color: `rgb(var(--primary-700))` }}
+                            >
+                              {row.label}
+                            </span>
+                            {row.sublabel && (
+                              <span
+                                className="text-xs leading-tight"
+                                style={{ color: `rgb(var(--primary-400))` }}
+                              >
+                                {row.sublabel}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <span
                           className="text-xs font-bold"
@@ -603,8 +616,12 @@ const CoordinatorDashboard = () => {
             <p className="text-sm font-semibold mb-0.5" style={{ color: `rgb(var(--primary-800))` }}>
               Hours completion
             </p>
-            <p className="text-xs mb-5" style={{ color: `rgb(var(--primary-400))` }}>
-              Average OJT hours logged vs required.
+            {/* ── Updated subtitle: session-based context ── */}
+            <p className="text-xs mb-1" style={{ color: `rgb(var(--primary-400))` }}>
+              Average OJT hours (Morning + Afternoon + OT)
+            </p>
+            <p className="text-xs mb-5" style={{ color: `rgb(var(--primary-300))` }}>
+              Includes all attendance sessions
             </p>
 
             {loading ? (
@@ -651,6 +668,49 @@ const CoordinatorDashboard = () => {
                   >
                     {hoursPct}%
                   </span>
+                </div>
+
+                {/* ── Session Legend ── */}
+                <div className="flex items-center gap-4 mt-3 mb-3">
+                  <span
+                    className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}
+                  >
+                    ☀ Morning
+                  </span>
+                  <span
+                    className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
+                  >
+                    🧳 Afternoon
+                  </span>
+                  <span
+                    className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: '#f5f3ff', color: '#6d28d9', border: '1px solid #ddd6fe' }}
+                  >
+                    ⏱ OT
+                  </span>
+                </div>
+
+                {/* ── Session context note ── */}
+                <p className="text-xs mb-3" style={{ color: `rgb(var(--primary-400))` }}>
+                  Morning (AM), Afternoon (PM), and OT sessions are combined
+                </p>
+
+                {/* ── Work Structure Insight ── */}
+                <div
+                  className="rounded-xl p-3 mt-1"
+                  style={{
+                    backgroundColor: `rgb(var(--primary-50))`,
+                    border: `1px solid rgb(var(--primary-100))`,
+                  }}
+                >
+                  <p className="text-xs font-semibold mb-1" style={{ color: `rgb(var(--primary-700))` }}>
+                    Work Structure Insight
+                  </p>
+                  <p className="text-xs leading-relaxed" style={{ color: `rgb(var(--primary-500))` }}>
+                    Students typically complete 2 main sessions daily (Morning &amp; Afternoon). OT is optional.
+                  </p>
                 </div>
 
                 <div className="flex items-center gap-1.5 mt-4">

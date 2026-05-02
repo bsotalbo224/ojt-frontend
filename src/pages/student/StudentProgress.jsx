@@ -4,11 +4,13 @@ import {
   TrendingUp, Calendar, FileText, BookOpen,
   ClipboardCheck, CheckCircle2, Circle,
   Building2, User, GraduationCap,
-  BarChart3, Activity, Award
+  BarChart3, Activity, Award,
+  Sun, Briefcase, Moon, Info, Zap, Minus, TrendingDown,
 } from 'lucide-react';
 
 const toInt = (n) => Math.round(Number(n || 0));
 
+/* ── unchanged ── */
 const computeStatus = (data) => {
   const { student, checklist } = data;
   if (
@@ -26,6 +28,33 @@ const computeStatus = (data) => {
   return   { label: "Hours Completed",          color: "teal"   };
 };
 
+/* ─────────────────────────────────────────
+   NEW: Performance insight from avg hours
+───────────────────────────────────────────*/
+const computeInsight = (avgHoursPerDay) => {
+  if (avgHoursPerDay >= 6) return {
+    label: "Consistent",
+    desc:  "You're maintaining excellent session coverage each day.",
+    Icon:  Zap,
+    bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d", dot: "#22c55e",
+  };
+  if (avgHoursPerDay >= 4) return {
+    label: "Moderate",
+    desc:  "Good progress — consider completing all three sessions daily.",
+    Icon:  TrendingUp,
+    bg: "#fefce8", border: "#fde68a", text: "#a16207", dot: "#eab308",
+  };
+  return {
+    label: "Needs Improvement",
+    desc:  "Try to complete Morning and Afternoon sessions consistently.",
+    Icon:  TrendingDown,
+    bg: "#fff7ed", border: "#fed7aa", text: "#c2410c", dot: "#f97316",
+  };
+};
+
+/* ─────────────────────────────────────────
+   SHARED COMPONENTS — all unchanged
+───────────────────────────────────────────*/
 const SectionCard = ({ icon: Icon, title, children, className = "" }) => (
   <div
     className={`bg-white rounded-xl shadow-md p-5 ${className}`}
@@ -94,6 +123,78 @@ const ChecklistItem = ({ checked, label }) => (
   </div>
 );
 
+/* ─────────────────────────────────────────
+   NEW: Decorative session row
+───────────────────────────────────────────*/
+const SessionRow = ({ Icon, label, description, barCount, barColor, accentColor }) => (
+  <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
+    <div
+      className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+      style={{ background: `${accentColor}18`, border: `1px solid ${accentColor}40` }}
+    >
+      <Icon className="w-3.5 h-3.5" style={{ color: accentColor }} />
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-gray-800">{label}</p>
+        {/* Decorative bar indicators */}
+        <div className="flex items-center gap-0.5 shrink-0">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-2 rounded-sm"
+              style={{
+                width: i === 2 && barCount < 3 ? "6px" : "8px",
+                background: i < barCount ? barColor : "#e5e7eb",
+                opacity: i < barCount ? 1 : 0.45,
+              }}
+            />
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+    </div>
+  </div>
+);
+
+/* ─────────────────────────────────────────
+   NEW: Performance insight card
+───────────────────────────────────────────*/
+const InsightCard = ({ avgHoursPerDay }) => {
+  const insight = computeInsight(avgHoursPerDay);
+  const { Icon } = insight;
+  return (
+    <div
+      className="mt-4 rounded-xl p-3.5 flex items-start gap-3"
+      style={{ background: insight.bg, border: `1.5px solid ${insight.border}` }}
+    >
+      <div
+        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: `${insight.dot}22` }}
+      >
+        <Icon className="w-4 h-4" style={{ color: insight.dot }} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: insight.text }}>
+            Performance Insight
+          </p>
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
+            style={{ background: insight.dot }}
+          >
+            {insight.label}
+          </span>
+        </div>
+        <p className="text-xs leading-snug" style={{ color: insight.text }}>{insight.desc}</p>
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────
+   MAIN COMPONENT
+───────────────────────────────────────────*/
 const StudentProgress = () => {
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -139,7 +240,6 @@ const StudentProgress = () => {
             submitted: toInt(progress?.narratives?.submitted),
             revision:  toInt(progress?.narratives?.revision),
           },
-          
           checklist: {
             requiredHoursCompleted: Boolean(progress?.checklist?.requiredHoursCompleted),
             dailyLogsComplete:      Boolean(progress?.checklist?.dailyLogsComplete),
@@ -167,7 +267,6 @@ const StudentProgress = () => {
   const completedChecklist = Object.values(checklist).filter(Boolean).length;
   const totalChecklist     = Object.values(checklist).length;
 
-  /* Status badge — semantic states unrelated to primary theme, keep as Tailwind */
   const statusColorMap = {
     green:  { bg: "bg-green-100",  text: "text-green-800",  border: "border-green-300"  },
     blue:   { bg: "bg-blue-100",   text: "text-blue-800",   border: "border-blue-300"   },
@@ -194,7 +293,7 @@ const StudentProgress = () => {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
 
-        {/* PAGE HEADER */}
+        {/* PAGE HEADER — unchanged */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
             <div
@@ -222,7 +321,7 @@ const StudentProgress = () => {
           </div>
         </div>
 
-        {/* ROW 1 */}
+        {/* ROW 1 — unchanged */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
 
           <SectionCard icon={GraduationCap} title="Student OJT Overview">
@@ -248,8 +347,21 @@ const StudentProgress = () => {
             </div>
           </SectionCard>
 
+          {/* Hours Progress — subtitle added */}
           <SectionCard icon={BarChart3} title="Hours Progress">
             <div className="space-y-5">
+
+              {/* NEW: session context banner */}
+              <div
+                className="flex items-center gap-2 rounded-lg px-3 py-2 -mt-1"
+                style={{ background: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
+              >
+                <Info className="w-3.5 h-3.5 shrink-0" style={{ color: `rgb(var(--primary-600))` }} />
+                <p className="text-xs font-medium" style={{ color: `rgb(var(--primary-700))` }}>
+                  Includes all attendance sessions — Morning, Afternoon &amp; OT
+                </p>
+              </div>
+
               <div className="flex items-center gap-6">
                 <div className="relative w-28 h-28 shrink-0">
                   <svg className="w-28 h-28 -rotate-90" viewBox="0 0 112 112">
@@ -313,7 +425,19 @@ const StudentProgress = () => {
 
         {/* ROW 2 */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-5">
+
+          {/* Attendance — enhanced */}
           <SectionCard icon={Calendar} title="Attendance">
+
+            {/* NEW: context label */}
+            <div className="flex items-start gap-1.5 mb-3 -mt-1">
+              <Info className="w-3 h-3 shrink-0 text-gray-400 mt-0.5" />
+              <p className="text-[11px] text-gray-500 font-medium leading-tight">
+                Hours calculated from Morning, Afternoon &amp; OT sessions
+              </p>
+            </div>
+
+            {/* existing stat badges — zero changes */}
             <div className="grid grid-cols-2 gap-2.5">
               <StatBadge value={attendance.totalDays}                       label="Days Attended" accent="green" />
               <StatBadge value={`${toInt(attendance.totalHours)}h`}         label="Total Hours"   accent="green" />
@@ -323,8 +447,67 @@ const StudentProgress = () => {
                 <p className="text-xs font-bold text-gray-700 mt-0.5">{formatDate(attendance.lastDate)}</p>
               </div>
             </div>
+
+            {/* NEW: Work Sessions subsection */}
+            <div className="mt-4">
+              <div className="flex items-center gap-1.5 mb-2">
+                <div
+                  className="w-1 h-3.5 rounded-full"
+                  style={{ background: `rgb(var(--primary-400))` }}
+                />
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Work Sessions</p>
+              </div>
+              <div
+                className="rounded-xl px-3 py-1"
+                style={{
+                  background: `rgb(var(--primary-50))`,
+                  border: `1px solid rgb(var(--primary-100))`,
+                }}
+              >
+                <SessionRow
+                  Icon={Sun}
+                  label="Morning Session"
+                  description="Regular hours"
+                  barCount={3}
+                  barColor="#f59e0b"
+                  accentColor="#f59e0b"
+                />
+                <SessionRow
+                  Icon={Briefcase}
+                  label="Afternoon Session"
+                  description="Afternoon shift"
+                  barCount={3}
+                  barColor="#3b82f6"
+                  accentColor="#3b82f6"
+                />
+                <SessionRow
+                  Icon={Moon}
+                  label="Overtime"
+                  description="Optional overtime"
+                  barCount={1}
+                  barColor="#8b5cf6"
+                  accentColor="#8b5cf6"
+                />
+              </div>
+
+              {/* NEW: helper texts */}
+              <div className="mt-2.5 space-y-1 pl-0.5">
+                <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
+                  <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
+                  Daily average includes all sessions
+                </p>
+                <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
+                  <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
+                  Overtime hours are counted separately when available
+                </p>
+              </div>
+            </div>
+
+            {/* NEW: Performance insight */}
+            <InsightCard avgHoursPerDay={attendance.averageHoursPerDay} />
           </SectionCard>
 
+          {/* Daily Logs — unchanged */}
           <SectionCard icon={FileText} title="Daily Logs">
             <div className="grid grid-cols-2 gap-2.5">
               <StatBadge value={dailyLogs.total}         label="Total"          accent="gray"  />
@@ -334,6 +517,7 @@ const StudentProgress = () => {
             </div>
           </SectionCard>
 
+          {/* Daily Narratives — unchanged */}
           <SectionCard icon={BookOpen} title="Daily Narratives">
             <div className="grid grid-cols-2 gap-2.5">
               <StatBadge value={dailyNarratives.total}     label="Total"          accent="gray"  />
@@ -344,7 +528,7 @@ const StudentProgress = () => {
           </SectionCard>
         </div>
 
-        {/* ROW 3 */}
+        {/* ROW 3 — unchanged */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           <SectionCard icon={ClipboardCheck} title="Completion Checklist">

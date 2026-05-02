@@ -49,6 +49,47 @@ const formatTime12h = (timeStr) => {
   return `${hour12}:${minuteStr} ${period}`;
 };
 
+// ─── Session helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Returns a display string for a session given a time_in / time_out pair.
+ *   • Both missing  → "—"
+ *   • Only time_in  → "In progress"
+ *   • Both present  → "8:00 AM – 5:00 PM"
+ */
+const formatSession = (timeIn, timeOut) => {
+  if (!timeIn && !timeOut) return '—';
+  if (timeIn && !timeOut) return 'In progress';
+  return `${formatTime12h(timeIn)} – ${formatTime12h(timeOut)}`;
+};
+
+/**
+ * Computes the decimal hours between two HH:MM strings.
+ * Returns 0 if either value is missing or invalid.
+ */
+const computeSessionHours = (timeIn, timeOut) => {
+  if (!timeIn || !timeOut) return 0;
+  const toMinutes = (t) => {
+    const [h, m] = t.split(':').map(Number);
+    return isNaN(h) || isNaN(m) ? null : h * 60 + m;
+  };
+  const start = toMinutes(timeIn);
+  const end   = toMinutes(timeOut);
+  if (start === null || end === null || end <= start) return 0;
+  return parseFloat(((end - start) / 60).toFixed(2));
+};
+
+/**
+ * Sums hours across morning, afternoon, and OT sessions for one record.
+ */
+const computeTotalHours = (rec) => {
+  const total =
+    computeSessionHours(rec.morning_time_in,   rec.morning_time_out) +
+    computeSessionHours(rec.afternoon_time_in, rec.afternoon_time_out) +
+    computeSessionHours(rec.ot_time_in,        rec.ot_time_out);
+  return total > 0 ? total : '—';
+};
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 const StatusBadge = ({ completed }) =>
@@ -136,6 +177,49 @@ const Toast = ({ message, visible }) => (
     {message}
   </div>
 );
+
+// ─── Session Cell ─────────────────────────────────────────────────────────────
+
+/**
+ * Renders a single session cell with colour-coded state:
+ *   Gray   → missing (no time_in)
+ *   Yellow → in progress (time_in only)
+ *   Green  → completed (both times present)
+ */
+const SessionCell = ({ timeIn, timeOut }) => {
+  const display = formatSession(timeIn, timeOut);
+
+  if (display === '—') {
+    return (
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
+        style={{ backgroundColor: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }}
+      >
+        —
+      </span>
+    );
+  }
+
+  if (display === 'In progress') {
+    return (
+      <span
+        className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
+        style={{ backgroundColor: '#fefce8', color: '#a16207', border: '1px solid #fef08a' }}
+      >
+        In progress
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap"
+      style={{ backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}
+    >
+      {display}
+    </span>
+  );
+};
 
 // ─── Assign Company Modal ─────────────────────────────────────────────────────
 
@@ -315,7 +399,6 @@ const ThemedSelect = ({ label, id, error, children, ...props }) => (
 const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, onSave }) => {
   const isEdit = mode === 'edit';
 
-  // ── Normalize all IDs to strings on init so controlled <select> values always match ──
   const [form, setForm] = useState(
     isEdit
       ? {
@@ -331,24 +414,18 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
   const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState('');
 
-  // ── Generic setter — always stores strings (HTML select always yields strings) ──
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  // ── When courses load asynchronously in edit mode, re-sync ojt_hours_required
-  //    to the course default — but ONLY if the current value doesn't already match
-  //    an available option (prevents overwriting intentional user overrides). ──
   useEffect(() => {
     if (!form.course_id || courses.length === 0) return;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
     if (!matched?.required_hours) return;
     const courseDefault = String(matched.required_hours);
-    // In add mode: fill if blank. In edit mode: only update if completely missing.
     if (!form.ojt_hours_required) {
       setForm((f) => ({ ...f, ojt_hours_required: courseDefault }));
     }
   }, [form.course_id, courses]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── When the user picks a NEW course, auto-update hours to that course's default ──
   const handleCourseChange = (e) => {
     const newCourseId = e.target.value;
     const matched = courses.find((c) => String(c.course_id) === String(newCourseId));
@@ -356,7 +433,6 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
     setForm((f) => ({ ...f, course_id: newCourseId, ojt_hours_required: newHours }));
   };
 
-  // ── Derive the course-default hours for the selected course (drives the dynamic option) ──
   const selectedCourseDefault = (() => {
     if (!form.course_id || courses.length === 0) return null;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
@@ -461,14 +537,12 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
             ) : (
               <>
                 <option value="">Select required hours…</option>
-                {/* Dynamic "course default" option — only shown when a course with required_hours is selected */}
                 {selectedCourseDefault && (
                   <option value={selectedCourseDefault}>
                     Use Course Default ({selectedCourseDefault} hrs)
                   </option>
                 )}
                 {requiredHoursOptions
-                  /* Exclude the course-default value from the regular list to avoid duplicates */
                   .filter((opt) => String(opt.hours) !== selectedCourseDefault)
                   .map((opt) => (
                     <option key={opt.id} value={String(opt.hours)}>
@@ -545,7 +619,7 @@ const CoordinatorStudents = () => {
   const [progressLoading, setProgressLoading] = useState(false);
 
   // ── New state for student management ──
-  const [studentModal, setStudentModal] = useState(null); // null | { mode: 'add' } | { mode: 'edit', student }
+  const [studentModal, setStudentModal] = useState(null);
   const [courses, setCourses] = useState([]);
 
   // ── Required hours state ──
@@ -1069,53 +1143,104 @@ const CoordinatorStudents = () => {
                     </div>
                   </div>
 
+                  {/* ── Recent Attendance — session-based ── */}
                   {progressData.recentAttendance?.some((rec) => rec?.date) && (
                     <div className="bg-white rounded-xl shadow-sm overflow-hidden" style={{ border: `1px solid rgb(var(--primary-100))` }}>
-                      <div className="px-5 py-3" style={{ borderBottom: `1px solid rgb(var(--primary-50))`, backgroundColor: `rgb(var(--primary-50))` }}>
-                        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: `rgb(var(--primary-600))` }}>Recent Attendance</p>
+                      {/* Table header */}
+                      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid rgb(var(--primary-50))`, backgroundColor: `rgb(var(--primary-50))` }}>
+                        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: `rgb(var(--primary-600))` }}>
+                          Recent Attendance
+                        </p>
+                        {/* Session colour legend */}
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center gap-1 text-xs" style={{ color: '#9ca3af' }}>
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: '#e5e7eb' }} />
+                            Missing
+                          </span>
+                          <span className="flex items-center gap-1 text-xs" style={{ color: '#a16207' }}>
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: '#fde68a' }} />
+                            In progress
+                          </span>
+                          <span className="flex items-center gap-1 text-xs" style={{ color: '#15803d' }}>
+                            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: '#bbf7d0' }} />
+                            Completed
+                          </span>
+                        </div>
                       </div>
+
                       <div className="overflow-x-auto">
                         <table className="w-full">
                           <thead>
                             <tr style={{ backgroundColor: `rgb(var(--primary-50))` }}>
-                              {['Date', 'Time In', 'Time Out', 'Hours'].map((col) => (
-                                <th key={col} className="text-left py-2.5 px-4 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: `rgb(var(--primary-500))` }}>
-                                  {col}
+                              {[
+                                { label: 'Date',        icon: null },
+                                { label: '☀ Morning',   icon: null },
+                                { label: '🧳 Afternoon', icon: null },
+                                { label: '⏱ OT',        icon: null },
+                                { label: 'Total Hours', icon: null },
+                              ].map(({ label }) => (
+                                <th
+                                  key={label}
+                                  className="text-left py-2.5 px-4 text-xs font-semibold uppercase tracking-wider whitespace-nowrap"
+                                  style={{ color: `rgb(var(--primary-500))` }}
+                                >
+                                  {label}
                                 </th>
                               ))}
                             </tr>
                           </thead>
                           <tbody>
-                            {progressData.recentAttendance.filter((rec) => rec?.date).map((rec, idx) => (
-                              <tr
-                                key={idx}
-                                className="transition-colors duration-150"
-                                style={{ borderTop: `1px solid rgb(var(--primary-50))` }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
-                              >
-                                <td className="py-2.5 px-4 text-sm font-medium whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-800))` }}>
-                                  {(() => {
-                                    const date = rec?.date ? new Date(rec.date) : null;
-                                    return date && !isNaN(date) ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
-                                  })()}
-                                </td>
-                                <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>
-                                  {formatTime12h(rec.time_in)}
-                                </td>
-                                <td className="py-2.5 px-4 text-sm whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-700))` }}>
-                                  {formatTime12h(rec.time_out)}
-                                </td>
-                                <td className="py-2.5 px-4 whitespace-nowrap cursor-default select-none">
-                                  <span
-                                    className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
-                                    style={{ backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-100))` }}
-                                  >
-                                    {rec.hours ?? '—'} hrs
-                                  </span>
-                                </td>
-                              </tr>
-                            ))}
+                            {progressData.recentAttendance.filter((rec) => rec?.date).map((rec, idx) => {
+                              const total = computeTotalHours(rec);
+                              return (
+                                <tr
+                                  key={idx}
+                                  className="transition-colors duration-150"
+                                  style={{ borderTop: `1px solid rgb(var(--primary-50))` }}
+                                  onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
+                                  onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
+                                >
+                                  {/* Date */}
+                                  <td className="py-3 px-4 text-sm font-medium whitespace-nowrap cursor-default select-none" style={{ color: `rgb(var(--primary-800))` }}>
+                                    {(() => {
+                                      const date = rec?.date ? new Date(rec.date) : null;
+                                      return date && !isNaN(date)
+                                        ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                        : '—';
+                                    })()}
+                                  </td>
+
+                                  {/* Morning */}
+                                  <td className="py-3 px-4 cursor-default select-none">
+                                    <SessionCell timeIn={rec.morning_time_in} timeOut={rec.morning_time_out} />
+                                  </td>
+
+                                  {/* Afternoon */}
+                                  <td className="py-3 px-4 cursor-default select-none">
+                                    <SessionCell timeIn={rec.afternoon_time_in} timeOut={rec.afternoon_time_out} />
+                                  </td>
+
+                                  {/* OT */}
+                                  <td className="py-3 px-4 cursor-default select-none">
+                                    <SessionCell timeIn={rec.ot_time_in} timeOut={rec.ot_time_out} />
+                                  </td>
+
+                                  {/* Total Hours */}
+                                  <td className="py-3 px-4 whitespace-nowrap cursor-default select-none">
+                                    <span
+                                      className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
+                                      style={
+                                        total === '—'
+                                          ? { backgroundColor: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }
+                                          : { backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-100))` }
+                                      }
+                                    >
+                                      {total === '—' ? '—' : `${total} hrs`}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>

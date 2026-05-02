@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   FileText, Eye, CheckCircle, RefreshCcw, X, Paperclip,
   ArrowLeft, Loader2, InboxIcon, MessageSquare, User, BookOpen, Download,
-  Building2, Clock, CalendarDays, Briefcase,
+  Building2, Clock, CalendarDays, Briefcase, Sun, Sunset, Moon, TrendingUp,
 } from 'lucide-react';
 import {
   getCoordinatorLogs, getCoordinatorLogDetails, approveLog, rejectLog,
@@ -56,12 +56,12 @@ const downloadAttachment = async (file) => {
   window.URL.revokeObjectURL(url);
 };
 
+// Formats a single time string → "8:00 AM" or null
 const formatTime = (value) => {
-  if (!value) return '—';
+  if (!value) return null;
   try {
     const date = new Date(value);
     if (isNaN(date.getTime())) {
-      // Try parsing as plain time string like "08:00:00"
       const [h, m] = value.split(':').map(Number);
       const d = new Date();
       d.setHours(h, m, 0);
@@ -69,8 +69,56 @@ const formatTime = (value) => {
     }
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   } catch {
-    return '—';
+    return null;
   }
+};
+
+const isBlankTime = (t) => !t || t === '00:00:00' || t === '0000-00-00 00:00:00';
+
+/**
+ * formatSession(timeIn, timeOut)
+ * Returns:
+ *   null          → not started (no time_in)
+ *   'in_progress' → has time_in, missing time_out
+ *   string        → "8:00 AM – 12:00 PM"
+ */
+const formatSession = (timeIn, timeOut) => {
+  const hasIn  = !isBlankTime(timeIn);
+  const hasOut = !isBlankTime(timeOut);
+  if (!hasIn) return null;
+  if (!hasOut) return 'in_progress';
+  const inFmt  = formatTime(timeIn);
+  const outFmt = formatTime(timeOut);
+  if (!inFmt || !outFmt) return null;
+  return `${inFmt} – ${outFmt}`;
+};
+
+const computeSessionMinutes = (timeIn, timeOut) => {
+  if (isBlankTime(timeIn) || isBlankTime(timeOut)) return 0;
+  try {
+    const toMins = (t) => {
+      const plain = t.includes('T') ? t.split('T')[1] : t;
+      const [h, m] = plain.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const diff = toMins(timeOut) - toMins(timeIn);
+    return diff > 0 ? diff : 0;
+  } catch { return 0; }
+};
+
+const minutesToDisplay = (mins) => {
+  if (!mins) return null;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+};
+
+const computeTotalHours = (log) => {
+  const total =
+    computeSessionMinutes(log.morning_time_in,  log.morning_time_out)  +
+    computeSessionMinutes(log.afternoon_time_in, log.afternoon_time_out) +
+    computeSessionMinutes(log.ot_time_in,        log.ot_time_out);
+  return minutesToDisplay(total);
 };
 
 const formatDate = (value) => {
@@ -139,6 +187,51 @@ const DetailField = ({ icon: Icon, label, value }) => (
   </div>
 );
 
+// ─── SessionField ─────────────────────────────────────────────────────────────
+
+const SESSION_META = {
+  morning:   { icon: Sun,    color: 'text-amber-500',  progressColor: 'text-yellow-600', progressBg: 'bg-yellow-50',  progressBorder: 'border-yellow-100'  },
+  afternoon: { icon: Sunset, color: 'text-orange-500', progressColor: 'text-orange-600', progressBg: 'bg-orange-50',  progressBorder: 'border-orange-100'  },
+  ot:        { icon: Moon,   color: 'text-indigo-500', progressColor: 'text-indigo-600', progressBg: 'bg-indigo-50',  progressBorder: 'border-indigo-100'  },
+};
+
+const SessionField = ({ label, sessionKey, timeIn, timeOut }) => {
+  const meta    = SESSION_META[sessionKey];
+  const Icon    = meta.icon;
+  const session = formatSession(timeIn, timeOut);
+
+  const valueNode = (() => {
+    if (session === null) {
+      return <span className="text-sm font-semibold pl-0.5 text-gray-400">—</span>;
+    }
+    if (session === 'in_progress') {
+      return (
+        <span className={`inline-flex items-center gap-1 text-xs font-medium mt-0.5 px-2 py-0.5 rounded-full border ${meta.progressBg} ${meta.progressColor} ${meta.progressBorder}`}>
+          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${meta.progressColor.replace('text-', 'bg-')}`} />
+          In progress
+        </span>
+      );
+    }
+    return (
+      <span className="text-sm font-semibold pl-0.5" style={{ color: `rgb(var(--primary-800))` }}>
+        {session}
+      </span>
+    );
+  })();
+
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-1">
+        <Icon className={`w-3 h-3 ${meta.color}`} />
+        <span className="text-xs font-medium uppercase tracking-wide" style={{ color: `rgb(var(--primary-500))` }}>
+          {label}
+        </span>
+      </div>
+      {valueNode}
+    </div>
+  );
+};
+
 // ─── useModalOverlay ──────────────────────────────────────────────────────────
 
 const useModalOverlay = (isOpen) => {
@@ -154,9 +247,7 @@ const useModalOverlay = (isOpen) => {
 
 const ImagePreviewModal = ({ src, fileName, onClose }) => {
   useModalOverlay(!!src);
-
   if (!src) return null;
-
   return (
     <div
       className="fixed inset-0 flex items-center justify-center p-4 animate-overlayIn bg-black/70 backdrop-blur-md"
@@ -176,8 +267,7 @@ const ImagePreviewModal = ({ src, fileName, onClose }) => {
             <div className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-between">
               <span className="text-xs text-gray-500 truncate">{fileName}</span>
               <a
-                href={src}
-                download={fileName}
+                href={src} download={fileName}
                 className="inline-flex items-center gap-1 text-xs font-medium shrink-0 ml-3 transition-colors"
                 style={{ color: `rgb(var(--primary-600))` }}
                 onMouseEnter={e => e.currentTarget.style.color = `rgb(var(--primary-800))`}
@@ -202,8 +292,9 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
   const [previewFileName, setPreviewFileName] = useState('');
 
   useModalOverlay(!!log);
-
   if (!log) return null;
+
+  const totalHours = computeTotalHours(log);
 
   const handleRevisionSubmit = () => {
     onRevision(log.log_id, feedback);
@@ -223,7 +314,6 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
           className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto animate-fadeIn"
           style={{ zIndex: 9999 }}
         >
-
           {/* Modal Header */}
           <div
             className="sticky top-0 bg-white px-6 py-4 flex items-center justify-between rounded-t-2xl z-10"
@@ -276,6 +366,8 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
               <SectionLabel icon={Briefcase} label="Log Details" />
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+
+                {/* Non-session fields */}
                 <DetailField
                   icon={User}
                   label="Student Name"
@@ -296,21 +388,40 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
                   label="Date"
                   value={formatDate(log.log_date)}
                 />
-                <DetailField
-                  icon={Clock}
-                  label="Time In"
-                  value={formatTime(log.time_in)}
+
+                {/* ── Session fields ── */}
+                <SessionField
+                  label="Morning Session"
+                  sessionKey="morning"
+                  timeIn={log.morning_time_in}
+                  timeOut={log.morning_time_out}
                 />
-                <DetailField
-                  icon={Clock}
-                  label="Time Out"
-                  value={formatTime(log.time_out)}
+                <SessionField
+                  label="Afternoon Session"
+                  sessionKey="afternoon"
+                  timeIn={log.afternoon_time_in}
+                  timeOut={log.afternoon_time_out}
                 />
-                <DetailField
-                  icon={Clock}
-                  label="Total Hours"
-                  value={log.total_hours != null ? `${log.total_hours} hours` : null}
+                <SessionField
+                  label="OT Session"
+                  sessionKey="ot"
+                  timeIn={log.ot_time_in}
+                  timeOut={log.ot_time_out}
                 />
+
+                {/* Total Hours */}
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-1">
+                    <TrendingUp className="w-3 h-3" style={{ color: `rgb(var(--primary-400))` }} />
+                    <span className="text-xs font-medium uppercase tracking-wide" style={{ color: `rgb(var(--primary-500))` }}>
+                      Total Hours
+                    </span>
+                  </div>
+                  <span className="text-sm font-semibold pl-0.5" style={{ color: totalHours ? `rgb(var(--primary-800))` : undefined }}>
+                    {totalHours ?? <span className="text-gray-400">—</span>}
+                  </span>
+                </div>
+
               </div>
             </div>
 

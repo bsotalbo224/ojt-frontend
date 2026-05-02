@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, MapPin, AlertTriangle, Eye, Filter,
   CheckCircle, Clock, X, Navigation,
-  ChevronDown, TrendingUp,
+  ChevronDown, TrendingUp, Sun, Sunset, Moon,
 } from 'lucide-react';
 import { getCoordinatorAttendance } from '../../api/attendance';
 import Avatar from '../../components/ui/Avatar';
@@ -20,10 +20,6 @@ const LOCATION_CONFIG = {
     usePrimary: true,
     icon: CheckCircle,
     dot: null,
-    optionIcon: CheckCircle,
-    optionColor: null,
-    optionBg: '',
-    checkColor: null,
     rowHighlight: '',
   },
   flagged: {
@@ -33,10 +29,6 @@ const LOCATION_CONFIG = {
     usePrimary: false,
     icon: AlertTriangle,
     dot: 'bg-amber-400',
-    optionIcon: AlertTriangle,
-    optionColor: 'text-amber-600',
-    optionBg: 'hover:bg-amber-50',
-    checkColor: 'text-amber-600',
     rowHighlight: 'bg-amber-50/40 border-l-4 border-l-amber-400',
   },
 };
@@ -45,8 +37,49 @@ const FILTER_OPTIONS = [
   { value: 'all', label: 'All Records' },
   { value: 'flagged', label: 'Flagged' },
   { value: 'complete', label: 'Complete Records' },
-  { value: 'missing_timeout', label: 'Missing Time-Out' },
+  { value: 'incomplete', label: 'Incomplete Attendance' },
 ];
+
+// ─── Session config ───────────────────────────────────────────────────────────
+
+const SESSION_CONFIG = {
+  morning: {
+    label: 'Morning',
+    icon: Sun,
+    inKey: 'morning_time_in',
+    outKey: 'morning_time_out',
+    color: 'text-amber-500',
+    bg: 'bg-amber-50',
+    border: 'border-amber-100',
+    progressColor: 'text-yellow-600',
+    progressBg: 'bg-yellow-50',
+    progressBorder: 'border-yellow-100',
+  },
+  afternoon: {
+    label: 'Afternoon',
+    icon: Sunset,
+    inKey: 'afternoon_time_in',
+    outKey: 'afternoon_time_out',
+    color: 'text-orange-500',
+    bg: 'bg-orange-50',
+    border: 'border-orange-100',
+    progressColor: 'text-orange-600',
+    progressBg: 'bg-orange-50',
+    progressBorder: 'border-orange-100',
+  },
+  ot: {
+    label: 'OT',
+    icon: Moon,
+    inKey: 'ot_time_in',
+    outKey: 'ot_time_out',
+    color: 'text-indigo-500',
+    bg: 'bg-indigo-50',
+    border: 'border-indigo-100',
+    progressColor: 'text-indigo-600',
+    progressBg: 'bg-indigo-50',
+    progressBorder: 'border-indigo-100',
+  },
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,41 +90,142 @@ const resolveFullName = (r) => {
   return [f, l].filter(Boolean).join(' ') || 'Unknown Student';
 };
 
-const isMissingTimeOut = (t) => !t || t === '00:00:00' || t === '0000-00-00 00:00:00';
+const isBlankTime = (t) => !t || t === '00:00:00' || t === '0000-00-00 00:00:00';
 
 const formatTime = (timeStr) => {
-  if (!timeStr) return '—';
+  if (!timeStr || isBlankTime(timeStr)) return null;
   try {
     const [h, m] = timeStr.split(':').map(Number);
     const period = h >= 12 ? 'PM' : 'AM';
     const hour = h % 12 || 12;
     return `${hour}:${String(m).padStart(2, '0')} ${period}`;
-  } catch { return timeStr; }
+  } catch { return null; }
 };
 
-const computeHours = (timeIn, timeOut) => {
-  if (!timeIn || !timeOut) return null;
+/**
+ * Returns:
+ *   null          → no data at all
+ *   'in_progress' → has time_in but no time_out
+ *   { range, minutes } → complete session
+ */
+const formatSession = (timeIn, timeOut) => {
+  const hasIn = !isBlankTime(timeIn);
+  const hasOut = !isBlankTime(timeOut);
+  if (!hasIn) return null;
+  if (!hasOut) return 'in_progress';
+  const inFmt = formatTime(timeIn);
+  const outFmt = formatTime(timeOut);
+  return { range: `${inFmt} – ${outFmt}` };
+};
+
+const computeSessionMinutes = (timeIn, timeOut) => {
+  if (isBlankTime(timeIn) || isBlankTime(timeOut)) return 0;
   try {
     const toMins = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
     const diff = toMins(timeOut) - toMins(timeIn);
-    if (diff <= 0) return null;
-    const hrs = Math.floor(diff / 60);
-    const mins = diff % 60;
-    return mins > 0 ? `${hrs}h ${mins}m` : `${hrs}h`;
-  } catch { return null; }
+    return diff > 0 ? diff : 0;
+  } catch { return 0; }
 };
+
+const minutesToDisplay = (mins) => {
+  if (!mins) return null;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+};
+
+const computeTotalHours = (record) => {
+  const total =
+    computeSessionMinutes(record.morning_time_in, record.morning_time_out) +
+    computeSessionMinutes(record.afternoon_time_in, record.afternoon_time_out) +
+    computeSessionMinutes(record.ot_time_in, record.ot_time_out);
+  return minutesToDisplay(total);
+};
+
+const isIncompleteAttendance = (r) =>
+  (!isBlankTime(r.morning_time_in) && isBlankTime(r.morning_time_out)) ||
+  (!isBlankTime(r.afternoon_time_in) && isBlankTime(r.afternoon_time_out));
 
 const formatDate = (dateStr, opts = {}) => {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', ...opts });
 };
 
-// ─── LocationStatusBadge (read-only, used in modal) ──────────────────────────
+// ─── SessionStatus indicator ──────────────────────────────────────────────────
+
+const SessionStatus = ({ timeIn, timeOut, sessionKey }) => {
+  const cfg = SESSION_CONFIG[sessionKey];
+  const session = formatSession(timeIn, timeOut);
+
+  if (session === null) {
+    return <span className="text-xs text-gray-300 italic select-none">—</span>;
+  }
+
+  if (session === 'in_progress') {
+    return (
+      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${cfg.progressBg} ${cfg.progressColor} ${cfg.progressBorder}`}>
+        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${cfg.progressColor.replace('text-', 'bg-')}`} />
+        In progress
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-xs font-semibold tabular-nums" style={{ color: `rgb(var(--primary-700))` }}>
+      {session.range}
+    </span>
+  );
+};
+
+// ─── SessionDetail (for modal) ────────────────────────────────────────────────
+
+const SessionDetail = ({ label, icon: Icon, iconColor, timeIn, timeOut, sessionKey }) => {
+  const cfg = SESSION_CONFIG[sessionKey];
+  const session = formatSession(timeIn, timeOut);
+  const mins = computeSessionMinutes(timeIn, timeOut);
+
+  const statusNode = (() => {
+    if (session === null) return <span className="text-xs text-gray-400 italic">Not started</span>;
+    if (session === 'in_progress') return (
+      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${cfg.progressBg} ${cfg.progressColor} ${cfg.progressBorder}`}>
+        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${cfg.progressColor.replace('text-', 'bg-')}`} />
+        In progress
+      </span>
+    );
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>{session.range}</span>
+        {mins > 0 && (
+          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{
+            backgroundColor: `rgb(var(--primary-50))`,
+            color: `rgb(var(--primary-600))`,
+            border: `1px solid rgb(var(--primary-100))`,
+          }}>
+            {minutesToDisplay(mins)}
+          </span>
+        )}
+      </div>
+    );
+  })();
+
+  return (
+    <div className="flex items-start gap-3 py-3" style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}>
+      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${cfg.bg} ${cfg.border} border`}>
+        <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: `rgb(var(--primary-500))` }}>{label}</p>
+        {statusNode}
+      </div>
+    </div>
+  );
+};
+
+// ─── LocationStatusBadge (read-only) ─────────────────────────────────────────
 
 const LocationStatusBadge = ({ status }) => {
   const config = LOCATION_CONFIG[status] ?? LOCATION_CONFIG.verified;
   const Icon = config.icon;
-
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap select-none ${!config.usePrimary ? config.pill : ''}`}
@@ -107,11 +241,10 @@ const LocationStatusBadge = ({ status }) => {
   );
 };
 
-// ─── LocationStatusDropdown (editable, used in table) ────────────────────────
+// ─── LocationStatusDropdown (editable) ───────────────────────────────────────
 
 const LocationStatusDropdown = ({ status, onChange, disabled }) => {
   const isFlagged = status === 'flagged';
-
   return (
     <div className="relative inline-block">
       <select
@@ -134,16 +267,11 @@ const LocationStatusDropdown = ({ status, onChange, disabled }) => {
         <option value="verified">Verified</option>
         <option value="flagged">Flagged</option>
       </select>
-
-      {/* Left icon */}
       <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
         {isFlagged
           ? <AlertTriangle className="w-3 h-3 text-amber-600" />
-          : <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-600))` }} />
-        }
+          : <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-600))` }} />}
       </div>
-
-      {/* Right chevron */}
       <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
         style={{ color: isFlagged ? 'rgb(180 83 9)' : `rgb(var(--primary-500))` }}
       />
@@ -172,7 +300,6 @@ const MapPlaceholder = ({ latitude, longitude }) => {
           backgroundSize: '24px 24px',
         }}
       />
-
       {hasCoords ? (
         <>
           <div
@@ -184,38 +311,20 @@ const MapPlaceholder = ({ latitude, longitude }) => {
               {Number(latitude).toFixed(5)}, {Number(longitude).toFixed(5)}
             </span>
           </div>
-
           <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
             <div className="flex flex-col items-center gap-0">
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white"
-                style={{ backgroundColor: `rgb(var(--primary-600))` }}
-              >
+              <div className="w-8 h-8 rounded-full flex items-center justify-center shadow-lg border-2 border-white" style={{ backgroundColor: `rgb(var(--primary-600))` }}>
                 <MapPin className="w-4 h-4 text-white" />
               </div>
               <div className="w-2 h-2 rounded-full mt-0.5" style={{ backgroundColor: `rgb(var(--primary-600) / 0.4)` }} />
             </div>
           </div>
-
-
           <a
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Open location in Google Maps"
+            href={mapsUrl} target="_blank" rel="noopener noreferrer" aria-label="Open location in Google Maps"
             className="absolute bottom-3 right-3 z-10 inline-flex items-center gap-1.5 bg-white text-xs font-semibold px-3 py-1.5 rounded-lg shadow-md transition-all duration-150 group"
-            style={{
-              color: `rgb(var(--primary-700))`,
-              border: `1px solid rgb(var(--primary-100))`
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`;
-              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = 'white';
-              e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)';
-            }}
+            style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-100))` }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)'; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'white'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.1)'; }}
           >
             <Navigation className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
             Open in Maps
@@ -223,25 +332,20 @@ const MapPlaceholder = ({ latitude, longitude }) => {
         </>
       ) : (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-          <div
-            className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center"
-            style={{ border: `1px solid rgb(var(--primary-200))` }}
-          >
+          <div className="w-10 h-10 bg-white rounded-full shadow-md flex items-center justify-center" style={{ border: `1px solid rgb(var(--primary-200))` }}>
             <MapPin className="w-5 h-5" style={{ color: `rgb(var(--primary-300))` }} />
           </div>
-          <p className="text-xs italic font-medium" style={{ color: `rgb(var(--primary-400))` }}>
-            No location data recorded
-          </p>
+          <p className="text-xs italic font-medium" style={{ color: `rgb(var(--primary-400))` }}>No location data recorded</p>
         </div>
       )}
     </div>
   );
 };
 
-// ─── DetailsModal (read-only) ─────────────────────────────────────────────────
+// ─── DetailsModal ─────────────────────────────────────────────────────────────
 
 const DetailsModal = ({ record, onClose }) => {
-  const hours = computeHours(record.time_in, record.time_out);
+  const totalHours = computeTotalHours(record);
   const isFlagged = record.location_status === 'flagged';
 
   useEffect(() => {
@@ -249,15 +353,6 @@ const DetailsModal = ({ record, onClose }) => {
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
   }, [onClose]);
-
-  const DetailRow = ({ label, value }) => (
-    <div className="flex items-start gap-2">
-      <span className="text-xs font-semibold uppercase tracking-wide w-28 pt-0.5 shrink-0" style={{ color: `rgb(var(--primary-500))` }}>
-        {label}
-      </span>
-      <span className="text-sm font-medium" style={{ color: `rgb(var(--primary-800))` }}>{value ?? '—'}</span>
-    </div>
-  );
 
   return (
     <div
@@ -301,8 +396,7 @@ const DetailsModal = ({ record, onClose }) => {
             </div>
           </div>
           <button
-            onClick={onClose}
-            aria-label="Close modal"
+            onClick={onClose} aria-label="Close modal"
             className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
             style={{ color: `rgb(var(--primary-400))` }}
             onMouseEnter={e => { e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`; e.currentTarget.style.color = `rgb(var(--primary-600))`; }}
@@ -314,39 +408,49 @@ const DetailsModal = ({ record, onClose }) => {
 
         <div className="overflow-y-auto p-6 space-y-5">
 
-          {/* Time Record */}
+          {/* Sessions */}
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Clock className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
               <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Time Record</h3>
             </div>
-            <div className="rounded-xl p-5 space-y-3" style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}>
-              <DetailRow label="Date" value={formatDate(record.attendance_date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} />
-              <DetailRow label="Time In" value={formatTime(record.time_in)} />
-              <DetailRow
-                label="Time Out"
-                value={
-                  record.time_out && !isMissingTimeOut(record.time_out) ? (
-                    formatTime(record.time_out)
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-amber-600 text-xs font-semibold bg-amber-50 border border-amber-100 px-2 py-0.5 rounded-full">
-                      <Clock className="w-3 h-3" />Not yet recorded
-                    </span>
-                  )
-                }
+            <div className="rounded-xl p-4 space-y-0" style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}>
+
+              {/* Date row */}
+              <div className="flex items-start gap-2 py-3" style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}>
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-gray-50 border border-gray-100">
+                  <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: `rgb(var(--primary-500))` }}>Date</p>
+                  <p className="text-sm font-medium" style={{ color: `rgb(var(--primary-800))` }}>
+                    {formatDate(record.attendance_date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+
+              <SessionDetail
+                label="Morning Session" icon={Sun} sessionKey="morning"
+                timeIn={record.morning_time_in} timeOut={record.morning_time_out}
               />
-              <DetailRow
-                label="Total Hours"
-                value={
-                  hours ? (
-                    <span className="inline-flex items-center gap-1 font-bold" style={{ color: `rgb(var(--primary-700))` }}>
-                      <TrendingUp className="w-3.5 h-3.5" />{hours}
-                    </span>
-                  ) : (
-                    <span className="text-gray-400 text-xs italic">Cannot compute</span>
-                  )
-                }
+              <SessionDetail
+                label="Afternoon Session" icon={Sunset} sessionKey="afternoon"
+                timeIn={record.afternoon_time_in} timeOut={record.afternoon_time_out}
               />
+              <SessionDetail
+                label="OT / Overtime Session" icon={Moon} sessionKey="ot"
+                timeIn={record.ot_time_in} timeOut={record.ot_time_out}
+              />
+
+              {/* Total Hours */}
+              {totalHours && (
+                <div className="flex items-center justify-between pt-3 mt-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: `rgb(var(--primary-500))` }}>Total Hours</span>
+                  <span className="inline-flex items-center gap-1 font-bold text-sm" style={{ color: `rgb(var(--primary-700))` }}>
+                    <TrendingUp className="w-3.5 h-3.5" />{totalHours}
+                  </span>
+                </div>
+              )}
             </div>
           </section>
 
@@ -422,7 +526,7 @@ const DetailsModal = ({ record, onClose }) => {
 
 const SkeletonRow = ({ delay = 0 }) => (
   <tr style={{ borderBottom: `1px solid rgb(var(--primary-50))`, animationDelay: `${delay}ms` }}>
-    {[24, 16, 16, 12, 24, 16].map((w, i) => (
+    {[20, 28, 28, 20, 16, 16].map((w, i) => (
       <td key={i} className="py-4 px-4">
         <div
           className="h-4 rounded animate-pulse"
@@ -435,7 +539,7 @@ const SkeletonRow = ({ delay = 0 }) => (
 
 const EmptyTableState = ({ hasFilter }) => (
   <tr>
-    <td colSpan={6} className="py-20 text-center">
+    <td colSpan={7} className="py-20 text-center">
       <div className="flex flex-col items-center gap-3">
         <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: `rgb(var(--primary-50))` }}>
           <Calendar className="w-8 h-8" style={{ color: `rgb(var(--primary-300))` }} />
@@ -490,11 +594,8 @@ const StudentAttendance = () => {
         body: JSON.stringify({ location_status: newStatus }),
       });
       if (!response.ok) throw new Error('Failed to update status');
-
       setAllRecords((prev) =>
-        prev.map((r) =>
-          r.attendance_id === attendanceId ? { ...r, location_status: newStatus } : r
-        )
+        prev.map((r) => r.attendance_id === attendanceId ? { ...r, location_status: newStatus } : r)
       );
     } catch (err) {
       console.error('Status update failed:', err);
@@ -519,7 +620,7 @@ const StudentAttendance = () => {
     total: allRecords.length,
     verified: allRecords.filter((r) => r.location_status === 'verified').length,
     flagged: allRecords.filter((r) => r.location_status === 'flagged').length,
-    missingOut: allRecords.filter((r) => isMissingTimeOut(r.time_out)).length,
+    incompleteAttendance: allRecords.filter(isIncompleteAttendance).length,
   }), [allRecords]);
 
   const filtered = useMemo(() => {
@@ -530,14 +631,13 @@ const StudentAttendance = () => {
       const matchesStatus =
         statusFilter === 'all' ||
         (statusFilter === 'flagged' && r.location_status === 'flagged') ||
-        (statusFilter === 'complete' && r.time_in && !isMissingTimeOut(r.time_out)) ||
-        (statusFilter === 'missing_timeout' && isMissingTimeOut(r.time_out));
+        (statusFilter === 'complete' && !isIncompleteAttendance(r)) ||
+        (statusFilter === 'incomplete' && isIncompleteAttendance(r));
       return matchesSearch && matchesDate && matchesStatus;
     });
   }, [allRecords, search, dateFilter, statusFilter]);
 
   const hasFilter = search.trim() !== '' || dateFilter !== '' || statusFilter !== 'all';
-
   const clearFilters = useCallback(() => { setSearch(''); setDateFilter(''); setStatusFilter('all'); }, []);
 
   return (
@@ -585,8 +685,8 @@ const StudentAttendance = () => {
                     <span className="text-[10px] font-semibold text-amber-500 uppercase tracking-wide">Flagged</span>
                   </div>
                   <div className="flex flex-col items-center bg-orange-50 border border-orange-100 rounded-lg px-4 py-2">
-                    <span className="text-lg font-bold text-orange-500">{stats.missingOut}</span>
-                    <span className="text-[10px] font-semibold text-orange-400 uppercase tracking-wide">No T-Out</span>
+                    <span className="text-lg font-bold text-orange-500">{stats.incompleteAttendance}</span>
+                    <span className="text-[10px] font-semibold text-orange-400 uppercase tracking-wide">Incomplete</span>
                   </div>
                 </div>
               </div>
@@ -672,12 +772,23 @@ const StudentAttendance = () => {
 
             {/* Table */}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-175">
+              <table className="w-full min-w-225">
                 <thead>
                   <tr style={{ backgroundColor: `rgb(var(--primary-50) / 0.6)` }}>
-                    {['Date', 'Time In', 'Time Out', 'Computed Hours', 'Location Status', 'Action'].map((col) => (
-                      <th key={col} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: `rgb(var(--primary-600))` }}>
-                        {col}
+                    {[
+                      { label: 'Date' },
+                      { label: 'Morning', icon: Sun, color: 'text-amber-500' },
+                      { label: 'Afternoon', icon: Sunset, color: 'text-orange-500' },
+                      { label: 'OT', icon: Moon, color: 'text-indigo-500' },
+                      { label: 'Total Hours' },
+                      { label: 'Location Status' },
+                      { label: 'Action' },
+                    ].map(({ label, icon: Icon, color }) => (
+                      <th key={label} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: `rgb(var(--primary-600))` }}>
+                        <span className="inline-flex items-center gap-1.5">
+                          {Icon && <Icon className={`w-3.5 h-3.5 ${color}`} />}
+                          {label}
+                        </span>
                       </th>
                     ))}
                   </tr>
@@ -687,7 +798,7 @@ const StudentAttendance = () => {
                     Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} delay={i * 60} />)
                   ) : error ? (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center">
+                      <td colSpan={7} className="py-16 text-center">
                         <div className="flex flex-col items-center gap-3">
                           <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center">
                             <AlertTriangle className="w-6 h-6 text-red-300" />
@@ -701,8 +812,8 @@ const StudentAttendance = () => {
                     <EmptyTableState hasFilter={hasFilter} />
                   ) : (
                     filtered.map((rec) => {
-                      const hours = computeHours(rec.time_in, rec.time_out);
-                      const missingOut = isMissingTimeOut(rec.time_out);
+                      const totalHours = computeTotalHours(rec);
+                      const incomplete = isIncompleteAttendance(rec);
                       const config = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
                       const isUpdating = updatingIds.has(rec.attendance_id);
 
@@ -714,30 +825,45 @@ const StudentAttendance = () => {
                           onMouseEnter={e => { if (!config.rowHighlight) e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.6)`; }}
                           onMouseLeave={e => { if (!config.rowHighlight) e.currentTarget.style.backgroundColor = ''; }}
                         >
+                          {/* Date */}
                           <td className="py-4 px-4 whitespace-nowrap">
                             <span className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>
                               {formatDate(rec.attendance_date)}
                             </span>
-                          </td>
-                          <td className="py-4 px-4 whitespace-nowrap">
-                            <span className="text-sm font-medium" style={{ color: `rgb(var(--primary-700))` }}>{formatTime(rec.time_in)}</span>
-                          </td>
-                          <td className="py-4 px-4 whitespace-nowrap">
-                            {missingOut ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-100 px-2 py-0.5 rounded-full">
-                                <Clock className="w-3 h-3" />Not recorded
-                              </span>
-                            ) : (
-                              <span className="text-sm font-medium" style={{ color: `rgb(var(--primary-700))` }}>{formatTime(rec.time_out)}</span>
+                            {incomplete && (
+                              <div className="mt-0.5">
+                                <span className="text-[10px] font-medium text-orange-500 bg-orange-50 border border-orange-100 px-1.5 py-0.5 rounded-full">
+                                  Incomplete
+                                </span>
+                              </div>
                             )}
                           </td>
+
+                          {/* Morning */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            {hours ? (
-                              <span className="text-sm font-semibold tabular-nums" style={{ color: `rgb(var(--primary-700))` }}>{hours}</span>
+                            <SessionStatus timeIn={rec.morning_time_in} timeOut={rec.morning_time_out} sessionKey="morning" />
+                          </td>
+
+                          {/* Afternoon */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            <SessionStatus timeIn={rec.afternoon_time_in} timeOut={rec.afternoon_time_out} sessionKey="afternoon" />
+                          </td>
+
+                          {/* OT */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            <SessionStatus timeIn={rec.ot_time_in} timeOut={rec.ot_time_out} sessionKey="ot" />
+                          </td>
+
+                          {/* Total Hours */}
+                          <td className="py-4 px-4 whitespace-nowrap">
+                            {totalHours ? (
+                              <span className="text-sm font-semibold tabular-nums" style={{ color: `rgb(var(--primary-700))` }}>{totalHours}</span>
                             ) : (
                               <span className="text-xs text-gray-400 italic">—</span>
                             )}
                           </td>
+
+                          {/* Location Status */}
                           <td className="py-4 px-4">
                             <div className={`transition-opacity duration-150 ${isUpdating ? 'opacity-50 pointer-events-none' : ''}`}>
                               <LocationStatusDropdown
@@ -747,6 +873,8 @@ const StudentAttendance = () => {
                               />
                             </div>
                           </td>
+
+                          {/* Action */}
                           <td className="py-4 px-4">
                             <button
                               onClick={() => setSelected(rec)}
@@ -777,13 +905,19 @@ const StudentAttendance = () => {
                 </p>
                 <div className="flex items-center gap-4 text-xs flex-wrap" style={{ color: `rgb(var(--primary-500))` }}>
                   <span className="flex items-center gap-1.5">
+                    <Sun className="w-3 h-3 text-amber-500" />Morning
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Sunset className="w-3 h-3 text-orange-500" />Afternoon
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Moon className="w-3 h-3 text-indigo-500" />OT
+                  </span>
+                  <span className="flex items-center gap-1.5">
                     <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-500))` }} />Verified
                   </span>
                   <span className="flex items-center gap-1.5">
                     <AlertTriangle className="w-3 h-3 text-amber-500" />Flagged
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Clock className="w-3 h-3 text-orange-500" />Missing T-Out
                   </span>
                   {stats.flagged > 0 && (
                     <span className="flex items-center gap-1 text-amber-600 font-medium">
