@@ -189,11 +189,11 @@ const ProgressStepper = ({ attendance }) => {
    MAIN DASHBOARD
 ───────────────────────────────────────────── */
 const StudentDashboard = () => {
-  const [attendance, setAttendance]           = useState(null);
+  const [attendance, setAttendance]               = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
-  const [attendanceError, setAttendanceError] = useState(null);
-  const [actionLoading, setActionLoading]     = useState(false);
-  const [assignment, setAssignment]           = useState(null);
+  const [attendanceError, setAttendanceError]     = useState(null);
+  const [actionLoading, setActionLoading]         = useState(false);
+  const [assignment, setAssignment]               = useState(null);
 
   const fetchAttendance = async () => {
     try {
@@ -218,35 +218,75 @@ const StudentDashboard = () => {
 
   useEffect(() => { fetchAttendance(); fetchAssignment(); }, []);
 
+  /* ── Optimistic update helpers ── */
+  const getCurrentTimeHHMM = () => {
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
+
+  const applyOptimisticUpdate = (action) => {
+    const field = `${action.session}_time_${action.type === 'in' ? 'in' : 'out'}`;
+    setAttendance(prev => ({ ...(prev || {}), [field]: getCurrentTimeHHMM() }));
+  };
+
+  const revertOptimisticUpdate = (snapshot) => {
+    setAttendance(snapshot);
+  };
+
   /* ── Next action handler ── */
   const handleNextAction = () => {
     if (actionLoading) return;
     const action = getNextAction(attendance);
     if (!action) return;
 
+    const snapshot = attendance; // save for potential rollback
+
     if (action.type === 'in') {
       setActionLoading(true);
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
           try {
+            applyOptimisticUpdate(action); // ← instant UI update before API call
             const { latitude, longitude } = pos.coords;
             const data = await timeIn(latitude, longitude, action.session);
-            if (data.success === false) { setAttendanceError(data.message); return; }
-            await fetchAttendance();
-          } catch { setAttendanceError("Time-in failed"); }
-          finally { setActionLoading(false); }
+            if (data.success === false) {
+              revertOptimisticUpdate(snapshot);
+              setAttendanceError(data.message);
+              return;
+            }
+            await fetchAttendance(); // sync real server data
+          } catch {
+            revertOptimisticUpdate(snapshot);
+            setAttendanceError("Time-in failed");
+          } finally {
+            setActionLoading(false);
+          }
         },
-        () => { setAttendanceError("Location permission required."); setActionLoading(false); }
+        () => {
+          setAttendanceError("Location permission required.");
+          setActionLoading(false);
+        }
       );
     } else {
       setActionLoading(true);
+      applyOptimisticUpdate(action); // ← instant UI update before API call
       (async () => {
         try {
           const data = await timeOut(action.session);
-          if (data.success === false) { setAttendanceError(data.message); return; }
-          await fetchAttendance();
-        } catch { setAttendanceError("Time-out failed"); }
-        finally { setActionLoading(false); }
+          if (data.success === false) {
+            revertOptimisticUpdate(snapshot);
+            setAttendanceError(data.message);
+            return;
+          }
+          await fetchAttendance(); // sync real server data
+        } catch {
+          revertOptimisticUpdate(snapshot);
+          setAttendanceError("Time-out failed");
+        } finally {
+          setActionLoading(false);
+        }
       })();
     }
   };
