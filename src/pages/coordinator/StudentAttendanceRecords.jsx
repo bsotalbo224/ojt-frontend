@@ -665,7 +665,7 @@ const StudentAttendance = () => {
             <div className="bg-white rounded-2xl shadow-sm px-6 py-5" style={{ border: `1px solid rgb(var(--primary-50))` }}>
               <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                 <div className="shrink-0">
-                  <Avatar name={student.full_name} src={student.photo ? `${BASE_URL}${student.photo}` : ''} size="lg" />
+                  <Avatar name={student.full_name} src={student.photo || ''} size="lg" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <h1 className="text-xl font-bold" style={{ color: `rgb(var(--primary-800))` }}>{student.full_name}</h1>
