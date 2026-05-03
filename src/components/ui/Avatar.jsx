@@ -32,12 +32,17 @@ export default function Avatar({
   const resolvedSrc = useMemo(() => {
   if (!src) return "";
 
-  // Only allow valid URLs (Cloudinary or external)
+  // Cloudinary or external URL
   if (typeof src === "string" && src.startsWith("http")) {
     return src;
   }
 
-  // Ignore old/local filenames completely
+  // Local backend images
+  if (typeof src === "string" && src.startsWith("/uploads")) {
+    return `${BASE_URL}${src}`;
+  }
+
+  // If it's just filename → ignore (invalid)
   return "";
 }, [src]);
 
