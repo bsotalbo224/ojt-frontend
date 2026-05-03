@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Award, Calendar, Building2, User, Info, Sun, Sunset, Moon, CheckCircle2, Clock, Circle, ChevronRight, Loader2 } from 'lucide-react';
-import { getStudentAttendanceHistory, timeIn, timeOut } from "../../api/attendance";
+import { getStudentAttendance, timeIn, timeOut } from "../../api/attendance";
 import { getStudentAssignment } from '../../api/student';
 
 /* ─────────────────────────────────────────────
@@ -198,12 +198,17 @@ const StudentDashboard = () => {
   const fetchAttendance = async () => {
     try {
       setAttendanceLoading(true);
-      const data = await getStudentAttendanceHistory();
-      setAttendance(data.success ? (data.today || null) : null);
+      const data = await getStudentAttendance();
+      // /attendance/student returns the record directly (not wrapped in { success, today })
+      // Only overwrite state with real data — never clobber an optimistic update with null
+      setAttendance(prev => {
+        if (!data) return prev;
+        return data;
+      });
       setAttendanceError(null);
     } catch (err) {
       setAttendanceError(err.message || "Failed to load attendance");
-      setAttendance(null);
+      // Do not reset to null on error — keep whatever state we already have
     } finally {
       setAttendanceLoading(false);
     }

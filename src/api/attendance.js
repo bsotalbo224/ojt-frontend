@@ -9,35 +9,57 @@ export const getCoordinatorAttendance = async () => {
 };
 
 /* ===============================
-STUDENT: MY ATTENDANCE
+STUDENT: TODAY ATTENDANCE (FIXED)
 =============================== */
 export const getStudentAttendance = async () => {
   const res = await axios.get("/attendance/student");
-  return res.data;
+
+  // normalize response
+  return res.data || null;
 };
 
+/* ===============================
+STUDENT: ATTENDANCE HISTORY
+=============================== */
 export const getStudentAttendanceHistory = async () => {
   const res = await axios.get("/attendance/history");
-  return res.data;
+
+  // ensure safe structure
+  return {
+    success: res.data?.success ?? true,
+    today: res.data?.today || null,
+    history: res.data?.history || []
+  };
 };
 
 /* ===============================
-STUDENT: TIME IN
+STUDENT: TIME IN (FIXED - SESSION SUPPORT)
 =============================== */
-export const timeIn = async (latitude, longitude) => {
+export const timeIn = async (latitude, longitude, session) => {
   const res = await axios.post("/attendance/timein", {
     latitude,
-    longitude
+    longitude,
+    session
   });
-  return res.data;
+
+  return {
+    success: res.data?.attendance_id !== undefined || res.data?.success !== false,
+    data: res.data
+  };
 };
 
 /* ===============================
-STUDENT: TIME OUT
+STUDENT: TIME OUT (FIXED - SESSION SUPPORT)
 =============================== */
-export const timeOut = async () => {
-  const res = await axios.patch("/attendance/timeout");
-  return res.data;
+export const timeOut = async (session) => {
+  const res = await axios.patch("/attendance/timeout", {
+    session
+  });
+
+  return {
+    success: res.data?.success !== false,
+    data: res.data
+  };
 };
 
 /* ===============================
@@ -48,5 +70,6 @@ export const updateAttendanceLocationStatus = async (id, status) => {
     `/attendance/${id}/location-status`,
     { location_status: status }
   );
+
   return res.data;
 };
