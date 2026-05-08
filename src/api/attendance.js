@@ -9,12 +9,11 @@ export const getCoordinatorAttendance = async () => {
 };
 
 /* ===============================
-STUDENT: TODAY ATTENDANCE (FIXED)
+STUDENT: TODAY ATTENDANCE
 =============================== */
 export const getStudentAttendance = async () => {
   const res = await axios.get("/attendance/student");
 
-  // normalize response
   return res.data || null;
 };
 
@@ -22,9 +21,9 @@ export const getStudentAttendance = async () => {
 STUDENT: ATTENDANCE HISTORY
 =============================== */
 export const getStudentAttendanceHistory = async () => {
+
   const res = await axios.get("/attendance/history");
 
-  // ensure safe structure
   return {
     success: res.data?.success ?? true,
     today: res.data?.today || null,
@@ -33,28 +32,62 @@ export const getStudentAttendanceHistory = async () => {
 };
 
 /* ===============================
-STUDENT: TIME IN (FIXED - SESSION SUPPORT)
+STUDENT: TIME IN / START OT
 =============================== */
-export const timeIn = async (latitude, longitude, session) => {
+export const timeIn = async (latitude, longitude) => {
+
   const res = await axios.post("/attendance/timein", {
     latitude,
-    longitude,
-    session
+    longitude
   });
 
   return {
-    success: res.data?.attendance_id !== undefined || res.data?.success !== false,
+    success:
+      res.data?.attendance_id !== undefined ||
+      res.data?.success !== false,
+
     data: res.data
   };
 };
 
 /* ===============================
-STUDENT: TIME OUT (FIXED - SESSION SUPPORT)
+STUDENT: START LUNCH BREAK
 =============================== */
-export const timeOut = async (session) => {
-  const res = await axios.patch("/attendance/timeout", {
-    session
-  });
+export const startLunchBreak = async () => {
+
+  const res = await axios.patch(
+    "/attendance/lunch/start"
+  );
+
+  return {
+    success: res.data?.success !== false,
+    data: res.data
+  };
+};
+
+/* ===============================
+STUDENT: END LUNCH BREAK
+=============================== */
+export const endLunchBreak = async () => {
+
+  const res = await axios.patch(
+    "/attendance/lunch/end"
+  );
+
+  return {
+    success: res.data?.success !== false,
+    data: res.data
+  };
+};
+
+/* ===============================
+STUDENT: TIME OUT / END OT
+=============================== */
+export const timeOut = async () => {
+
+  const res = await axios.patch(
+    "/attendance/timeout"
+  );
 
   return {
     success: res.data?.success !== false,
@@ -65,10 +98,16 @@ export const timeOut = async (session) => {
 /* ===============================
 COORDINATOR: UPDATE LOCATION STATUS
 =============================== */
-export const updateAttendanceLocationStatus = async (id, status) => {
+export const updateAttendanceLocationStatus = async (
+  id,
+  status
+) => {
+
   const res = await axios.put(
     `/attendance/${id}/location-status`,
-    { location_status: status }
+    {
+      location_status: status
+    }
   );
 
   return res.data;

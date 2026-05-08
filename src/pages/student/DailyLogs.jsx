@@ -4,7 +4,7 @@ import {
   Plus, Calendar, Paperclip, X, FileText, Image as ImageIcon,
   Upload, CheckCircle, Clock, AlertCircle, ChevronDown, ChevronUp,
   Timer, TriangleAlert, Eye, MessageSquare, ExternalLink,
-  Sun, Briefcase, Moon,
+  LogIn, LogOut, Coffee, UtensilsCrossed, Moon, Sunrise, ArrowRight,
 } from "lucide-react";
 
 import {
@@ -14,33 +14,46 @@ import {
 import { getStudentAttendance } from "../../api/attendance";
 
 /* ═══════════════════════════════════════════════════════
-   SESSION HELPERS
+   HELPERS
 ═══════════════════════════════════════════════════════ */
-const sessionHours = (timeIn, timeOut) => {
-  if (!timeIn || !timeOut) return null;
-  const toMs = (t) => {
-    const [h, m, s = 0] = t.split(":").map(Number);
-    return (h * 3600 + m * 60 + s) * 1000;
-  };
-  const diff = toMs(timeOut) - toMs(timeIn);
-  return diff > 0 ? diff / 3_600_000 : 0;
+const toMs = (t) => {
+  if (!t) return null;
+  const [h, m, s = 0] = t.split(":").map(Number);
+  return (h * 3600 + m * 60 + s) * 1000;
 };
 
+const msDiff = (start, end) => {
+  const s = toMs(start), e = toMs(end);
+  if (s == null || e == null) return null;
+  const d = e - s;
+  return d > 0 ? d : null;
+};
+
+const msToHrs = (ms) => (ms == null ? 0 : ms / 3_600_000);
+
 const computeTotalHours = (att) => {
-  if (!att) return null;
-  const morning   = sessionHours(att.morning_time_in,   att.morning_time_out)   ?? 0;
-  const afternoon = sessionHours(att.afternoon_time_in, att.afternoon_time_out) ?? 0;
-  const ot        = sessionHours(att.ot_time_in,        att.ot_time_out)        ?? 0;
-  const total = morning + afternoon + ot;
+  if (!att?.time_in || !att?.time_out) return null;
+
+  const workMs   = msDiff(att.time_in, att.time_out) ?? 0;
+  const lunchMs  = msDiff(att.lunch_break_start, att.lunch_break_end);
+  const otMs     = msDiff(att.ot_time_in, att.ot_time_out) ?? 0;
+
+  let deductMs = 0;
+  if (lunchMs != null) {
+    deductMs = lunchMs;
+  } else if (msToHrs(workMs) >= 5) {
+    deductMs = 3_600_000; // auto-deduct 1 hr
+  }
+
+  const total   = Math.max(0, msToHrs(workMs) - msToHrs(deductMs)) + msToHrs(otMs);
   if (total === 0) return null;
   const rounded = Math.round(total * 10) / 10;
   return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded} hrs`;
 };
 
 const isAttendanceIncomplete = (att) => {
-  if (!att) return false;
-  return !(att.morning_time_in && att.morning_time_out) ||
-         !(att.afternoon_time_in && att.afternoon_time_out);
+  if (!att) return true;
+  return !att.time_in || !att.time_out;
 };
 
 const formatTime = (timeStr) => {
@@ -63,83 +76,123 @@ const formatDate = (d) =>
   });
 
 /* ═══════════════════════════════════════════════════════
-   SESSION META
+   WORKFLOW STEPS CONFIG
 ═══════════════════════════════════════════════════════ */
-const SESSION_META = {
-  morning:   { label: "Morning",   Icon: Sun,       accentColor: "#f59e0b", accentLight: "#fffbeb", accentBorder: "#fde68a" },
-  afternoon: { label: "Afternoon", Icon: Briefcase, accentColor: "#3b82f6", accentLight: "#eff6ff", accentBorder: "#bfdbfe" },
-  ot:        { label: "Overtime",  Icon: Moon,      accentColor: "#8b5cf6", accentLight: "#f5f3ff", accentBorder: "#ddd6fe" },
-};
-
-const getSessionStatus = (timeIn, timeOut) => {
-  if (timeIn && timeOut) return "completed";
-  if (timeIn)            return "inprogress";
-  return "pending";
-};
-
-const STATUS_PILL = {
-  completed:  { bg: "#f0fdf4", border: "#bbf7d0", dot: "#22c55e", text: "#16a34a", label: "Completed"   },
-  inprogress: { bg: "#fefce8", border: "#fde68a",  dot: "#eab308", text: "#a16207", label: "In Progress" },
-  pending:    { bg: "#f9fafb", border: "#e5e7eb",  dot: "#9ca3af", text: "#6b7280", label: "Not Started" },
-};
+const WORKFLOW_STEPS = [
+  { key: "time_in",           label: "Time In",     Icon: LogIn,           color: "#10b981" },
+  { key: "lunch_break_start", label: "Lunch Start", Icon: Coffee,          color: "#f59e0b" },
+  { key: "lunch_break_end",   label: "Lunch End",   Icon: UtensilsCrossed, color: "#f97316" },
+  { key: "time_out",          label: "Time Out",    Icon: LogOut,          color: "#ef4444" },
+  { key: "ot_time_in",        label: "OT Start",    Icon: Moon,            color: "#8b5cf6" },
+  { key: "ot_time_out",       label: "OT End",      Icon: Sunrise,         color: "#6366f1" },
+];
 
 /* ═══════════════════════════════════════════════════════
-   SESSION ATTENDANCE CARD (form)
+   ATTENDANCE WORKFLOW CARD (form read-only display)
 ═══════════════════════════════════════════════════════ */
-const SessionAttendanceCard = ({ session, timeIn, timeOut }) => {
-  const { label, Icon, accentColor, accentLight, accentBorder } = SESSION_META[session];
-  const status = getSessionStatus(timeIn, timeOut);
-  const pill   = STATUS_PILL[status];
-
-  const cardBg     = status === "completed" ? "#f0fdf4"   : status === "inprogress" ? accentLight  : "#f9fafb";
-  const cardBorder = status === "completed" ? "#bbf7d0"   : status === "inprogress" ? accentBorder : "#e5e7eb";
+const AttendanceWorkflowCard = ({ attendance }) => {
+  const steps = WORKFLOW_STEPS.filter(
+    (s) => !s.key.startsWith("ot") || attendance?.ot_time_in || attendance?.ot_time_out
+  );
 
   return (
-    <div
-      className="rounded-xl p-3.5 flex flex-col gap-2.5 transition-all duration-300"
-      style={{ background: cardBg, border: `1.5px solid ${cardBorder}` }}
-    >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-md flex items-center justify-center" style={{ background: status === "pending" ? "#f3f4f6" : cardBorder }}>
-            <Icon className="w-3.5 h-3.5" style={{ color: status === "pending" ? "#9ca3af" : accentColor }} />
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e5e7eb" }}>
+      {steps.map((step, i) => {
+        const val       = attendance?.[step.key];
+        const isDone    = !!val;
+        const isOptional = step.key === "lunch_break_start" || step.key === "lunch_break_end";
+        const isOt       = step.key.startsWith("ot");
+
+        return (
+          <div
+            key={step.key}
+            className="flex items-center gap-3 px-4 py-3 transition-colors"
+            style={{
+              background: isDone ? `${step.color}08` : "#fafafa",
+              borderBottom: i < steps.length - 1 ? "1px solid #f3f4f6" : "none",
+            }}
+          >
+            {/* Icon */}
+            <div
+              className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              style={{
+                background: isDone ? `${step.color}18` : "#f3f4f6",
+                border: `1px solid ${isDone ? `${step.color}35` : "#e5e7eb"}`,
+              }}
+            >
+              <step.Icon className="w-4 h-4" style={{ color: isDone ? step.color : "#9ca3af" }} />
+            </div>
+
+            {/* Label */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-gray-600">{step.label}</span>
+                {isOptional && (
+                  <span className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">optional</span>
+                )}
+                {isOt && (
+                  <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: "#f5f3ff", color: "#7c3aed" }}>OT</span>
+                )}
+              </div>
+              <p className={`text-sm font-bold tabular-nums ${isDone ? "text-gray-900" : "text-gray-400"}`}>
+                {formatTime(val) ?? "—"}
+              </p>
+            </div>
+
+            {/* Status dot */}
+            <div
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ background: isDone ? step.color : "#e5e7eb" }}
+            />
           </div>
-          <span className="text-xs font-bold uppercase tracking-wider text-gray-600">{label}</span>
-        </div>
-        <div className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ background: pill.bg, border: `1px solid ${pill.border}` }}>
-          <div className="w-1.5 h-1.5 rounded-full" style={{ background: pill.dot }} />
-          <span className="text-[10px] font-bold" style={{ color: pill.text }}>{pill.label}</span>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">In</p>
-          <p className={`text-sm font-bold tabular-nums ${timeIn ? "text-gray-800" : "text-gray-300"}`}>{formatTime(timeIn) ?? "—"}</p>
-        </div>
-        <div>
-          <p className="text-[9px] font-semibold uppercase tracking-widest text-gray-400 mb-0.5">Out</p>
-          <p className={`text-sm font-bold tabular-nums ${timeOut ? "text-gray-800" : "text-gray-300"}`}>{formatTime(timeOut) ?? "—"}</p>
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 };
 
 /* ═══════════════════════════════════════════════════════
-   COMPACT SESSION PILL (log history cards)
+   COMPACT ATTENDANCE SUMMARY (log history cards)
 ═══════════════════════════════════════════════════════ */
-const SessionPill = ({ session, timeIn, timeOut }) => {
-  const { label, Icon, accentColor } = SESSION_META[session];
-  if (!timeIn) return null;
-  const timeStr = timeIn && timeOut
-    ? `${formatTime(timeIn)} – ${formatTime(timeOut)}`
-    : `${formatTime(timeIn)} – In Progress`;
+const AttendanceSummaryBadges = ({ att }) => {
+  if (!att?.time_in) return null;
+
+  const badges = [];
+
+  if (att.time_in)
+    badges.push({ label: "In", value: formatTime(att.time_in), color: "#10b981", Icon: LogIn });
+
+  if (att.lunch_break_start)
+    badges.push({ label: "Lunch", value: formatTime(att.lunch_break_start), color: "#f59e0b", Icon: Coffee });
+
+  if (att.lunch_break_end)
+    badges.push({ label: "Resume", value: formatTime(att.lunch_break_end), color: "#f97316", Icon: UtensilsCrossed });
+
+  if (att.time_out)
+    badges.push({ label: "Out", value: formatTime(att.time_out), color: "#ef4444", Icon: LogOut });
+
+  if (att.ot_time_in)
+    badges.push({ label: "OT In", value: formatTime(att.ot_time_in), color: "#8b5cf6", Icon: Moon });
+
+  if (att.ot_time_out)
+    badges.push({ label: "OT Out", value: formatTime(att.ot_time_out), color: "#6366f1", Icon: Sunrise });
+
   return (
-    <span className="inline-flex items-center gap-1.5 text-xs rounded-lg px-2.5 py-1.5 font-medium" style={{ background: "#f9fafb", border: "1px solid #e5e7eb", color: "#374151" }}>
-      <Icon className="w-3 h-3 shrink-0" style={{ color: accentColor }} />
-      <span className="text-gray-500 font-semibold">{label}:</span>
-      {timeStr}
-    </span>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {badges.map((b, i) => (
+        <span key={b.label} className="inline-flex items-center gap-1">
+          <span
+            className="inline-flex items-center gap-1 text-xs rounded-lg px-2 py-1 font-medium"
+            style={{ background: `${b.color}10`, border: `1px solid ${b.color}30`, color: "#374151" }}
+          >
+            <b.Icon className="w-3 h-3 shrink-0" style={{ color: b.color }} />
+            <span className="font-semibold" style={{ color: b.color }}>{b.label}</span>
+            <span className="text-gray-500">{b.value}</span>
+          </span>
+          {i < badges.length - 1 && <ArrowRight className="w-2.5 h-2.5 text-gray-300 shrink-0" />}
+        </span>
+      ))}
+    </div>
   );
 };
 
@@ -184,7 +237,7 @@ const AttachmentModal = ({ file, onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-9999 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       style={{ animation: "fadeIn 0.18s ease" }}
       onClick={onClose}
     >
@@ -283,32 +336,45 @@ const NotificationBanner = ({ notification, onDismiss }) => {
 };
 
 /* ═══════════════════════════════════════════════════════
+   ATTENDANCE SNAPSHOT BUILDER
+═══════════════════════════════════════════════════════ */
+const buildAttendanceSnapshot = (data) => ({
+  attendance_date:    data.attendance_date ?? data.log_date ?? null,
+  time_in:            data.time_in            ?? null,
+  lunch_break_start:  data.lunch_break_start  ?? null,
+  lunch_break_end:    data.lunch_break_end    ?? null,
+  time_out:           data.time_out           ?? null,
+  ot_time_in:         data.ot_time_in         ?? null,
+  ot_time_out:        data.ot_time_out        ?? null,
+});
+
+/* ═══════════════════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════════════════ */
 const DailyLogs = () => {
-  const [showForm, setShowForm]                       = useState(false);
-  const [logText, setLogText]                         = useState("");
-  const [editingLogId, setEditingLogId]               = useState(null);
-  const [notification, setNotification]               = useState(null);
-  const notificationTimerRef                          = useRef(null);
-  const [attendance, setAttendance]                   = useState(null);
-  const [logs, setLogs]                               = useState([]);
-  const [loadingLogs, setLoadingLogs]                 = useState(true);
-  const [showAllLogs, setShowAllLogs]                 = useState(false);
-  const [uploadedFiles, setUploadedFiles]             = useState([]);
-  const [isSubmitting, setIsSubmitting]               = useState(false);
-  const [attachmentMap, setAttachmentMap]             = useState({});
-  const [loadingAttachment, setLoadingAttachment]     = useState({});
-  const [openEvidenceLogId, setOpenAttachmentLogId]   = useState(null);
-  const [previewFile, setPreviewFile]                 = useState(null);
+  const [showForm, setShowForm]                     = useState(false);
+  const [logText, setLogText]                       = useState("");
+  const [editingLogId, setEditingLogId]             = useState(null);
+  const [notification, setNotification]             = useState(null);
+  const notificationTimerRef                        = useRef(null);
+  const [attendance, setAttendance]                 = useState(null);
+  const [logs, setLogs]                             = useState([]);
+  const [loadingLogs, setLoadingLogs]               = useState(true);
+  const [showAllLogs, setShowAllLogs]               = useState(false);
+  const [uploadedFiles, setUploadedFiles]           = useState([]);
+  const [isSubmitting, setIsSubmitting]             = useState(false);
+  const [attachmentMap, setAttachmentMap]           = useState({});
+  const [loadingAttachment, setLoadingAttachment]   = useState({});
+  const [openEvidenceLogId, setOpenAttachmentLogId] = useState(null);
+  const [previewFile, setPreviewFile]               = useState(null);
 
-  const location            = useLocation();
-  const revisionId          = new URLSearchParams(location.search).get("revision");
-  const revisionHandledRef  = useRef(false);
-  const revisionCardRef     = useRef(null);
-  const navigate            = useNavigate();
-  const formRef             = useRef(null);
-  const MAX_CHARS           = 800;
+  const location           = useLocation();
+  const revisionId         = new URLSearchParams(location.search).get("revision");
+  const revisionHandledRef = useRef(false);
+  const revisionCardRef    = useRef(null);
+  const navigate           = useNavigate();
+  const formRef            = useRef(null);
+  const MAX_CHARS          = 800;
 
   const showNotification = useCallback((message, type = "success") => {
     if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
@@ -351,15 +417,7 @@ const DailyLogs = () => {
           String(d.getMonth() + 1).padStart(2, "0"),
           String(d.getDate()).padStart(2, "0"),
         ].join("-");
-        setAttendance({
-          attendance_date:    logDate,
-          morning_time_in:    data.morning_time_in    ?? null,
-          morning_time_out:   data.morning_time_out   ?? null,
-          afternoon_time_in:  data.afternoon_time_in  ?? null,
-          afternoon_time_out: data.afternoon_time_out ?? null,
-          ot_time_in:         data.ot_time_in         ?? null,
-          ot_time_out:        data.ot_time_out        ?? null,
-        });
+        setAttendance(buildAttendanceSnapshot({ ...data, attendance_date: logDate }));
       } catch (err) {
         console.error("Attendance fetch error:", err);
         setAttendance(null);
@@ -390,15 +448,7 @@ const DailyLogs = () => {
       setEditingLogId(target.log_id);
       setLogText(target.narrative || "");
       setUploadedFiles([]);
-      setAttendance({
-        attendance_date:    target.log_date,
-        morning_time_in:    target.morning_time_in    ?? null,
-        morning_time_out:   target.morning_time_out   ?? null,
-        afternoon_time_in:  target.afternoon_time_in  ?? null,
-        afternoon_time_out: target.afternoon_time_out ?? null,
-        ot_time_in:         target.ot_time_in         ?? null,
-        ot_time_out:        target.ot_time_out        ?? null,
-      });
+      setAttendance(buildAttendanceSnapshot({ ...target, attendance_date: target.log_date }));
       setShowForm(true);
       setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
       setTimeout(() => revisionCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
@@ -414,15 +464,7 @@ const DailyLogs = () => {
     setEditingLogId(log.log_id);
     setLogText(log.narrative || "");
     setUploadedFiles([]);
-    setAttendance({
-      attendance_date:    log.log_date,
-      morning_time_in:    log.morning_time_in    ?? null,
-      morning_time_out:   log.morning_time_out   ?? null,
-      afternoon_time_in:  log.afternoon_time_in  ?? null,
-      afternoon_time_out: log.afternoon_time_out ?? null,
-      ot_time_in:         log.ot_time_in         ?? null,
-      ot_time_out:        log.ot_time_out        ?? null,
-    });
+    setAttendance(buildAttendanceSnapshot({ ...log, attendance_date: log.log_date }));
     setShowForm(true);
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   };
@@ -597,7 +639,7 @@ const DailyLogs = () => {
                   <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-xl px-4 py-3 mb-3">
                     <TriangleAlert className="w-4 h-4 mt-0.5 shrink-0 text-amber-500" />
                     <span>
-                      <strong>Attendance incomplete.</strong> Both Morning and Afternoon sessions must be fully completed (time-in and time-out) before submitting a daily log.
+                      <strong>Attendance incomplete.</strong> Time In and Time Out must be completed before submitting a daily log.
                     </span>
                   </div>
                 )}
@@ -613,11 +655,7 @@ const DailyLogs = () => {
                         {formatDateOnly(attendance.attendance_date)}
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <SessionAttendanceCard session="morning"   timeIn={attendance.morning_time_in}   timeOut={attendance.morning_time_out}   />
-                      <SessionAttendanceCard session="afternoon" timeIn={attendance.afternoon_time_in} timeOut={attendance.afternoon_time_out} />
-                      <SessionAttendanceCard session="ot"        timeIn={attendance.ot_time_in}        timeOut={attendance.ot_time_out}        />
-                    </div>
+                    <AttendanceWorkflowCard attendance={attendance} />
                   </>
                 ) : (
                   <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-4 text-sm text-gray-400 italic">
@@ -749,14 +787,15 @@ const DailyLogs = () => {
               const st = getStatus(log.status);
               const attachCount = attachmentMap[log.log_id]?.length ?? 0;
               const isRevisionTarget = revisionId && String(log.log_id) === String(revisionId);
-              const logTotalHrs = computeTotalHours({
-                morning_time_in:    log.morning_time_in,
-                morning_time_out:   log.morning_time_out,
-                afternoon_time_in:  log.afternoon_time_in,
-                afternoon_time_out: log.afternoon_time_out,
-                ot_time_in:         log.ot_time_in,
-                ot_time_out:        log.ot_time_out,
-              });
+              const logAtt = {
+                time_in:           log.time_in           ?? null,
+                lunch_break_start: log.lunch_break_start ?? null,
+                lunch_break_end:   log.lunch_break_end   ?? null,
+                time_out:          log.time_out          ?? null,
+                ot_time_in:        log.ot_time_in        ?? null,
+                ot_time_out:       log.ot_time_out       ?? null,
+              };
+              const logTotalHrs = computeTotalHours(logAtt);
 
               return (
                 <div
@@ -811,13 +850,9 @@ const DailyLogs = () => {
                       </div>
                     )}
 
-                    {/* Session pills */}
-                    {(log.morning_time_in || log.afternoon_time_in || log.ot_time_in) && (
-                      <div className="flex flex-wrap gap-2">
-                        <SessionPill session="morning"   timeIn={log.morning_time_in}   timeOut={log.morning_time_out}   />
-                        <SessionPill session="afternoon" timeIn={log.afternoon_time_in} timeOut={log.afternoon_time_out} />
-                        <SessionPill session="ot"        timeIn={log.ot_time_in}        timeOut={log.ot_time_out}        />
-                      </div>
+                    {/* Attendance summary badges */}
+                    {logAtt.time_in && (
+                      <AttendanceSummaryBadges att={logAtt} />
                     )}
 
                     <div className="bg-gray-50 border border-gray-100 rounded-xl px-4 py-3">
