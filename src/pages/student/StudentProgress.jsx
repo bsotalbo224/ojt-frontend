@@ -5,23 +5,21 @@ import {
   ClipboardCheck, CheckCircle2, Circle,
   Building2, User, GraduationCap,
   BarChart3, Activity, Award,
-  Sun, Briefcase, Moon, Info, Zap, Minus, TrendingDown,
+  LogIn, LogOut, Coffee, Moon, Info, Zap, Minus, TrendingDown,
 } from 'lucide-react';
 
 const toInt = (n) => Math.round(Number(n || 0));
 
-/* ── unchanged ── */
 const computeStatus = (data) => {
-  const { student, checklist } = data;
+  const { checklist } = data;
   if (
     checklist.requiredHoursCompleted &&
     checklist.dailyLogsComplete &&
     checklist.narrativesApproved
-  )
-    return { label: "Completed",               color: "green"  };
+  ) return { label: "Completed",               color: "green"  };
   if (!checklist.narrativesApproved)
     return { label: "Pending Daily Narratives", color: "orange" };
-  if (student.completedHours < student.requiredHours)
+  if (data.student.completedHours < data.student.requiredHours)
     return { label: "Ongoing",                  color: "blue"   };
   if (!checklist.coordinatorVerified)
     return { label: "For Coordinator Review",   color: "purple" };
@@ -29,31 +27,31 @@ const computeStatus = (data) => {
 };
 
 /* ─────────────────────────────────────────
-   NEW: Performance insight from avg hours
+   Performance insight — updated messaging
 ───────────────────────────────────────────*/
 const computeInsight = (avgHoursPerDay) => {
   if (avgHoursPerDay >= 6) return {
     label: "Consistent",
-    desc:  "You're maintaining excellent session coverage each day.",
+    desc:  "You're maintaining excellent attendance consistency each day.",
     Icon:  Zap,
     bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d", dot: "#22c55e",
   };
   if (avgHoursPerDay >= 4) return {
     label: "Moderate",
-    desc:  "Good progress — consider completing all three sessions daily.",
+    desc:  "Good progress — continue maintaining consistent work attendance.",
     Icon:  TrendingUp,
     bg: "#fefce8", border: "#fde68a", text: "#a16207", dot: "#eab308",
   };
   return {
     label: "Needs Improvement",
-    desc:  "Try to complete Morning and Afternoon sessions consistently.",
+    desc:  "Try to maintain consistent attendance and complete daily work schedules.",
     Icon:  TrendingDown,
     bg: "#fff7ed", border: "#fed7aa", text: "#c2410c", dot: "#f97316",
   };
 };
 
 /* ─────────────────────────────────────────
-   SHARED COMPONENTS — all unchanged
+   SHARED COMPONENTS
 ───────────────────────────────────────────*/
 const SectionCard = ({ icon: Icon, title, children, className = "" }) => (
   <div
@@ -70,34 +68,20 @@ const SectionCard = ({ icon: Icon, title, children, className = "" }) => (
 
 const InfoRow = ({ label, value, highlight = false }) => (
   <div>
-    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">
-      {label}
-    </label>
-    <p
-      className="text-sm font-semibold"
-      style={highlight ? { color: `rgb(var(--primary-700))` } : { color: '#111827' }}
-    >
+    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-0.5">{label}</label>
+    <p className="text-sm font-semibold" style={highlight ? { color: `rgb(var(--primary-700))` } : { color: '#111827' }}>
       {value}
     </p>
   </div>
 );
 
 const StatBadge = ({ value, label, accent = "green" }) => {
-  if (accent === "green") {
-    return (
-      <div
-        className="rounded-lg border p-3 text-center"
-        style={{
-          backgroundColor: `rgb(var(--primary-50))`,
-          borderColor:     `rgb(var(--primary-200))`,
-          color:           `rgb(var(--primary-700))`,
-        }}
-      >
-        <p className="text-xl font-bold">{value}</p>
-        <p className="text-xs font-medium mt-0.5">{label}</p>
-      </div>
-    );
-  }
+  if (accent === "green") return (
+    <div className="rounded-lg border p-3 text-center" style={{ backgroundColor: `rgb(var(--primary-50))`, borderColor: `rgb(var(--primary-200))`, color: `rgb(var(--primary-700))` }}>
+      <p className="text-xl font-bold">{value}</p>
+      <p className="text-xs font-medium mt-0.5">{label}</p>
+    </div>
+  );
   const colors = {
     gray:  "bg-gray-50  border-gray-200  text-gray-600",
     amber: "bg-amber-50 border-amber-200 text-amber-700",
@@ -115,18 +99,15 @@ const ChecklistItem = ({ checked, label }) => (
   <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
     {checked
       ? <CheckCircle2 className="w-5 h-5 shrink-0" style={{ color: `rgb(var(--primary-600))` }} />
-      : <Circle       className="w-5 h-5 shrink-0 text-gray-300" />
-    }
-    <span className={`text-sm font-medium ${checked ? "text-gray-800" : "text-gray-500"}`}>
-      {label}
-    </span>
+      : <Circle className="w-5 h-5 shrink-0 text-gray-300" />}
+    <span className={`text-sm font-medium ${checked ? "text-gray-800" : "text-gray-500"}`}>{label}</span>
   </div>
 );
 
 /* ─────────────────────────────────────────
-   NEW: Decorative session row
+   Workflow row — replaces SessionRow
 ───────────────────────────────────────────*/
-const SessionRow = ({ Icon, label, description, barCount, barColor, accentColor }) => (
+const WorkflowRow = ({ Icon, label, description, barCount, barColor, accentColor }) => (
   <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
     <div
       className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -137,7 +118,6 @@ const SessionRow = ({ Icon, label, description, barCount, barColor, accentColor 
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm font-semibold text-gray-800">{label}</p>
-        {/* Decorative bar indicators */}
         <div className="flex items-center gap-0.5 shrink-0">
           {[0, 1, 2].map((i) => (
             <div
@@ -158,7 +138,7 @@ const SessionRow = ({ Icon, label, description, barCount, barColor, accentColor 
 );
 
 /* ─────────────────────────────────────────
-   NEW: Performance insight card
+   Performance insight card
 ───────────────────────────────────────────*/
 const InsightCard = ({ avgHoursPerDay }) => {
   const insight = computeInsight(avgHoursPerDay);
@@ -168,21 +148,13 @@ const InsightCard = ({ avgHoursPerDay }) => {
       className="mt-4 rounded-xl p-3.5 flex items-start gap-3"
       style={{ background: insight.bg, border: `1.5px solid ${insight.border}` }}
     >
-      <div
-        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-        style={{ background: `${insight.dot}22` }}
-      >
+      <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${insight.dot}22` }}>
         <Icon className="w-4 h-4" style={{ color: insight.dot }} />
       </div>
       <div className="min-w-0">
         <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: insight.text }}>
-            Performance Insight
-          </p>
-          <span
-            className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white"
-            style={{ background: insight.dot }}
-          >
+          <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: insight.text }}>Performance Insight</p>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full text-white" style={{ background: insight.dot }}>
             {insight.label}
           </span>
         </div>
@@ -287,13 +259,10 @@ const StudentProgress = () => {
   };
 
   return (
-    <div
-      className="h-full"
-      style={{ background: `linear-gradient(to bottom, rgb(var(--primary-50)), white, rgb(var(--primary-50)))` }}
-    >
+    <div className="h-full" style={{ background: `linear-gradient(to bottom, rgb(var(--primary-50)), white, rgb(var(--primary-50)))` }}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
 
-        {/* PAGE HEADER — unchanged */}
+        {/* PAGE HEADER */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex items-center gap-3">
             <div
@@ -308,10 +277,7 @@ const StudentProgress = () => {
             </div>
           </div>
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-            <div
-              className="bg-white rounded-lg px-4 py-2 shadow-sm"
-              style={{ border: `1px solid rgb(var(--primary-200))` }}
-            >
+            <div className="bg-white rounded-lg px-4 py-2 shadow-sm" style={{ border: `1px solid rgb(var(--primary-200))` }}>
               <p className="text-sm font-semibold text-gray-700">{formatPageDate()}</p>
             </div>
             <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border font-semibold text-sm shadow-sm ${sc.bg} ${sc.text} ${sc.border}`}>
@@ -321,7 +287,7 @@ const StudentProgress = () => {
           </div>
         </div>
 
-        {/* ROW 1 — unchanged */}
+        {/* ROW 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
 
           <SectionCard icon={GraduationCap} title="Student OJT Overview">
@@ -347,26 +313,25 @@ const StudentProgress = () => {
             </div>
           </SectionCard>
 
-          {/* Hours Progress — subtitle added */}
+          {/* Hours Progress */}
           <SectionCard icon={BarChart3} title="Hours Progress">
             <div className="space-y-5">
 
-              {/* NEW: session context banner */}
+              {/* Context banner */}
               <div
                 className="flex items-center gap-2 rounded-lg px-3 py-2 -mt-1"
                 style={{ background: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
               >
                 <Info className="w-3.5 h-3.5 shrink-0" style={{ color: `rgb(var(--primary-600))` }} />
                 <p className="text-xs font-medium" style={{ color: `rgb(var(--primary-700))` }}>
-                  Includes all attendance sessions — Morning, Afternoon &amp; OT
+                  Hours are calculated from completed work attendance records.
                 </p>
               </div>
 
               <div className="flex items-center gap-6">
                 <div className="relative w-28 h-28 shrink-0">
                   <svg className="w-28 h-28 -rotate-90" viewBox="0 0 112 112">
-                    <circle cx="56" cy="56" r="46" strokeWidth="10" fill="none"
-                      stroke={`rgb(var(--primary-100))`} />
+                    <circle cx="56" cy="56" r="46" strokeWidth="10" fill="none" stroke={`rgb(var(--primary-100))`} />
                     <circle cx="56" cy="56" r="46" strokeWidth="10" fill="none"
                       stroke={`rgb(var(--primary-600))`}
                       strokeLinecap="round"
@@ -426,18 +391,17 @@ const StudentProgress = () => {
         {/* ROW 2 */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-5">
 
-          {/* Attendance — enhanced */}
+          {/* Attendance */}
           <SectionCard icon={Calendar} title="Attendance">
 
-            {/* NEW: context label */}
+            {/* Context label — updated */}
             <div className="flex items-start gap-1.5 mb-3 -mt-1">
               <Info className="w-3 h-3 shrink-0 text-gray-400 mt-0.5" />
               <p className="text-[11px] text-gray-500 font-medium leading-tight">
-                Hours calculated from Morning, Afternoon &amp; OT sessions
+                Hours include regular attendance, lunch deductions, and overtime when applicable.
               </p>
             </div>
 
-            {/* existing stat badges — zero changes */}
             <div className="grid grid-cols-2 gap-2.5">
               <StatBadge value={attendance.totalDays}                       label="Days Attended" accent="green" />
               <StatBadge value={`${toInt(attendance.totalHours)}h`}         label="Total Hours"   accent="green" />
@@ -448,62 +412,55 @@ const StudentProgress = () => {
               </div>
             </div>
 
-            {/* NEW: Work Sessions subsection */}
+            {/* Attendance Workflow subsection */}
             <div className="mt-4">
               <div className="flex items-center gap-1.5 mb-2">
-                <div
-                  className="w-1 h-3.5 rounded-full"
-                  style={{ background: `rgb(var(--primary-400))` }}
-                />
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Work Sessions</p>
+                <div className="w-1 h-3.5 rounded-full" style={{ background: `rgb(var(--primary-400))` }} />
+                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Attendance Workflow</p>
               </div>
               <div
                 className="rounded-xl px-3 py-1"
-                style={{
-                  background: `rgb(var(--primary-50))`,
-                  border: `1px solid rgb(var(--primary-100))`,
-                }}
+                style={{ background: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
               >
-                <SessionRow
-                  Icon={Sun}
-                  label="Morning Session"
-                  description="Regular hours"
+                <WorkflowRow
+                  Icon={LogIn}
+                  label="Time In / Time Out"
+                  description="Regular work schedule"
                   barCount={3}
+                  barColor="#10b981"
+                  accentColor="#10b981"
+                />
+                <WorkflowRow
+                  Icon={Coffee}
+                  label="Lunch Break"
+                  description="Tracked lunch break interval"
+                  barCount={2}
                   barColor="#f59e0b"
                   accentColor="#f59e0b"
                 />
-                <SessionRow
-                  Icon={Briefcase}
-                  label="Afternoon Session"
-                  description="Afternoon shift"
-                  barCount={3}
-                  barColor="#3b82f6"
-                  accentColor="#3b82f6"
-                />
-                <SessionRow
+                <WorkflowRow
                   Icon={Moon}
                   label="Overtime"
-                  description="Optional overtime"
+                  description="Additional overtime hours"
                   barCount={1}
                   barColor="#8b5cf6"
                   accentColor="#8b5cf6"
                 />
               </div>
 
-              {/* NEW: helper texts */}
+              {/* Helper texts — updated */}
               <div className="mt-2.5 space-y-1 pl-0.5">
                 <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
                   <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
-                  Daily average includes all sessions
+                  Daily average is based on completed attendance records.
                 </p>
                 <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
                   <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
-                  Overtime hours are counted separately when available
+                  Overtime hours are counted separately when available.
                 </p>
               </div>
             </div>
 
-            {/* NEW: Performance insight */}
             <InsightCard avgHoursPerDay={attendance.averageHoursPerDay} />
           </SectionCard>
 
