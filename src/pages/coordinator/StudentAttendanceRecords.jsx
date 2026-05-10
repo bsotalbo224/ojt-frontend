@@ -3,12 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, MapPin, AlertTriangle, Eye, Filter,
   CheckCircle, Clock, X, Navigation,
-  ChevronDown, TrendingUp, Sun, Sunset, Moon,
+  ChevronDown, TrendingUp, LogIn, LogOut, Coffee, UtensilsCrossed, Moon, Sunrise,
 } from 'lucide-react';
 import { getCoordinatorAttendance } from '../../api/attendance';
 import Avatar from '../../components/ui/Avatar';
-
-const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -34,41 +32,41 @@ const LOCATION_CONFIG = {
 };
 
 const FILTER_OPTIONS = [
-  { value: 'all', label: 'All Records' },
-  { value: 'flagged', label: 'Flagged' },
-  { value: 'complete', label: 'Complete Records' },
+  { value: 'all',        label: 'All Records'           },
+  { value: 'flagged',    label: 'Flagged'               },
+  { value: 'complete',   label: 'Complete Records'      },
   { value: 'incomplete', label: 'Incomplete Attendance' },
 ];
 
-// ─── Session config ───────────────────────────────────────────────────────────
+// ─── Workflow config ──────────────────────────────────────────────────────────
 
-const SESSION_CONFIG = {
-  morning: {
-    label: 'Morning',
-    icon: Sun,
-    inKey: 'morning_time_in',
-    outKey: 'morning_time_out',
+const WORKFLOW_CONFIG = {
+  work: {
+    label: 'Work Hours',
+    icon: LogIn,
+    inKey: 'time_in',
+    outKey: 'time_out',
+    color: 'text-emerald-600',
+    bg: 'bg-emerald-50',
+    border: 'border-emerald-100',
+    progressColor: 'text-emerald-600',
+    progressBg: 'bg-emerald-50',
+    progressBorder: 'border-emerald-100',
+  },
+  lunch: {
+    label: 'Lunch Break',
+    icon: Coffee,
+    inKey: 'lunch_break_start',
+    outKey: 'lunch_break_end',
     color: 'text-amber-500',
     bg: 'bg-amber-50',
     border: 'border-amber-100',
-    progressColor: 'text-yellow-600',
-    progressBg: 'bg-yellow-50',
-    progressBorder: 'border-yellow-100',
-  },
-  afternoon: {
-    label: 'Afternoon',
-    icon: Sunset,
-    inKey: 'afternoon_time_in',
-    outKey: 'afternoon_time_out',
-    color: 'text-orange-500',
-    bg: 'bg-orange-50',
-    border: 'border-orange-100',
-    progressColor: 'text-orange-600',
-    progressBg: 'bg-orange-50',
-    progressBorder: 'border-orange-100',
+    progressColor: 'text-amber-600',
+    progressBg: 'bg-amber-50',
+    progressBorder: 'border-amber-100',
   },
   ot: {
-    label: 'OT',
+    label: 'Overtime',
     icon: Moon,
     inKey: 'ot_time_in',
     outKey: 'ot_time_out',
@@ -84,7 +82,7 @@ const SESSION_CONFIG = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const resolveFullName = (r) => {
-  if (r.student_name && r.student_name.trim()) return r.student_name.trim();
+  if (r.student_name?.trim()) return r.student_name.trim();
   const f = (r.f_name ?? '').trim();
   const l = (r.l_name ?? '').trim();
   return [f, l].filter(Boolean).join(' ') || 'Unknown Student';
@@ -102,20 +100,12 @@ const formatTime = (timeStr) => {
   } catch { return null; }
 };
 
-/**
- * Returns:
- *   null          → no data at all
- *   'in_progress' → has time_in but no time_out
- *   { range, minutes } → complete session
- */
 const formatSession = (timeIn, timeOut) => {
-  const hasIn = !isBlankTime(timeIn);
+  const hasIn  = !isBlankTime(timeIn);
   const hasOut = !isBlankTime(timeOut);
   if (!hasIn) return null;
   if (!hasOut) return 'in_progress';
-  const inFmt = formatTime(timeIn);
-  const outFmt = formatTime(timeOut);
-  return { range: `${inFmt} – ${outFmt}` };
+  return { range: `${formatTime(timeIn)} – ${formatTime(timeOut)}` };
 };
 
 const computeSessionMinutes = (timeIn, timeOut) => {
@@ -134,41 +124,54 @@ const minutesToDisplay = (mins) => {
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
 };
 
-const computeTotalHours = (record) => {
-  const total =
-    computeSessionMinutes(record.morning_time_in, record.morning_time_out) +
-    computeSessionMinutes(record.afternoon_time_in, record.afternoon_time_out) +
-    computeSessionMinutes(record.ot_time_in, record.ot_time_out);
+/**
+ * Regular hours = time_in → time_out
+ * Minus lunch break duration (or auto-deduct 1 hr if >= 5 hrs work and no lunch)
+ * Plus overtime
+ */
+const computeTotalHours = (r) => {
+  const workMins  = computeSessionMinutes(r.time_in, r.time_out);
+  const lunchMins = computeSessionMinutes(r.lunch_break_start, r.lunch_break_end);
+  const otMins    = computeSessionMinutes(r.ot_time_in, r.ot_time_out);
+
+  let deductMins = 0;
+  if (lunchMins > 0) {
+    deductMins = lunchMins;
+  } else if (workMins / 60 >= 5) {
+    deductMins = 60; // auto-deduct 1 hr
+  }
+
+  const total = Math.max(0, workMins - deductMins) + otMins;
   return minutesToDisplay(total);
 };
 
+/**
+ * Incomplete = any started-but-not-finished step.
+ */
 const isIncompleteAttendance = (r) =>
-  (!isBlankTime(r.morning_time_in) && isBlankTime(r.morning_time_out)) ||
-  (!isBlankTime(r.afternoon_time_in) && isBlankTime(r.afternoon_time_out));
+  (!isBlankTime(r.time_in)           && isBlankTime(r.time_out))          ||
+  (!isBlankTime(r.lunch_break_start) && isBlankTime(r.lunch_break_end))   ||
+  (!isBlankTime(r.ot_time_in)        && isBlankTime(r.ot_time_out));
 
 const formatDate = (dateStr, opts = {}) => {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', ...opts });
 };
 
-// ─── SessionStatus indicator ──────────────────────────────────────────────────
+// ─── WorkflowStatus indicator (table cell) ────────────────────────────────────
 
-const SessionStatus = ({ timeIn, timeOut, sessionKey }) => {
-  const cfg = SESSION_CONFIG[sessionKey];
+const WorkflowStatus = ({ timeIn, timeOut, workflowKey }) => {
+  const cfg     = WORKFLOW_CONFIG[workflowKey];
   const session = formatSession(timeIn, timeOut);
 
-  if (session === null) {
-    return <span className="text-xs text-gray-300 italic select-none">—</span>;
-  }
+  if (session === null) return <span className="text-xs text-gray-300 italic select-none">—</span>;
 
-  if (session === 'in_progress') {
-    return (
-      <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${cfg.progressBg} ${cfg.progressColor} ${cfg.progressBorder}`}>
-        <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${cfg.progressColor.replace('text-', 'bg-')}`} />
-        In progress
-      </span>
-    );
-  }
+  if (session === 'in_progress') return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${cfg.progressBg} ${cfg.progressColor} ${cfg.progressBorder}`}>
+      <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${cfg.progressColor.replace('text-', 'bg-')}`} />
+      In progress
+    </span>
+  );
 
   return (
     <span className="text-xs font-semibold tabular-nums" style={{ color: `rgb(var(--primary-700))` }}>
@@ -177,15 +180,16 @@ const SessionStatus = ({ timeIn, timeOut, sessionKey }) => {
   );
 };
 
-// ─── SessionDetail (for modal) ────────────────────────────────────────────────
+// ─── WorkflowDetail (modal row) ───────────────────────────────────────────────
 
-const SessionDetail = ({ label, icon: Icon, iconColor, timeIn, timeOut, sessionKey }) => {
-  const cfg = SESSION_CONFIG[sessionKey];
+const WorkflowDetail = ({ label, workflowKey, timeIn, timeOut }) => {
+  const cfg     = WORKFLOW_CONFIG[workflowKey];
+  const Icon    = cfg.icon;
   const session = formatSession(timeIn, timeOut);
-  const mins = computeSessionMinutes(timeIn, timeOut);
+  const mins    = computeSessionMinutes(timeIn, timeOut);
 
   const statusNode = (() => {
-    if (session === null) return <span className="text-xs text-gray-400 italic">Not started</span>;
+    if (session === null) return <span className="text-xs text-gray-400 italic">Not recorded</span>;
     if (session === 'in_progress') return (
       <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border ${cfg.progressBg} ${cfg.progressColor} ${cfg.progressBorder}`}>
         <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${cfg.progressColor.replace('text-', 'bg-')}`} />
@@ -196,11 +200,10 @@ const SessionDetail = ({ label, icon: Icon, iconColor, timeIn, timeOut, sessionK
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>{session.range}</span>
         {mins > 0 && (
-          <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{
-            backgroundColor: `rgb(var(--primary-50))`,
-            color: `rgb(var(--primary-600))`,
-            border: `1px solid rgb(var(--primary-100))`,
-          }}>
+          <span
+            className="text-xs font-medium px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-600))`, border: `1px solid rgb(var(--primary-100))` }}
+          >
             {minutesToDisplay(mins)}
           </span>
         )}
@@ -221,7 +224,7 @@ const SessionDetail = ({ label, icon: Icon, iconColor, timeIn, timeOut, sessionK
   );
 };
 
-// ─── LocationStatusBadge (read-only) ─────────────────────────────────────────
+// ─── LocationStatusBadge ──────────────────────────────────────────────────────
 
 const LocationStatusBadge = ({ status }) => {
   const config = LOCATION_CONFIG[status] ?? LOCATION_CONFIG.verified;
@@ -241,7 +244,7 @@ const LocationStatusBadge = ({ status }) => {
   );
 };
 
-// ─── LocationStatusDropdown (editable) ───────────────────────────────────────
+// ─── LocationStatusDropdown ───────────────────────────────────────────────────
 
 const LocationStatusDropdown = ({ status, onChange, disabled }) => {
   const isFlagged = status === 'flagged';
@@ -262,7 +265,7 @@ const LocationStatusDropdown = ({ status, onChange, disabled }) => {
           border: `1px solid rgb(var(--primary-200))`,
         }}
         onFocus={e => { e.target.style.boxShadow = isFlagged ? '0 0 0 2px rgb(253 230 138)' : `0 0 0 2px rgb(var(--primary-300))`; }}
-        onBlur={e => { e.target.style.boxShadow = 'none'; }}
+        onBlur={e  => { e.target.style.boxShadow = 'none'; }}
       >
         <option value="verified">Verified</option>
         <option value="flagged">Flagged</option>
@@ -270,9 +273,10 @@ const LocationStatusDropdown = ({ status, onChange, disabled }) => {
       <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
         {isFlagged
           ? <AlertTriangle className="w-3 h-3 text-amber-600" />
-          : <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-600))` }} />}
+          : <CheckCircle   className="w-3 h-3" style={{ color: `rgb(var(--primary-600))` }} />}
       </div>
-      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
+      <ChevronDown
+        className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
         style={{ color: isFlagged ? 'rgb(180 83 9)' : `rgb(var(--primary-500))` }}
       />
     </div>
@@ -283,15 +287,12 @@ const LocationStatusDropdown = ({ status, onChange, disabled }) => {
 
 const MapPlaceholder = ({ latitude, longitude }) => {
   const hasCoords = latitude != null && longitude != null;
-  const mapsUrl = hasCoords ? `https://maps.google.com/?q=${latitude},${longitude}` : null;
+  const mapsUrl   = hasCoords ? `https://maps.google.com/?q=${latitude},${longitude}` : null;
 
   return (
     <div
       className="w-full h-44 rounded-xl overflow-hidden relative"
-      style={{
-        border: `1px solid rgb(var(--primary-200))`,
-        background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100)))`,
-      }}
+      style={{ border: `1px solid rgb(var(--primary-200))`, background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100)))` }}
     >
       <div
         className="absolute inset-0 opacity-20"
@@ -346,7 +347,7 @@ const MapPlaceholder = ({ latitude, longitude }) => {
 
 const DetailsModal = ({ record, onClose }) => {
   const totalHours = computeTotalHours(record);
-  const isFlagged = record.location_status === 'flagged';
+  const isFlagged  = record.location_status === 'flagged';
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
@@ -408,14 +409,16 @@ const DetailsModal = ({ record, onClose }) => {
 
         <div className="overflow-y-auto p-6 space-y-5">
 
-          {/* Sessions */}
+          {/* Daily Work Record */}
           <section>
             <div className="flex items-center gap-2 mb-3">
               <Clock className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
-              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Time Record</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Daily Work Record</h3>
             </div>
-            <div className="rounded-xl p-4 space-y-0" style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}>
-
+            <div
+              className="rounded-xl p-4 space-y-0"
+              style={{ backgroundColor: `rgb(var(--primary-50) / 0.5)`, border: `1px solid rgb(var(--primary-100))` }}
+            >
               {/* Date row */}
               <div className="flex items-start gap-2 py-3" style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}>
                 <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 bg-gray-50 border border-gray-100">
@@ -429,18 +432,9 @@ const DetailsModal = ({ record, onClose }) => {
                 </div>
               </div>
 
-              <SessionDetail
-                label="Morning Session" icon={Sun} sessionKey="morning"
-                timeIn={record.morning_time_in} timeOut={record.morning_time_out}
-              />
-              <SessionDetail
-                label="Afternoon Session" icon={Sunset} sessionKey="afternoon"
-                timeIn={record.afternoon_time_in} timeOut={record.afternoon_time_out}
-              />
-              <SessionDetail
-                label="OT / Overtime Session" icon={Moon} sessionKey="ot"
-                timeIn={record.ot_time_in} timeOut={record.ot_time_out}
-              />
+              <WorkflowDetail label="Work Schedule"  workflowKey="work"  timeIn={record.time_in}           timeOut={record.time_out}          />
+              <WorkflowDetail label="Lunch Break"    workflowKey="lunch" timeIn={record.lunch_break_start} timeOut={record.lunch_break_end}   />
+              <WorkflowDetail label="Overtime"       workflowKey="ot"    timeIn={record.ot_time_in}        timeOut={record.ot_time_out}       />
 
               {/* Total Hours */}
               {totalHours && (
@@ -470,7 +464,8 @@ const DetailsModal = ({ record, onClose }) => {
                 ))}
               </div>
               {record.distance_meters != null && (
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${record.distance_meters > 100 ? 'bg-amber-50 text-amber-700 border border-amber-100' : ''}`}
+                <div
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold ${record.distance_meters > 100 ? 'bg-amber-50 text-amber-700 border border-amber-100' : ''}`}
                   style={record.distance_meters <= 100 ? {
                     backgroundColor: `rgb(var(--primary-50))`,
                     color: `rgb(var(--primary-700))`,
@@ -526,7 +521,7 @@ const DetailsModal = ({ record, onClose }) => {
 
 const SkeletonRow = ({ delay = 0 }) => (
   <tr style={{ borderBottom: `1px solid rgb(var(--primary-50))`, animationDelay: `${delay}ms` }}>
-    {[20, 28, 28, 20, 16, 16].map((w, i) => (
+    {[20, 28, 24, 20, 16, 16, 12].map((w, i) => (
       <td key={i} className="py-4 px-4">
         <div
           className="h-4 rounded animate-pulse"
@@ -548,7 +543,7 @@ const EmptyTableState = ({ hasFilter }) => (
           {hasFilter ? 'No matching records' : 'No attendance records yet'}
         </p>
         <p className="text-sm max-w-xs" style={{ color: `rgb(var(--primary-500))` }}>
-          {hasFilter ? 'Try adjusting your search or filter.' : 'Attendance records will appear once you start logging.'}
+          {hasFilter ? 'Try adjusting your search or filter.' : 'Work attendance records will appear once the student starts logging.'}
         </p>
       </div>
     </td>
@@ -561,84 +556,87 @@ const StudentAttendance = () => {
   const { studentId } = useParams();
   const navigate = useNavigate();
 
-  const [allRecords, setAllRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [allRecords,   setAllRecords]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState(false);
+  const [selected,     setSelected]     = useState(null);
+  const [search,       setSearch]       = useState('');
+  const [dateFilter,   setDateFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [updatingIds, setUpdatingIds] = useState(new Set());
+  const [updatingIds,  setUpdatingIds]  = useState(new Set());
 
   useEffect(() => {
     getCoordinatorAttendance()
       .then((data) => {
-        const studentRecords = (Array.isArray(data) ? data : [])
+        const records = (Array.isArray(data) ? data : [])
           .filter((r) => String(r.student_id) === String(studentId))
           .map(({ coordinator_note: _note, ...rest }) => rest);
-        studentRecords.sort((a, b) => new Date(b.attendance_date) - new Date(a.attendance_date));
-        setAllRecords(studentRecords);
+        records.sort((a, b) => new Date(b.attendance_date) - new Date(a.attendance_date));
+        setAllRecords(records);
       })
       .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, [studentId]);
 
-  // ─── Status update handler ──────────────────────────────────────────────────
-
   const handleStatusChange = useCallback(async (attendanceId, newStatus) => {
     setUpdatingIds((prev) => new Set(prev).add(attendanceId));
     try {
-      const response = await fetch(`/api/attendance/${attendanceId}/status`, {
+      const res = await fetch(`/api/attendance/${attendanceId}/status`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ location_status: newStatus }),
       });
-      if (!response.ok) throw new Error('Failed to update status');
+      if (!res.ok) throw new Error('Failed to update status');
       setAllRecords((prev) =>
         prev.map((r) => r.attendance_id === attendanceId ? { ...r, location_status: newStatus } : r)
       );
     } catch (err) {
       console.error('Status update failed:', err);
     } finally {
-      setUpdatingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(attendanceId);
-        return next;
-      });
+      setUpdatingIds((prev) => { const n = new Set(prev); n.delete(attendanceId); return n; });
     }
   }, []);
 
-  // ─── Derived state ──────────────────────────────────────────────────────────
-
   const student = useMemo(() => {
-    if (allRecords.length === 0) return null;
+    if (!allRecords.length) return null;
     const r = allRecords[0];
     return { full_name: resolveFullName(r), course: r.course ?? '', company: r.company ?? '', photo: r.photo ?? '' };
   }, [allRecords]);
 
   const stats = useMemo(() => ({
-    total: allRecords.length,
-    verified: allRecords.filter((r) => r.location_status === 'verified').length,
-    flagged: allRecords.filter((r) => r.location_status === 'flagged').length,
+    total:                allRecords.length,
+    verified:             allRecords.filter((r) => r.location_status === 'verified').length,
+    flagged:              allRecords.filter((r) => r.location_status === 'flagged').length,
     incompleteAttendance: allRecords.filter(isIncompleteAttendance).length,
   }), [allRecords]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return allRecords.filter((r) => {
-      const matchesSearch = !q || formatDate(r.attendance_date).toLowerCase().includes(q);
-      const matchesDate = !dateFilter || r.attendance_date?.startsWith(dateFilter);
-      const matchesStatus =
+      const matchesSearch  = !q || formatDate(r.attendance_date).toLowerCase().includes(q);
+      const matchesDate    = !dateFilter || r.attendance_date?.startsWith(dateFilter);
+      const matchesStatus  =
         statusFilter === 'all' ||
-        (statusFilter === 'flagged' && r.location_status === 'flagged') ||
-        (statusFilter === 'complete' && !isIncompleteAttendance(r)) ||
+        (statusFilter === 'flagged'    && r.location_status === 'flagged') ||
+        (statusFilter === 'complete'   && !isIncompleteAttendance(r))      ||
         (statusFilter === 'incomplete' && isIncompleteAttendance(r));
       return matchesSearch && matchesDate && matchesStatus;
     });
   }, [allRecords, search, dateFilter, statusFilter]);
 
-  const hasFilter = search.trim() !== '' || dateFilter !== '' || statusFilter !== 'all';
+  const hasFilter  = search.trim() !== '' || dateFilter !== '' || statusFilter !== 'all';
   const clearFilters = useCallback(() => { setSearch(''); setDateFilter(''); setStatusFilter('all'); }, []);
+
+  // Table column headers
+  const TABLE_HEADERS = [
+    { label: 'Date'            },
+    { label: 'Work Hours',   Icon: LogIn,          iconClass: 'text-emerald-500' },
+    { label: 'Lunch Break',  Icon: Coffee,          iconClass: 'text-amber-500'  },
+    { label: 'Overtime',     Icon: Moon,            iconClass: 'text-indigo-500' },
+    { label: 'Total Hours'   },
+    { label: 'Location Status' },
+    { label: 'Action'          },
+  ];
 
   return (
     <>
@@ -714,24 +712,24 @@ const StudentAttendance = () => {
                   <div className="relative">
                     <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: `rgb(var(--primary-400))` }} />
                     <input
-                      id="date-filter" type="date" value={dateFilter}
+                      type="date" value={dateFilter}
                       onChange={(e) => setDateFilter(e.target.value)}
                       className="pl-9 pr-3 py-2 text-sm rounded-lg transition cursor-pointer outline-none"
                       style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50) / 0.4)`, color: `rgb(var(--primary-800))` }}
                       onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                      onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                      onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     />
                   </div>
                   {/* Status filter */}
                   <div className="relative">
                     <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: `rgb(var(--primary-400))` }} />
                     <select
-                      id="status-filter" value={statusFilter}
+                      value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
                       className="pl-9 pr-8 py-2 text-sm rounded-lg outline-none appearance-none cursor-pointer transition"
                       style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50) / 0.4)`, color: `rgb(var(--primary-800))` }}
                       onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                      onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                      onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     >
                       {FILTER_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
@@ -760,7 +758,7 @@ const StudentAttendance = () => {
                   {' '}of {allRecords.length} records
                   {filtered.length !== allRecords.length && statusFilter !== 'all' && (
                     <span style={{ color: `rgb(var(--primary-400))` }}>
-                      — filtered by{' '}
+                      {' '}— filtered by{' '}
                       <span className="font-medium" style={{ color: `rgb(var(--primary-600))` }}>
                         {FILTER_OPTIONS.find(o => o.value === statusFilter)?.label}
                       </span>
@@ -775,18 +773,10 @@ const StudentAttendance = () => {
               <table className="w-full min-w-225">
                 <thead>
                   <tr style={{ backgroundColor: `rgb(var(--primary-50) / 0.6)` }}>
-                    {[
-                      { label: 'Date' },
-                      { label: 'Morning', icon: Sun, color: 'text-amber-500' },
-                      { label: 'Afternoon', icon: Sunset, color: 'text-orange-500' },
-                      { label: 'OT', icon: Moon, color: 'text-indigo-500' },
-                      { label: 'Total Hours' },
-                      { label: 'Location Status' },
-                      { label: 'Action' },
-                    ].map(({ label, icon: Icon, color }) => (
+                    {TABLE_HEADERS.map(({ label, Icon, iconClass }) => (
                       <th key={label} className="text-left py-3 px-4 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: `rgb(var(--primary-600))` }}>
                         <span className="inline-flex items-center gap-1.5">
-                          {Icon && <Icon className={`w-3.5 h-3.5 ${color}`} />}
+                          {Icon && <Icon className={`w-3.5 h-3.5 ${iconClass}`} />}
                           {label}
                         </span>
                       </th>
@@ -812,9 +802,9 @@ const StudentAttendance = () => {
                     <EmptyTableState hasFilter={hasFilter} />
                   ) : (
                     filtered.map((rec) => {
-                      const totalHours = computeTotalHours(rec);
+                      const total      = computeTotalHours(rec);
                       const incomplete = isIncompleteAttendance(rec);
-                      const config = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
+                      const config     = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
                       const isUpdating = updatingIds.has(rec.attendance_id);
 
                       return (
@@ -839,25 +829,25 @@ const StudentAttendance = () => {
                             )}
                           </td>
 
-                          {/* Morning */}
+                          {/* Work Hours */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            <SessionStatus timeIn={rec.morning_time_in} timeOut={rec.morning_time_out} sessionKey="morning" />
+                            <WorkflowStatus timeIn={rec.time_in} timeOut={rec.time_out} workflowKey="work" />
                           </td>
 
-                          {/* Afternoon */}
+                          {/* Lunch Break */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            <SessionStatus timeIn={rec.afternoon_time_in} timeOut={rec.afternoon_time_out} sessionKey="afternoon" />
+                            <WorkflowStatus timeIn={rec.lunch_break_start} timeOut={rec.lunch_break_end} workflowKey="lunch" />
                           </td>
 
-                          {/* OT */}
+                          {/* Overtime */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            <SessionStatus timeIn={rec.ot_time_in} timeOut={rec.ot_time_out} sessionKey="ot" />
+                            <WorkflowStatus timeIn={rec.ot_time_in} timeOut={rec.ot_time_out} workflowKey="ot" />
                           </td>
 
                           {/* Total Hours */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            {totalHours ? (
-                              <span className="text-sm font-semibold tabular-nums" style={{ color: `rgb(var(--primary-700))` }}>{totalHours}</span>
+                            {total ? (
+                              <span className="text-sm font-semibold tabular-nums" style={{ color: `rgb(var(--primary-700))` }}>{total}</span>
                             ) : (
                               <span className="text-xs text-gray-400 italic">—</span>
                             )}
@@ -868,7 +858,7 @@ const StudentAttendance = () => {
                             <div className={`transition-opacity duration-150 ${isUpdating ? 'opacity-50 pointer-events-none' : ''}`}>
                               <LocationStatusDropdown
                                 status={rec.location_status}
-                                onChange={(newStatus) => handleStatusChange(rec.attendance_id, newStatus)}
+                                onChange={(s) => handleStatusChange(rec.attendance_id, s)}
                                 disabled={isUpdating}
                               />
                             </div>
@@ -905,13 +895,13 @@ const StudentAttendance = () => {
                 </p>
                 <div className="flex items-center gap-4 text-xs flex-wrap" style={{ color: `rgb(var(--primary-500))` }}>
                   <span className="flex items-center gap-1.5">
-                    <Sun className="w-3 h-3 text-amber-500" />Morning
+                    <LogIn className="w-3 h-3 text-emerald-500" />Work Hours
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Sunset className="w-3 h-3 text-orange-500" />Afternoon
+                    <Coffee className="w-3 h-3 text-amber-500" />Lunch Break
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Moon className="w-3 h-3 text-indigo-500" />OT
+                    <Moon className="w-3 h-3 text-indigo-500" />Overtime
                   </span>
                   <span className="flex items-center gap-1.5">
                     <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-500))` }} />Verified
@@ -932,12 +922,7 @@ const StudentAttendance = () => {
         </div>
       </div>
 
-      {selected && (
-        <DetailsModal
-          record={selected}
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {selected && <DetailsModal record={selected} onClose={() => setSelected(null)} />}
     </>
   );
 };
