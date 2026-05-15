@@ -28,11 +28,12 @@ export const getStudentProgress = async (id) => {
 // =============================
 // ASSIGN COMPANY
 // =============================
-export const assignCompany = async (studentId, companyId) => {
+export const assignCompany = async (studentId, payload) => {
   const res = await axios.put(
     `/coordinators/students/${studentId}/assign-company`,
-    { company_id: companyId },
+    payload,
     { headers: authHeaders() }
   );
+
   return res.data;
 };
