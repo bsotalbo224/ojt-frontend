@@ -6,10 +6,42 @@ import {
   Building2, User, GraduationCap,
   BarChart3, Activity, Award,
   LogIn, LogOut, Coffee, Moon, Info, Zap, Minus, TrendingDown,
+  Sun, Sunrise, Clock, Timer, Briefcase,
 } from 'lucide-react';
 
 const toInt = (n) => Math.round(Number(n || 0));
 
+/* ─────────────────────────────────────────
+   Shift Detection Helpers
+───────────────────────────────────────────*/
+const isHalfDay = (attendance) => {
+  const avg = toInt(attendance?.averageHoursPerDay ?? 0);
+  return avg > 0 && avg <= 5;
+};
+
+const isNightShift = (attendance) => {
+  // Use explicit flag from API if available, else infer from shift metadata
+  if (attendance?.shiftType) return attendance.shiftType === "night";
+  // Fallback: check lastTimeIn hour if provided
+  if (attendance?.lastTimeIn) {
+    const hour = new Date(attendance.lastTimeIn).getHours();
+    return hour >= 18 || hour < 6;
+  }
+  return false;
+};
+
+const analyzeShift = (attendance) => {
+  const halfDay  = isHalfDay(attendance);
+  const nightShift = isNightShift(attendance);
+
+  if (halfDay)    return { type: "half-day",   label: "Half Day",   color: "#f59e0b", bg: "#fffbeb", border: "#fde68a", Icon: Sunrise };
+  if (nightShift) return { type: "night",      label: "Night Shift", color: "#8b5cf6", bg: "#f5f3ff", border: "#ddd6fe", Icon: Moon    };
+  return           { type: "day",              label: "Day Shift",  color: "#0ea5e9", bg: "#f0f9ff", border: "#bae6fd", Icon: Sun     };
+};
+
+/* ─────────────────────────────────────────
+   Status Computation
+───────────────────────────────────────────*/
 const computeStatus = (data) => {
   const { checklist } = data;
   if (
@@ -20,25 +52,68 @@ const computeStatus = (data) => {
   if (!checklist.narrativesApproved)
     return { label: "Pending Daily Narratives", color: "orange" };
   if (data.student.completedHours < data.student.requiredHours)
-    return { label: "Ongoing",                  color: "blue"   };
+    return { label: "In Progress",              color: "blue"   };
   if (!checklist.coordinatorVerified)
     return { label: "For Coordinator Review",   color: "purple" };
   return   { label: "Hours Completed",          color: "teal"   };
 };
 
 /* ─────────────────────────────────────────
-   Performance insight — updated messaging
+   Performance Insight — half-day aware
 ───────────────────────────────────────────*/
-const computeInsight = (avgHoursPerDay) => {
+const computeInsight = (avgHoursPerDay, attendance) => {
+  const halfDay   = isHalfDay(attendance);
+  const nightShift = isNightShift(attendance);
+
+  // Half-day students: shift threshold
+  if (halfDay) {
+    const avg = toInt(avgHoursPerDay);
+    if (avg >= 4) return {
+      label: "Consistent",
+      desc:  "Excellent attendance consistency for a flexible half-day schedule.",
+      Icon:  Zap,
+      bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d", dot: "#22c55e",
+    };
+    return {
+      label: "Moderate",
+      desc:  "Good progress on your flexible schedule — keep up the consistent attendance.",
+      Icon:  TrendingUp,
+      bg: "#fefce8", border: "#fde68a", text: "#a16207", dot: "#eab308",
+    };
+  }
+
+  // Night shift
+  if (nightShift) {
+    if (avgHoursPerDay >= 7) return {
+      label: "Consistent",
+      desc:  "Outstanding attendance consistency on your night shift schedule.",
+      Icon:  Zap,
+      bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d", dot: "#22c55e",
+    };
+    if (avgHoursPerDay >= 5) return {
+      label: "Moderate",
+      desc:  "Good progress — maintain a consistent night shift work schedule.",
+      Icon:  TrendingUp,
+      bg: "#fefce8", border: "#fde68a", text: "#a16207", dot: "#eab308",
+    };
+    return {
+      label: "Needs Improvement",
+      desc:  "Try to complete your full nightly work schedule consistently.",
+      Icon:  TrendingDown,
+      bg: "#fff7ed", border: "#fed7aa", text: "#c2410c", dot: "#f97316",
+    };
+  }
+
+  // Day shift (standard)
   if (avgHoursPerDay >= 6) return {
     label: "Consistent",
-    desc:  "You're maintaining excellent attendance consistency each day.",
+    desc:  "You're maintaining excellent attendance consistency each workday.",
     Icon:  Zap,
     bg: "#f0fdf4", border: "#bbf7d0", text: "#15803d", dot: "#22c55e",
   };
   if (avgHoursPerDay >= 4) return {
     label: "Moderate",
-    desc:  "Good progress — continue maintaining consistent work attendance.",
+    desc:  "Good progress — continue maintaining consistent workforce attendance.",
     Icon:  TrendingUp,
     bg: "#fefce8", border: "#fde68a", text: "#a16207", dot: "#eab308",
   };
@@ -105,7 +180,27 @@ const ChecklistItem = ({ checked, label }) => (
 );
 
 /* ─────────────────────────────────────────
-   Workflow row — replaces SessionRow
+   Shift Badge
+───────────────────────────────────────────*/
+const ShiftBadge = ({ shift }) => {
+  const { Icon } = shift;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold"
+      style={{
+        background: shift.bg,
+        border: `1px solid ${shift.border}`,
+        color: shift.color,
+      }}
+    >
+      <Icon className="w-3 h-3" />
+      {shift.label}
+    </span>
+  );
+};
+
+/* ─────────────────────────────────────────
+   Workflow Row — dynamic
 ───────────────────────────────────────────*/
 const WorkflowRow = ({ Icon, label, description, barCount, barColor, accentColor }) => (
   <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 last:border-0">
@@ -138,10 +233,110 @@ const WorkflowRow = ({ Icon, label, description, barCount, barColor, accentColor
 );
 
 /* ─────────────────────────────────────────
-   Performance insight card
+   Dynamic Attendance Workflow
 ───────────────────────────────────────────*/
-const InsightCard = ({ avgHoursPerDay }) => {
-  const insight = computeInsight(avgHoursPerDay);
+const AttendanceWorkflow = ({ attendance }) => {
+  const shift      = analyzeShift(attendance);
+  const halfDay    = shift.type === "half-day";
+  const nightShift = shift.type === "night";
+  const hasOvertime = toInt(attendance?.overtimeHours) > 0 || Boolean(attendance?.hasOvertime);
+
+  const timeInLabel  = nightShift ? "Clock In / Clock Out" : "Time In / Time Out";
+  const timeInDesc   = nightShift ? "Night shift work schedule" : "Regular workforce schedule";
+  const breakLabel   = nightShift ? "Meal Break" : "Lunch Break";
+  const breakDesc    = nightShift ? "Tracked meal break interval" : "Tracked lunch break interval";
+
+  return (
+    <div className="mt-4">
+      {/* Subsection header with shift badge */}
+      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <div className="w-1 h-3.5 rounded-full" style={{ background: `rgb(var(--primary-400))` }} />
+          <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Attendance Workflow</p>
+        </div>
+        <ShiftBadge shift={shift} />
+      </div>
+
+      <div
+        className="rounded-xl px-3 py-1"
+        style={{ background: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
+      >
+        {/* Time In / Time Out — always shown */}
+        <WorkflowRow
+          Icon={LogIn}
+          label={timeInLabel}
+          description={timeInDesc}
+          barCount={3}
+          barColor="#10b981"
+          accentColor="#10b981"
+        />
+
+        {/* Lunch / Meal Break — hidden for half-day */}
+        {!halfDay && (
+          <WorkflowRow
+            Icon={Coffee}
+            label={breakLabel}
+            description={breakDesc}
+            barCount={2}
+            barColor={nightShift ? "#8b5cf6" : "#f59e0b"}
+            accentColor={nightShift ? "#8b5cf6" : "#f59e0b"}
+          />
+        )}
+
+        {/* Overtime — shown only when applicable */}
+        {hasOvertime && (
+          <WorkflowRow
+            Icon={Timer}
+            label="Overtime Hours"
+            description="Additional rendered overtime hours"
+            barCount={1}
+            barColor="#f97316"
+            accentColor="#f97316"
+          />
+        )}
+
+        {/* Half-day indicator row */}
+        {halfDay && (
+          <WorkflowRow
+            Icon={Clock}
+            label="Flexible Schedule"
+            description="Partial-day attendance — no meal break tracked"
+            barCount={2}
+            barColor="#f59e0b"
+            accentColor="#f59e0b"
+          />
+        )}
+      </div>
+
+      {/* Helper notes */}
+      <div className="mt-2.5 space-y-1 pl-0.5">
+        <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
+          <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
+          Rendered hours include {halfDay ? "flexible" : "regular"} attendance
+          {halfDay ? " without meal break deductions." : ", meal break deductions, and overtime when applicable."}
+        </p>
+        {!halfDay && (
+          <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
+            <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
+            Overtime hours are counted separately from the standard work schedule.
+          </p>
+        )}
+        {halfDay && (
+          <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
+            <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
+            Flexible schedule: daily hours may vary based on arrangement.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ─────────────────────────────────────────
+   Performance Insight Card
+───────────────────────────────────────────*/
+const InsightCard = ({ avgHoursPerDay, attendance }) => {
+  const insight = computeInsight(avgHoursPerDay, attendance);
   const { Icon } = insight;
   return (
     <div
@@ -199,6 +394,10 @@ const StudentProgress = () => {
             totalHours:         toInt(progress?.attendance?.totalHours),
             averageHoursPerDay: toInt(progress?.attendance?.avgHoursPerDay),
             lastDate:           progress?.attendance?.lastDate || null,
+            lastTimeIn:         progress?.attendance?.lastTimeIn || null,
+            shiftType:          progress?.attendance?.shiftType || null,
+            hasOvertime:        Boolean(progress?.attendance?.hasOvertime),
+            overtimeHours:      toInt(progress?.attendance?.overtimeHours),
           },
           dailyLogs: {
             total:         toInt(progress?.dailyLogs?.total),
@@ -304,7 +503,7 @@ const StudentProgress = () => {
               </div>
               <div className="grid grid-cols-2 gap-3 pt-1">
                 <InfoRow label="Required Hours"  value={`${student.requiredHours} hrs`} />
-                <InfoRow label="Completed Hours" value={`${student.completedHours} hrs`} highlight />
+                <InfoRow label="Rendered Hours"  value={`${student.completedHours} hrs`} highlight />
               </div>
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Remaining Hours</p>
@@ -324,7 +523,7 @@ const StudentProgress = () => {
               >
                 <Info className="w-3.5 h-3.5 shrink-0" style={{ color: `rgb(var(--primary-600))` }} />
                 <p className="text-xs font-medium" style={{ color: `rgb(var(--primary-700))` }}>
-                  Hours are calculated from completed work attendance records.
+                  Rendered hours are calculated from completed workforce attendance records.
                 </p>
               </div>
 
@@ -346,7 +545,7 @@ const StudentProgress = () => {
                 </div>
                 <div className="space-y-3 flex-1">
                   <div className="rounded-lg p-3" style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-200))` }}>
-                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: `rgb(var(--primary-700))` }}>Completed</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: `rgb(var(--primary-700))` }}>Rendered</p>
                     <p className="text-xl font-bold text-gray-900">
                       {student.completedHours} <span className="text-sm font-medium text-gray-500">/ {requiredHours} hrs</span>
                     </p>
@@ -367,7 +566,7 @@ const StudentProgress = () => {
                 <div className="w-full rounded-full h-3 overflow-hidden" style={{ backgroundColor: `rgb(var(--primary-100))` }}>
                   <div className="h-3 rounded-full" style={{ width: `${pct}%`, background: `linear-gradient(to right, rgb(var(--primary-500)), rgb(var(--primary-600)))` }} />
                 </div>
-                <p className="text-xs text-gray-500 mt-1.5 text-center">{pct}% of required hours completed</p>
+                <p className="text-xs text-gray-500 mt-1.5 text-center">{pct}% of required hours rendered</p>
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -377,7 +576,7 @@ const StudentProgress = () => {
                 </div>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center">
                   <p className="text-lg font-bold text-gray-700">{student.completedHours}</p>
-                  <p className="text-xs text-gray-500 font-medium">Done (hrs)</p>
+                  <p className="text-xs text-gray-500 font-medium">Rendered (hrs)</p>
                 </div>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-center">
                   <p className="text-lg font-bold text-gray-700">{remainingHours}</p>
@@ -394,77 +593,31 @@ const StudentProgress = () => {
           {/* Attendance */}
           <SectionCard icon={Calendar} title="Attendance">
 
-            {/* Context label — updated */}
+            {/* Context label */}
             <div className="flex items-start gap-1.5 mb-3 -mt-1">
               <Info className="w-3 h-3 shrink-0 text-gray-400 mt-0.5" />
               <p className="text-[11px] text-gray-500 font-medium leading-tight">
-                Hours include regular attendance, lunch deductions, and overtime when applicable.
+                Rendered hours reflect workforce attendance, meal/lunch deductions, and overtime hours when applicable.
               </p>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
               <StatBadge value={attendance.totalDays}                       label="Days Attended" accent="green" />
-              <StatBadge value={`${toInt(attendance.totalHours)}h`}         label="Total Hours"   accent="green" />
-              <StatBadge value={`${toInt(attendance.averageHoursPerDay)}h`} label="Avg / Day"     accent="gray"  />
+              <StatBadge value={`${toInt(attendance.totalHours)}h`}         label="Rendered Hours" accent="green" />
+              <StatBadge value={`${toInt(attendance.averageHoursPerDay)}h`} label="Avg / Day"      accent="gray"  />
               <div className="bg-gray-50 rounded-lg border border-gray-200 p-2.5 text-center">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide leading-tight">Last Attended</p>
                 <p className="text-xs font-bold text-gray-700 mt-0.5">{formatDate(attendance.lastDate)}</p>
               </div>
             </div>
 
-            {/* Attendance Workflow subsection */}
-            <div className="mt-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <div className="w-1 h-3.5 rounded-full" style={{ background: `rgb(var(--primary-400))` }} />
-                <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">Attendance Workflow</p>
-              </div>
-              <div
-                className="rounded-xl px-3 py-1"
-                style={{ background: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
-              >
-                <WorkflowRow
-                  Icon={LogIn}
-                  label="Time In / Time Out"
-                  description="Regular work schedule"
-                  barCount={3}
-                  barColor="#10b981"
-                  accentColor="#10b981"
-                />
-                <WorkflowRow
-                  Icon={Coffee}
-                  label="Lunch Break"
-                  description="Tracked lunch break interval"
-                  barCount={2}
-                  barColor="#f59e0b"
-                  accentColor="#f59e0b"
-                />
-                <WorkflowRow
-                  Icon={Moon}
-                  label="Overtime"
-                  description="Additional overtime hours"
-                  barCount={1}
-                  barColor="#8b5cf6"
-                  accentColor="#8b5cf6"
-                />
-              </div>
+            {/* Dynamic Workflow */}
+            <AttendanceWorkflow attendance={attendance} />
 
-              {/* Helper texts — updated */}
-              <div className="mt-2.5 space-y-1 pl-0.5">
-                <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
-                  <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
-                  Daily average is based on completed attendance records.
-                </p>
-                <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
-                  <Minus className="w-2.5 h-2.5 shrink-0 mt-0.5" />
-                  Overtime hours are counted separately when available.
-                </p>
-              </div>
-            </div>
-
-            <InsightCard avgHoursPerDay={attendance.averageHoursPerDay} />
+            <InsightCard avgHoursPerDay={attendance.averageHoursPerDay} attendance={attendance} />
           </SectionCard>
 
-          {/* Daily Logs — unchanged */}
+          {/* Daily Logs */}
           <SectionCard icon={FileText} title="Daily Logs">
             <div className="grid grid-cols-2 gap-2.5">
               <StatBadge value={dailyLogs.total}         label="Total"          accent="gray"  />
@@ -474,7 +627,7 @@ const StudentProgress = () => {
             </div>
           </SectionCard>
 
-          {/* Daily Narratives — unchanged */}
+          {/* Daily Narratives */}
           <SectionCard icon={BookOpen} title="Daily Narratives">
             <div className="grid grid-cols-2 gap-2.5">
               <StatBadge value={dailyNarratives.total}     label="Total"          accent="gray"  />
@@ -485,7 +638,7 @@ const StudentProgress = () => {
           </SectionCard>
         </div>
 
-        {/* ROW 3 — unchanged */}
+        {/* ROW 3 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
           <SectionCard icon={ClipboardCheck} title="Completion Checklist">
@@ -498,7 +651,7 @@ const StudentProgress = () => {
                 <div className="h-2 rounded-full" style={{ width: `${(completedChecklist / totalChecklist) * 100}%`, background: `linear-gradient(to right, rgb(var(--primary-500)), rgb(var(--primary-600)))` }} />
               </div>
             </div>
-            <ChecklistItem checked={checklist.requiredHoursCompleted} label="Required OJT hours completed" />
+            <ChecklistItem checked={checklist.requiredHoursCompleted} label="Required OJT hours rendered" />
             <ChecklistItem checked={checklist.dailyLogsComplete}      label="All daily logs submitted & approved" />
             <ChecklistItem checked={checklist.narrativesApproved}     label="All daily narratives approved" />
             <ChecklistItem checked={checklist.coordinatorVerified}    label="Coordinator verified & signed off" />
@@ -525,7 +678,7 @@ const StudentProgress = () => {
                 </div>
               </div>
               <p className="text-xs text-gray-400 text-center px-2">
-                Status is computed automatically based on submitted records, daily narratives, and coordinator review.
+                Status is computed automatically based on rendered hours, submitted records, daily narratives, and coordinator review.
               </p>
             </div>
           </SectionCard>

@@ -3,7 +3,7 @@ import {
   Users, Search, Eye, CheckCircle, Clock, AlertCircle,
   FileText, BookOpen, TrendingUp, Filter, Building2, X, Loader2,
   Plus, Edit2, ChevronDown, GraduationCap,
-  LogIn, LogOut, Coffee, Moon, CalendarClock,
+  LogIn, LogOut, Coffee, Moon, CalendarClock, Sunrise,
 } from 'lucide-react';
 import { getCoordinatorStudents, assignCompany, getStudentProgress } from '../../api/students';
 import { getCompanies } from '../../api/companies';
@@ -36,7 +36,6 @@ const studentsApi = {
 
 const isCompleted = (s) => s.hours_completed >= s.ojt_hours_required;
 
-/** "08:30:00" or "08:30" → "8:30 AM" */
 const formatTime12h = (t) => {
   if (!t) return null;
   const [hStr, mStr] = t.split(':');
@@ -45,14 +44,12 @@ const formatTime12h = (t) => {
   return `${h % 12 || 12}:${mStr} ${h >= 12 ? 'PM' : 'AM'}`;
 };
 
-/** "08:30:00" → "08:30" (for <input type="time">) */
 const toTimeInput = (t) => {
   if (!t) return '';
   const parts = t.split(':');
   return parts.length >= 2 ? `${parts[0]}:${parts[1]}` : t;
 };
 
-/** "08:30" → "08:30:00" */
 const toTimeStorage = (t) => (t && t.length === 5 ? `${t}:00` : t);
 
 const toMins = (t) => {
@@ -61,31 +58,71 @@ const toMins = (t) => {
   return isNaN(h) || isNaN(m) ? null : h * 60 + m;
 };
 
-const diffHours = (start, end) => {
-  const s = toMins(start), e = toMins(end);
-  if (s == null || e == null || e <= s) return 0;
-  return parseFloat(((e - s) / 60).toFixed(2));
+// ─── Shift analysis ───────────────────────────────────────────────────────────
+
+const analyzeShift = (startTime, endTime) => {
+  const s = toMins(startTime);
+  const e = toMins(endTime);
+  if (s == null || e == null) return { isNightShift: false, isHalfDay: false, shiftType: 'Day Shift' };
+  const isNightShift = e < s;
+  const shiftMins    = isNightShift ? (1440 - s + e) : (e - s);
+  const isHalfDay    = shiftMins < 300;
+  let shiftType = 'Day Shift';
+  if (isHalfDay)     shiftType = 'Half Day';
+  else if (isNightShift) shiftType = 'Night Shift';
+  return { isNightShift, isHalfDay, shiftType };
 };
 
 /**
- * Regular = time_in → time_out minus lunch.
- * Auto-deduct 1 hr if work ≥ 5 hrs and no lunch logged.
- * OT added separately.
+ * Overnight-safe minutes difference.
+ * If end <= start, assume end crossed midnight → add 24 hrs.
+ */
+const diffMins = (start, end) => {
+  if (!start || !end) return 0;
+  let s = toMins(start), e = toMins(end);
+  if (s == null || e == null) return 0;
+  if (e <= s) e += 1440; // cross-midnight
+  return Math.max(0, e - s);
+};
+
+const diffHours = (start, end) => parseFloat((diffMins(start, end) / 60).toFixed(2));
+
+/**
+ * Total hours = (time_in → time_out) − lunch + OT.
+ * Auto-deduct 1 hr for long shifts without logged lunch.
+ * Skip deduction for half-day.
  */
 const computeTotalHours = (rec) => {
+  if (!rec?.time_in || !rec?.time_out) return '—';
+
+  const startT = rec.start_time || null;
+  const endT   = rec.end_time   || null;
+  const { isHalfDay, isNightShift } = analyzeShift(startT, endT);
+
   const workHrs  = diffHours(rec.time_in, rec.time_out);
   const lunchHrs = diffHours(rec.lunch_break_start, rec.lunch_break_end);
   const otHrs    = diffHours(rec.ot_time_in, rec.ot_time_out);
-  let deduct = lunchHrs > 0 ? lunchHrs : workHrs >= 5 ? 1 : 0;
+
+  let deduct = 0;
+  if (!isHalfDay) {
+    if (lunchHrs > 0)      deduct = lunchHrs;
+    else if (workHrs >= 5) deduct = 1;
+  }
+
   const total = Math.max(0, workHrs - deduct) + otHrs;
   return total > 0 ? parseFloat(total.toFixed(2)) : '—';
 };
 
+// ─── Attendance status (shift-aware) ─────────────────────────────────────────
+
 const getAttendanceStatus = (rec) => {
+  const { isNightShift } = analyzeShift(rec.start_time, rec.end_time);
+  const breakLabel = isNightShift ? 'On Meal Break' : 'On Break';
+
   if (!rec.time_in)
     return { label: 'No Record',  bg: '#f3f4f6', border: '#e5e7eb', text: '#9ca3af' };
   if (rec.lunch_break_start && !rec.lunch_break_end)
-    return { label: 'On Break',   bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' };
+    return { label: breakLabel,   bg: '#fff7ed', border: '#fed7aa', text: '#c2410c' };
   if (rec.ot_time_in && !rec.ot_time_out)
     return { label: 'OT Active',  bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9' };
   if (!rec.time_out)
@@ -158,16 +195,14 @@ const SkeletonRow = () => (
 );
 
 const Toast = ({ message, visible }) => (
-  <div
-    className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 text-white text-sm font-medium rounded-xl shadow-xl transition-all duration-300 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
-    style={{ backgroundColor: `rgb(var(--primary-700))` }}
-  >
+  <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 text-white text-sm font-medium rounded-xl shadow-xl transition-all duration-300 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}
+    style={{ backgroundColor: `rgb(var(--primary-700))` }}>
     <CheckCircle className="w-4 h-4 shrink-0" style={{ color: `rgb(var(--primary-300))` }} />
     {message}
   </div>
 );
 
-// ─── WorkflowCell — table cell for a start/end pair ──────────────────────────
+// ─── WorkflowCell ─────────────────────────────────────────────────────────────
 
 const WorkflowCell = ({ start, end, inProgressLabel = 'In progress' }) => {
   if (!start && !end) return (
@@ -188,17 +223,30 @@ const WorkflowCell = ({ start, end, inProgressLabel = 'In progress' }) => {
   );
 };
 
-// ─── ScheduleBadge — compact schedule display ────────────────────────────────
+// ─── ScheduleBadge ────────────────────────────────────────────────────────────
 
 const ScheduleBadge = ({ startTime, endTime }) => {
   const s = formatTime12h(startTime || DEFAULT_START + ':00');
   const e = formatTime12h(endTime   || DEFAULT_END   + ':00');
+  const { shiftType, isNightShift, isHalfDay } = analyzeShift(startTime, endTime);
+
+  const typeStyle = isHalfDay
+    ? { bg: '#fefce8', border: '#fde68a', text: '#a16207' }
+    : isNightShift
+    ? { bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9' }
+    : { bg: `rgb(var(--primary-50))`, border: `rgb(var(--primary-100))`, text: `rgb(var(--primary-700))` };
+
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
-      style={{ background: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))`, color: `rgb(var(--primary-700))` }}>
-      <CalendarClock className="w-3 h-3 shrink-0" />
-      {s} – {e}
-    </span>
+    <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+      <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+        style={{ background: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))`, color: `rgb(var(--primary-700))` }}>
+        <CalendarClock className="w-3 h-3 shrink-0" />{s} – {e}
+      </span>
+      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+        style={{ background: typeStyle.bg, border: `1px solid ${typeStyle.border}`, color: typeStyle.text }}>
+        {shiftType}
+      </span>
+    </div>
   );
 };
 
@@ -246,22 +294,17 @@ const AssignCompanyModal = ({
   onSubmit, onClose, submitting,
 }) => {
   const hasCompany = Boolean(student?.company);
+  const inputStyle = { border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-800))` };
 
-  const inputStyle = {
-    border: `1px solid rgb(var(--primary-200))`,
-    backgroundColor: `rgb(var(--primary-50))`,
-    color: `rgb(var(--primary-800))`,
-  };
+  // Live preview of shift type while editing
+  const previewShift = analyzeShift(startTime, endTime);
 
   return (
     <>
       <div className="fixed inset-0 z-9998 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-9999 flex items-center justify-center p-4 pointer-events-none">
-        <div
-          className="pointer-events-auto w-full max-w-md bg-white rounded-2xl shadow-xl"
-          style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out forwards' }}
-        >
-          {/* Header */}
+        <div className="pointer-events-auto w-full max-w-md bg-white rounded-2xl shadow-xl"
+          style={{ border: `1px solid rgb(var(--primary-100))`, animation: 'modalIn 0.2s ease-out forwards' }}>
           <div className="flex items-center justify-between px-6 pt-5 pb-4" style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: `rgb(var(--primary-50))` }}>
@@ -271,9 +314,7 @@ const AssignCompanyModal = ({
                 <h3 className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>
                   {hasCompany ? 'Change Company & Schedule' : 'Assign Company & Schedule'}
                 </h3>
-                <p className="text-xs mt-0.5" style={{ color: `rgb(var(--primary-500))` }}>
-                  {student?.f_name} {student?.l_name}
-                </p>
+                <p className="text-xs mt-0.5" style={{ color: `rgb(var(--primary-500))` }}>{student?.f_name} {student?.l_name}</p>
               </div>
             </div>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors duration-150"
@@ -285,28 +326,23 @@ const AssignCompanyModal = ({
           </div>
 
           <div className="px-6 py-5 space-y-4">
-            {/* Current company banner */}
             {hasCompany && (
               <div className="flex items-start gap-2.5 p-3 rounded-lg"
                 style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}>
                 <Building2 className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: `rgb(var(--primary-500))` }} />
                 <p className="text-xs" style={{ color: `rgb(var(--primary-700))` }}>
-                  <span className="font-semibold">Current company: </span>{student.company}
+                  <span className="font-semibold">Current: </span>{student.company}
                   {(student.start_time || student.end_time) && (
-                    <span className="ml-2 opacity-70">
-                      · {formatTime12h(student.start_time) ?? DEFAULT_START} – {formatTime12h(student.end_time) ?? DEFAULT_END}
-                    </span>
+                    <span className="ml-2 opacity-70">· {formatTime12h(student.start_time) ?? DEFAULT_START} – {formatTime12h(student.end_time) ?? DEFAULT_END}</span>
                   )}
                 </p>
               </div>
             )}
 
-            {/* Company select */}
             <div className="space-y-1.5">
               <label className="block text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>Select Company</label>
               {loadingCompanies ? (
-                <div className="flex items-center gap-2 py-2.5 px-3 rounded-lg"
-                  style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50))` }}>
+                <div className="flex items-center gap-2 py-2.5 px-3 rounded-lg" style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50))` }}>
                   <Loader2 className="w-4 h-4 animate-spin" style={{ color: `rgb(var(--primary-500))` }} />
                   <span className="text-sm" style={{ color: `rgb(var(--primary-500))` }}>Loading companies…</span>
                 </div>
@@ -324,41 +360,47 @@ const AssignCompanyModal = ({
               )}
             </div>
 
-            {/* Work Schedule */}
             <div>
-              <div className="flex items-center gap-2 mb-2">
-                <CalendarClock className="w-3.5 h-3.5" style={{ color: `rgb(var(--primary-500))` }} />
-                <label className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>Work Schedule</label>
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="w-3.5 h-3.5" style={{ color: `rgb(var(--primary-500))` }} />
+                  <label className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>Work Schedule</label>
+                </div>
+                {/* Live shift type preview */}
+                {startTime && endTime && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      background: previewShift.isHalfDay ? '#fefce8' : previewShift.isNightShift ? '#f5f3ff' : `rgb(var(--primary-50))`,
+                      border: `1px solid ${previewShift.isHalfDay ? '#fde68a' : previewShift.isNightShift ? '#ddd6fe' : `rgb(var(--primary-100))`}`,
+                      color: previewShift.isHalfDay ? '#a16207' : previewShift.isNightShift ? '#6d28d9' : `rgb(var(--primary-700))`,
+                    }}>
+                    {previewShift.shiftType}
+                  </span>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: `rgb(var(--primary-600))` }}>Start Time</label>
                   <input type="time" value={startTime} onChange={(e) => onStartTime(e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm rounded-lg outline-none transition-all duration-150"
-                    style={inputStyle}
+                    className="w-full px-3 py-2.5 text-sm rounded-lg outline-none transition-all duration-150" style={inputStyle}
                     onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-200))`; e.target.style.borderColor = `rgb(var(--primary-400))`; }}
-                    onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
-                  />
+                    onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }} />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: `rgb(var(--primary-600))` }}>End Time</label>
                   <input type="time" value={endTime} onChange={(e) => onEndTime(e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm rounded-lg outline-none transition-all duration-150"
-                    style={inputStyle}
+                    className="w-full px-3 py-2.5 text-sm rounded-lg outline-none transition-all duration-150" style={inputStyle}
                     onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-200))`; e.target.style.borderColor = `rgb(var(--primary-400))`; }}
-                    onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
-                  />
+                    onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }} />
                 </div>
               </div>
-              {/* Flexible schedule note */}
               <p className="text-[11px] mt-2 flex items-start gap-1" style={{ color: `rgb(var(--primary-400))` }}>
                 <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
-                Schedule is informational only — students may render hours outside this range, including overtime, night shifts, and weekend duty.
+                Schedule is informational only — supports night shifts, overtime, and weekend duty.
               </p>
             </div>
           </div>
 
-          {/* Footer */}
           <div className="flex items-center justify-end gap-3 px-6 pb-5">
             <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg transition-colors duration-150"
               style={{ color: `rgb(var(--primary-700))`, backgroundColor: `rgb(var(--primary-50))` }}
@@ -392,8 +434,8 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
           ojt_hours_required: student.ojt_hours_required != null ? String(student.ojt_hours_required) : '' }
       : { ...EMPTY_FORM }
   );
-  const [errors,   setErrors]   = useState({});
-  const [saving,   setSaving]   = useState(false);
+  const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
   const [apiError, setApiError] = useState('');
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -433,7 +475,7 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
     if (Object.keys(e).length) { setErrors(e); return; }
     setSaving(true); setApiError('');
     try { await onSave(form); }
-    catch (err) { setApiError(err?.message ?? 'Something went wrong. Please try again.'); }
+    catch (err) { setApiError(err?.message ?? 'Something went wrong.'); }
     finally { setSaving(false); }
   };
 
@@ -557,7 +599,7 @@ const CoordinatorStudents = () => {
     const q = search.trim().toLowerCase();
     return students.filter((s) => {
       const name = `${s.f_name} ${s.l_name}`.toLowerCase();
-      const ok = !q || name.includes(q) || s.company?.toLowerCase().includes(q) || s.course?.toLowerCase().includes(q);
+      const ok  = !q || name.includes(q) || s.company?.toLowerCase().includes(q) || s.course?.toLowerCase().includes(q);
       const okF = filter === 'all' || (filter === 'completed' && isCompleted(s)) || (filter === 'ongoing' && !isCompleted(s));
       return ok && okF;
     });
@@ -575,8 +617,7 @@ const CoordinatorStudents = () => {
     setSelectedCompanyId('');
     setScheduleStart(toTimeInput(student.start_time) || DEFAULT_START);
     setScheduleEnd(toTimeInput(student.end_time)     || DEFAULT_END);
-    setShowModal(true);
-    setLoadingCompanies(true);
+    setShowModal(true); setLoadingCompanies(true);
     try { setCompanies((await getCompanies()) ?? []); }
     catch { setCompanies([]); }
     finally { setLoadingCompanies(false); }
@@ -666,7 +707,6 @@ const CoordinatorStudents = () => {
 
         {/* Table Card */}
         <div className="bg-white rounded-2xl shadow-md overflow-hidden" style={{ border: `1px solid rgb(var(--primary-50))` }}>
-          {/* Toolbar */}
           <div className="px-6 pt-5 pb-4" style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
               <h2 className="text-lg font-bold" style={{ color: `rgb(var(--primary-800))` }}>Student List</h2>
@@ -698,7 +738,6 @@ const CoordinatorStudents = () => {
             )}
           </div>
 
-          {/* Table */}
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -719,29 +758,21 @@ const CoordinatorStudents = () => {
                       <tr key={student.student_id} className="transition-colors duration-150" style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
                         onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
                         onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
-                        {/* Student */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
                             <Avatar name={`${student.f_name} ${student.l_name}`} src={student.photo?.startsWith('http') ? student.photo : ''} size="sm" />
                             <span className="text-sm font-semibold whitespace-nowrap" style={{ color: `rgb(var(--primary-800))` }}>{student.f_name} {student.l_name}</span>
                           </div>
                         </td>
-                        {/* Course */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-1.5 text-sm whitespace-nowrap" style={{ color: `rgb(var(--primary-700))` }}>
                             <GraduationCap className="w-3.5 h-3.5 shrink-0" style={{ color: `rgb(var(--primary-400))` }} />{student.course ?? '—'}
                           </div>
                         </td>
-                        {/* Company + Schedule */}
                         <td className="py-3.5 px-4">
-                          <p className="text-sm max-w-44 truncate font-medium" style={{ color: `rgb(var(--primary-700))` }} title={student.company}>
-                            {student.company ?? '—'}
-                          </p>
-                          {student.company && (
-                            <ScheduleBadge startTime={student.start_time} endTime={student.end_time} />
-                          )}
+                          <p className="text-sm max-w-44 truncate font-medium" style={{ color: `rgb(var(--primary-700))` }} title={student.company}>{student.company ?? '—'}</p>
+                          {student.company && <ScheduleBadge startTime={student.start_time} endTime={student.end_time} />}
                         </td>
-                        {/* OJT Hours */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-1.5 text-sm whitespace-nowrap">
                             <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: `rgb(var(--primary-400))` }} />
@@ -795,18 +826,11 @@ const CoordinatorStudents = () => {
       {/* Assign Company Modal */}
       {showModal && selectedStudent && (
         <AssignCompanyModal
-          student={selectedStudent}
-          companies={companies}
-          loadingCompanies={loadingCompanies}
-          selectedCompanyId={selectedCompanyId}
-          onSelectCompany={setSelectedCompanyId}
-          startTime={scheduleStart}
-          endTime={scheduleEnd}
-          onStartTime={setScheduleStart}
-          onEndTime={setScheduleEnd}
-          onSubmit={handleAssignSubmit}
-          onClose={closeAssignModal}
-          submitting={submitting}
+          student={selectedStudent} companies={companies} loadingCompanies={loadingCompanies}
+          selectedCompanyId={selectedCompanyId} onSelectCompany={setSelectedCompanyId}
+          startTime={scheduleStart} endTime={scheduleEnd}
+          onStartTime={setScheduleStart} onEndTime={setScheduleEnd}
+          onSubmit={handleAssignSubmit} onClose={closeAssignModal} submitting={submitting}
         />
       )}
 
@@ -839,7 +863,6 @@ const CoordinatorStudents = () => {
                 </div>
               ) : progressData ? (
                 <>
-                  {/* Student header */}
                   <div className="flex items-start gap-4 mb-6">
                     <Avatar name={`${progressData.student?.f_name} ${progressData.student?.l_name}`} src={progressData.student?.photo} size="lg" />
                     <div className="flex-1 min-w-0">
@@ -847,7 +870,6 @@ const CoordinatorStudents = () => {
                         {progressData.student?.f_name} {progressData.student?.l_name}
                       </h2>
                       <p className="text-sm mt-0.5" style={{ color: `rgb(var(--primary-500))` }}>OJT Progress Overview</p>
-                      {/* Schedule display in modal */}
                       {(progressData.student?.start_time || progressData.student?.end_time) && (
                         <div className="mt-2">
                           <ScheduleBadge startTime={progressData.student.start_time} endTime={progressData.student.end_time} />
@@ -865,7 +887,6 @@ const CoordinatorStudents = () => {
                     ))}
                   </div>
 
-                  {/* Hours progress */}
                   <div className="rounded-xl px-5 py-5 mb-4" style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100)))`, border: `1px solid rgb(var(--primary-100))` }}>
                     <div className="flex justify-between items-end mb-3">
                       <div>
@@ -885,7 +906,6 @@ const CoordinatorStudents = () => {
                     </div>
                   </div>
 
-                  {/* Stat tiles */}
                   <div className="grid grid-cols-3 gap-3 mb-4">
                     {[{ label: 'Days Attended', value: progressData.attendanceDays ?? 0 }, { label: 'Records', value: progressData.attendanceRecords ?? 0 }].map(({ label, value }) => (
                       <div key={label} className="bg-white rounded-xl px-4 py-4 shadow-sm text-center" style={{ border: `1px solid rgb(var(--primary-100))` }}>
@@ -901,10 +921,11 @@ const CoordinatorStudents = () => {
                     </div>
                   </div>
 
-                  {/* Recent Attendance — workflow-based */}
+                  {/* Recent Attendance — dynamic workflow-based */}
                   {progressData.recentAttendance?.some((r) => r?.date) && (
                     <div className="bg-white rounded-xl shadow-sm overflow-hidden" style={{ border: `1px solid rgb(var(--primary-100))` }}>
-                      <div className="px-5 py-3 flex items-center justify-between" style={{ borderBottom: `1px solid rgb(var(--primary-50))`, backgroundColor: `rgb(var(--primary-50))` }}>
+                      <div className="px-5 py-3 flex items-center justify-between flex-wrap gap-2"
+                        style={{ borderBottom: `1px solid rgb(var(--primary-50))`, backgroundColor: `rgb(var(--primary-50))` }}>
                         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: `rgb(var(--primary-600))` }}>Recent Attendance</p>
                         <div className="flex items-center gap-3">
                           {[{ dot: '#e5e7eb', label: 'No record', text: '#9ca3af' }, { dot: '#fde68a', label: 'In progress', text: '#a16207' }, { dot: '#bbf7d0', label: 'Completed', text: '#15803d' }].map(({ dot, label, text }) => (
@@ -920,15 +941,15 @@ const CoordinatorStudents = () => {
                           <thead>
                             <tr style={{ backgroundColor: `rgb(var(--primary-50))` }}>
                               {[
-                                { label: 'Date',        icon: null    },
-                                { label: 'Schedule',    icon: CalendarClock },
-                                { label: 'Work Hours',  icon: LogIn   },
-                                { label: 'Lunch Break', icon: Coffee  },
-                                { label: 'Time Out',    icon: LogOut  },
-                                { label: 'Overtime',    icon: Moon    },
-                                { label: 'Total',       icon: null    },
-                                { label: 'Status',      icon: null    },
-                              ].map(({ label, icon: Icon }) => (
+                                { label: 'Date',       Icon: null          },
+                                { label: 'Schedule',   Icon: CalendarClock },
+                                { label: 'Work Hours', Icon: LogIn         },
+                                { label: 'Break',      Icon: Coffee        },
+                                { label: 'Time Out',   Icon: LogOut        },
+                                { label: 'Overtime',   Icon: Moon          },
+                                { label: 'Total',      Icon: null          },
+                                { label: 'Status',     Icon: null          },
+                              ].map(({ label, Icon }) => (
                                 <th key={label} className="text-left py-2.5 px-4 text-xs font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: `rgb(var(--primary-500))` }}>
                                   <span className="inline-flex items-center gap-1">
                                     {Icon && <Icon className="w-3 h-3" style={{ color: `rgb(var(--primary-400))` }} />}
@@ -940,38 +961,72 @@ const CoordinatorStudents = () => {
                           </thead>
                           <tbody>
                             {progressData.recentAttendance.filter((r) => r?.date).map((rec, idx) => {
-                              const total  = computeTotalHours(rec);
-                              const status = getAttendanceStatus(rec);
-                              const schedStart = formatTime12h(rec.start_time || progressData.student?.start_time);
-                              const schedEnd   = formatTime12h(rec.end_time   || progressData.student?.end_time);
+                              const startT  = rec.start_time || progressData.student?.start_time;
+                              const endT    = rec.end_time   || progressData.student?.end_time;
+                              const recWithSched = { ...rec, start_time: startT, end_time: endT };
+                              const { isNightShift, isHalfDay } = analyzeShift(startT, endT);
+                              const breakLabel    = isNightShift ? 'On Meal Break' : 'On Break';
+                              const total         = computeTotalHours(recWithSched);
+                              const status        = getAttendanceStatus(recWithSched);
+                              const schedStart    = formatTime12h(startT);
+                              const schedEnd      = formatTime12h(endT);
+                              const { shiftType } = analyzeShift(startT, endT);
+
                               return (
                                 <tr key={idx} className="transition-colors duration-150" style={{ borderTop: `1px solid rgb(var(--primary-50))` }}
                                   onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
                                   onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}>
-                                  {/* Date */}
-                                  <td className="py-3 px-4 text-sm font-medium whitespace-nowrap" style={{ color: `rgb(var(--primary-800))` }}>
-                                    {(() => { const d = rec?.date ? new Date(rec.date) : null; return d && !isNaN(d) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; })()}
-                                  </td>
-                                  {/* Schedule */}
+
+                                  {/* Date + shift badge */}
                                   <td className="py-3 px-4 whitespace-nowrap">
-                                    {schedStart && schedEnd ? (
-                                      <span className="text-xs font-medium" style={{ color: `rgb(var(--primary-500))` }}>{schedStart} – {schedEnd}</span>
-                                    ) : (
-                                      <span className="text-xs text-gray-400">—</span>
+                                    <p className="text-sm font-medium" style={{ color: `rgb(var(--primary-800))` }}>
+                                      {(() => { const d = rec?.date ? new Date(rec.date) : null; return d && !isNaN(d) ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; })()}
+                                    </p>
+                                    {shiftType !== 'Day Shift' && (
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                                        style={{
+                                          background: isHalfDay ? '#fefce8' : '#f5f3ff',
+                                          border: `1px solid ${isHalfDay ? '#fde68a' : '#ddd6fe'}`,
+                                          color: isHalfDay ? '#a16207' : '#6d28d9',
+                                        }}>
+                                        {shiftType}
+                                      </span>
                                     )}
                                   </td>
+
+                                  {/* Schedule */}
+                                  <td className="py-3 px-4 whitespace-nowrap">
+                                    {schedStart && schedEnd
+                                      ? <span className="text-xs font-medium" style={{ color: `rgb(var(--primary-500))` }}>{schedStart} – {schedEnd}</span>
+                                      : <span className="text-xs text-gray-400">—</span>}
+                                  </td>
+
                                   {/* Work Hours */}
-                                  <td className="py-3 px-4"><WorkflowCell start={rec.time_in} end={rec.time_out} inProgressLabel="Working" /></td>
-                                  {/* Lunch Break */}
-                                  <td className="py-3 px-4"><WorkflowCell start={rec.lunch_break_start} end={rec.lunch_break_end} inProgressLabel="On break" /></td>
+                                  <td className="py-3 px-4">
+                                    <WorkflowCell start={rec.time_in} end={rec.time_out} inProgressLabel="Working" />
+                                  </td>
+
+                                  {/* Break (hidden for half-day) */}
+                                  <td className="py-3 px-4">
+                                    {isHalfDay
+                                      ? <span className="text-xs text-gray-400 italic">N/A</span>
+                                      : <WorkflowCell start={rec.lunch_break_start} end={rec.lunch_break_end} inProgressLabel={breakLabel} />}
+                                  </td>
+
                                   {/* Time Out */}
                                   <td className="py-3 px-4">
                                     {rec.time_out
-                                      ? <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap" style={{ backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>{formatTime12h(rec.time_out)}</span>
-                                      : <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium" style={{ backgroundColor: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }}>—</span>}
+                                      ? <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium whitespace-nowrap"
+                                          style={{ backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>{formatTime12h(rec.time_out)}</span>
+                                      : <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium"
+                                          style={{ backgroundColor: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }}>—</span>}
                                   </td>
+
                                   {/* Overtime */}
-                                  <td className="py-3 px-4"><WorkflowCell start={rec.ot_time_in} end={rec.ot_time_out} inProgressLabel="OT Active" /></td>
+                                  <td className="py-3 px-4">
+                                    <WorkflowCell start={rec.ot_time_in} end={rec.ot_time_out} inProgressLabel="OT Active" />
+                                  </td>
+
                                   {/* Total */}
                                   <td className="py-3 px-4 whitespace-nowrap">
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
@@ -981,6 +1036,7 @@ const CoordinatorStudents = () => {
                                       {total === '—' ? '—' : `${total} hrs`}
                                     </span>
                                   </td>
+
                                   {/* Status */}
                                   <td className="py-3 px-4 whitespace-nowrap">
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"

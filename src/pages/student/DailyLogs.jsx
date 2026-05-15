@@ -22,27 +22,137 @@ const toMs = (t) => {
   return (h * 3600 + m * 60 + s) * 1000;
 };
 
+/**
+ * Cross-midnight aware diff.
+ * If end <= start we add 24 h to end (overnight schedule).
+ */
 const msDiff = (start, end) => {
-  const s = toMs(start), e = toMs(end);
+  const s = toMs(start);
+  let e = toMs(end);
   if (s == null || e == null) return null;
+  if (e <= s) e += 24 * 60 * 60 * 1000; // overnight — add 24 h
   const d = e - s;
   return d > 0 ? d : null;
 };
 
 const msToHrs = (ms) => (ms == null ? 0 : ms / 3_600_000);
 
-const computeTotalHours = (att) => {
-  if (!att?.time_in || !att?.time_out) return null;
+/* ═══════════════════════════════════════════════════════
+   SHIFT ANALYSIS HELPERS
+═══════════════════════════════════════════════════════ */
 
-  const workMs   = msDiff(att.time_in, att.time_out) ?? 0;
-  const lunchMs  = msDiff(att.lunch_break_start, att.lunch_break_end);
-  const otMs     = msDiff(att.ot_time_in, att.ot_time_out) ?? 0;
+/**
+ * Night shift: time_out <= time_in.
+ * Covers standard overnight (e < s) AND the rare equal-boundary edge case.
+ */
+const isNightShift = (att) => {
+  const s = toMs(att?.time_in);
+  const e = toMs(att?.time_out);
+  if (s == null || e == null) return false;
+  return e <= s;
+};
 
-  let deductMs = 0;
+/**
+ * Half day: net rendered hours < 5.
+ * Net = gross work duration minus any explicit meal break,
+ * or minus the auto-deduct (1 h) when gross >= 5 h and no break logged.
+ * This means 8 AM → 1 PM with a 1-hour break still reads as half-day.
+ */
+const isHalfDay = (att) => {
+  const workMs  = msDiff(att?.time_in, att?.time_out);
+  if (workMs == null) return false;
+  const lunchMs = msDiff(att?.lunch_break_start, att?.lunch_break_end);
+  let deductMs;
   if (lunchMs != null) {
     deductMs = lunchMs;
   } else if (msToHrs(workMs) >= 5) {
-    deductMs = 3_600_000; // auto-deduct 1 hr
+    deductMs = 3_600_000; // auto-deduct 1 h
+  } else {
+    deductMs = 0;
+  }
+  return msToHrs(workMs) - msToHrs(deductMs) < 5;
+};
+
+/**
+ * Returns a combined shift label covering all active conditions.
+ * Examples: "Night Shift", "Half Day", "Night Half-Day"
+ */
+const getShiftLabel = (att) => {
+  const night   = isNightShift(att);
+  const halfDay = isHalfDay(att);
+  if (night && halfDay) return "Night Half-Day";
+  if (night)            return "Night Shift";
+  if (halfDay)          return "Half Day";
+  return null;
+};
+
+/** Full shift analysis bundle */
+const analyzeShift = (att) => {
+  const nightShift = isNightShift(att);
+  const halfDay    = isHalfDay(att);
+  return {
+    nightShift,
+    halfDay,
+    shiftLabel: getShiftLabel(att),
+    hasOT:  !!(att?.ot_time_in  || att?.ot_time_out),
+    hasMeal: !!(att?.lunch_break_start || att?.lunch_break_end),
+  };
+};
+
+/* ═══════════════════════════════════════════════════════
+   DYNAMIC WORKFLOW BUILDER
+   Replaces static WORKFLOW_STEPS array.
+═══════════════════════════════════════════════════════ */
+const buildWorkflow = (att) => {
+  const { nightShift, halfDay, hasOT } = analyzeShift(att ?? {});
+  const mealLabel = nightShift ? "Meal" : "Lunch";
+
+  const steps = [
+    { key: "time_in",  label: "Time In",  Icon: LogIn,  color: "#10b981", optional: false, isOT: false },
+  ];
+
+  // Skip meal/lunch for half-day
+  if (!halfDay) {
+    steps.push(
+      { key: "lunch_break_start", label: `${mealLabel} Start`, Icon: Coffee,          color: "#f59e0b", optional: true, isOT: false },
+      { key: "lunch_break_end",   label: `${mealLabel} End`,   Icon: UtensilsCrossed, color: "#f97316", optional: true, isOT: false },
+    );
+  }
+
+  steps.push(
+    { key: "time_out", label: "Time Out", Icon: LogOut, color: "#ef4444", optional: false, isOT: false },
+  );
+
+  // OT only when present
+  if (hasOT) {
+    steps.push(
+      { key: "ot_time_in",  label: "OT Start", Icon: Moon,    color: "#8b5cf6", optional: false, isOT: true },
+      { key: "ot_time_out", label: "OT End",   Icon: Sunrise, color: "#6366f1", optional: false, isOT: true },
+    );
+  }
+
+  return steps;
+};
+
+/* ═══════════════════════════════════════════════════════
+   TOTAL HOURS — cross-midnight aware
+═══════════════════════════════════════════════════════ */
+const computeTotalHours = (att) => {
+  if (!att?.time_in || !att?.time_out) return null;
+
+  const { halfDay } = analyzeShift(att);
+
+  const workMs  = msDiff(att.time_in, att.time_out) ?? 0;
+  const lunchMs = msDiff(att.lunch_break_start, att.lunch_break_end); // cross-midnight safe
+  const otMs    = msDiff(att.ot_time_in, att.ot_time_out) ?? 0;       // cross-midnight safe
+
+  let deductMs = 0;
+  if (!halfDay) {
+    if (lunchMs != null) {
+      deductMs = lunchMs;
+    } else if (msToHrs(workMs) >= 5) {
+      deductMs = 3_600_000; // auto-deduct 1 hr for shifts ≥ 5 h without explicit break
+    }
   }
 
   const total   = Math.max(0, msToHrs(workMs) - msToHrs(deductMs)) + msToHrs(otMs);
@@ -76,48 +186,45 @@ const formatDate = (d) =>
   });
 
 /* ═══════════════════════════════════════════════════════
-   WORKFLOW STEPS CONFIG
-═══════════════════════════════════════════════════════ */
-const WORKFLOW_STEPS = [
-  { key: "time_in",           label: "Time In",     Icon: LogIn,           color: "#10b981" },
-  { key: "lunch_break_start", label: "Lunch Start", Icon: Coffee,          color: "#f59e0b" },
-  { key: "lunch_break_end",   label: "Lunch End",   Icon: UtensilsCrossed, color: "#f97316" },
-  { key: "time_out",          label: "Time Out",    Icon: LogOut,          color: "#ef4444" },
-  { key: "ot_time_in",        label: "OT Start",    Icon: Moon,            color: "#8b5cf6" },
-  { key: "ot_time_out",       label: "OT End",      Icon: Sunrise,         color: "#6366f1" },
-];
-
-/* ═══════════════════════════════════════════════════════
-   ATTENDANCE WORKFLOW CARD (form read-only display)
+   ATTENDANCE WORKFLOW CARD — dynamic, shift-aware
 ═══════════════════════════════════════════════════════ */
 const AttendanceWorkflowCard = ({ attendance }) => {
-  const steps = WORKFLOW_STEPS.filter(
-    (s) => !s.key.startsWith("ot") || attendance?.ot_time_in || attendance?.ot_time_out
-  );
+  const steps = buildWorkflow(attendance);
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e5e7eb" }}>
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: "1px solid #e5e7eb" }}
+      role="list"
+      aria-label="Attendance workflow steps"
+    >
       {steps.map((step, i) => {
-        const val       = attendance?.[step.key];
-        const isDone    = !!val;
-        const isOptional = step.key === "lunch_break_start" || step.key === "lunch_break_end";
-        const isOt       = step.key.startsWith("ot");
+        const val    = attendance?.[step.key];
+        const isDone = !!val;
+        const statusText = isDone ? `completed at ${formatTime(val)}` : "pending";
 
         return (
           <div
             key={step.key}
-            className="flex items-center gap-3 px-4 py-3 transition-colors"
+            role="listitem"
+            aria-label={`${step.label}: ${statusText}`}
+            title={`${step.label} — ${isDone ? formatTime(val) : "not yet recorded"}`}
+            className="flex items-center gap-3 px-4 py-3"
             style={{
-              background: isDone ? `${step.color}08` : "#fafafa",
+              background:   isDone ? `${step.color}08` : "#fafafa",
               borderBottom: i < steps.length - 1 ? "1px solid #f3f4f6" : "none",
+              transition:   "background 0.2s ease",
             }}
           >
             {/* Icon */}
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+              title={step.label}
+              aria-hidden="true"
               style={{
                 background: isDone ? `${step.color}18` : "#f3f4f6",
-                border: `1px solid ${isDone ? `${step.color}35` : "#e5e7eb"}`,
+                border:     `1px solid ${isDone ? `${step.color}35` : "#e5e7eb"}`,
+                transition: "background 0.2s ease, border-color 0.2s ease",
               }}
             >
               <step.Icon className="w-4 h-4" style={{ color: isDone ? step.color : "#9ca3af" }} />
@@ -127,10 +234,10 @@ const AttendanceWorkflowCard = ({ attendance }) => {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-bold text-gray-600">{step.label}</span>
-                {isOptional && (
+                {step.optional && (
                   <span className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">optional</span>
                 )}
-                {isOt && (
+                {step.isOT && (
                   <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full" style={{ background: "#f5f3ff", color: "#7c3aed" }}>OT</span>
                 )}
               </div>
@@ -142,7 +249,12 @@ const AttendanceWorkflowCard = ({ attendance }) => {
             {/* Status dot */}
             <div
               className="w-2 h-2 rounded-full shrink-0"
-              style={{ background: isDone ? step.color : "#e5e7eb" }}
+              aria-hidden="true"
+              title={isDone ? "Completed" : "Pending"}
+              style={{
+                background: isDone ? step.color : "#e5e7eb",
+                transition: "background 0.25s ease",
+              }}
             />
           </div>
         );
@@ -152,38 +264,52 @@ const AttendanceWorkflowCard = ({ attendance }) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   COMPACT ATTENDANCE SUMMARY (log history cards)
+   COMPACT ATTENDANCE SUMMARY BADGES — dynamic, shift-aware
 ═══════════════════════════════════════════════════════ */
 const AttendanceSummaryBadges = ({ att }) => {
   if (!att?.time_in) return null;
 
+  const { nightShift, halfDay } = analyzeShift(att);
+  const mealLabel   = nightShift ? "Meal"         : "Lunch";
+  const resumeLabel = nightShift ? "Resume Shift" : "Resume Work";
+
   const badges = [];
 
   if (att.time_in)
-    badges.push({ label: "In", value: formatTime(att.time_in), color: "#10b981", Icon: LogIn });
+    badges.push({ label: "In",  value: formatTime(att.time_in),  color: "#10b981", Icon: LogIn });
 
-  if (att.lunch_break_start)
-    badges.push({ label: "Lunch", value: formatTime(att.lunch_break_start), color: "#f59e0b", Icon: Coffee });
+  // Hide meal/lunch for half-day
+  if (!halfDay) {
+    if (att.lunch_break_start)
+      badges.push({ label: mealLabel,  value: formatTime(att.lunch_break_start), color: "#f59e0b", Icon: Coffee });
 
-  if (att.lunch_break_end)
-    badges.push({ label: "Resume", value: formatTime(att.lunch_break_end), color: "#f97316", Icon: UtensilsCrossed });
+    if (att.lunch_break_end)
+      badges.push({ label: resumeLabel, value: formatTime(att.lunch_break_end), color: "#f97316", Icon: UtensilsCrossed });
+  }
 
   if (att.time_out)
     badges.push({ label: "Out", value: formatTime(att.time_out), color: "#ef4444", Icon: LogOut });
 
   if (att.ot_time_in)
-    badges.push({ label: "OT In", value: formatTime(att.ot_time_in), color: "#8b5cf6", Icon: Moon });
+    badges.push({ label: "OT In",  value: formatTime(att.ot_time_in),  color: "#8b5cf6", Icon: Moon });
 
   if (att.ot_time_out)
     badges.push({ label: "OT Out", value: formatTime(att.ot_time_out), color: "#6366f1", Icon: Sunrise });
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5" role="list" aria-label="Attendance time summary">
       {badges.map((b, i) => (
-        <span key={b.label} className="inline-flex items-center gap-1">
+        <span key={b.label} className="inline-flex items-center gap-1" role="listitem">
           <span
             className="inline-flex items-center gap-1 text-xs rounded-lg px-2 py-1 font-medium"
-            style={{ background: `${b.color}10`, border: `1px solid ${b.color}30`, color: "#374151" }}
+            title={`${b.label}: ${b.value}`}
+            aria-label={`${b.label} at ${b.value}`}
+            style={{
+              background:  `${b.color}10`,
+              border:      `1px solid ${b.color}30`,
+              color:       "#374151",
+              transition:  "background 0.2s ease, border-color 0.2s ease",
+            }}
           >
             <b.Icon className="w-3 h-3 shrink-0" style={{ color: b.color }} />
             <span className="font-semibold" style={{ color: b.color }}>{b.label}</span>
@@ -654,6 +780,26 @@ const DailyLogs = () => {
                         <Calendar className="w-4 h-4" style={{ color: `rgb(var(--primary-medium))` }} />
                         {formatDateOnly(attendance.attendance_date)}
                       </div>
+                      {/* Shift type badge — combined Night/Half-Day/Night Half-Day */}
+                      {attendance.time_in && attendance.time_out && (() => {
+                        const { shiftLabel, nightShift, halfDay } = analyzeShift(attendance);
+                        if (!shiftLabel) return null;
+                        const isNight = nightShift;
+                        const badgeStyle = isNight
+                          ? { background: "#1e1b4b", color: "#a5b4fc" }
+                          : { background: "#fef3c7", color: "#92400e" };
+                        const BadgeIcon = isNight ? Moon : Clock;
+                        return (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full"
+                            style={{ ...badgeStyle, transition: "opacity 0.2s ease" }}
+                            title={`Shift type: ${shiftLabel}`}
+                            aria-label={`Shift type: ${shiftLabel}`}
+                          >
+                            <BadgeIcon className="w-2.5 h-2.5" aria-hidden="true" /> {shiftLabel}
+                          </span>
+                        );
+                      })()}
                     </div>
                     <AttendanceWorkflowCard attendance={attendance} />
                   </>
@@ -823,6 +969,26 @@ const DailyLogs = () => {
                             <Timer className="w-2.5 h-2.5" />{logTotalHrs}
                           </span>
                         )}
+                        {/* Shift type pill — combined Night/Half-Day/Night Half-Day */}
+                        {logAtt.time_in && logAtt.time_out && (() => {
+                          const { shiftLabel, nightShift } = analyzeShift(logAtt);
+                          if (!shiftLabel) return null;
+                          const isNight    = nightShift;
+                          const pillStyle  = isNight
+                            ? { background: "#1e1b4b", color: "#a5b4fc" }
+                            : { background: "#fef3c7", color: "#92400e" };
+                          const PillIcon   = isNight ? Moon : Clock;
+                          return (
+                            <span
+                              className="ml-1.5 inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                              style={{ ...pillStyle, transition: "opacity 0.2s ease" }}
+                              title={`Shift type: ${shiftLabel}`}
+                              aria-label={`Shift type: ${shiftLabel}`}
+                            >
+                              <PillIcon className="w-2 h-2" aria-hidden="true" /> {shiftLabel}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap">
@@ -874,6 +1040,8 @@ const DailyLogs = () => {
                     <div className="flex flex-wrap gap-2 pt-1">
                       <button
                         onClick={() => toggleAttachments(log.log_id)}
+                        aria-label={`${openEvidenceLogId === log.log_id ? "Hide" : "Show"} attachments for log dated ${formatDateOnly(log.log_date)} (${attachCount} file${attachCount !== 1 ? "s" : ""})`}
+                        aria-expanded={openEvidenceLogId === log.log_id}
                         className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white rounded-xl text-xs font-semibold transition-all"
                         style={{ border: `2px solid rgb(var(--primary-200))`, color: `rgb(var(--primary))` }}
                         onMouseEnter={(e) => { e.currentTarget.style.borderColor = `rgb(var(--primary-medium))`; e.currentTarget.style.background = `rgb(var(--primary-50))`; }}
@@ -887,19 +1055,21 @@ const DailyLogs = () => {
                       {log.status === "revision" && (
                         <button
                           onClick={() => handleConsultLog(log)}
+                          aria-label={`Consult coordinator about log dated ${formatDateOnly(log.log_date)}`}
                           className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border-2 border-blue-200 hover:border-blue-400 hover:bg-blue-50 rounded-xl text-xs font-semibold text-blue-700 transition-all"
                         >
-                          <MessageSquare className="w-3.5 h-3.5" /> Consult Coordinator
+                          <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" /> Consult Coordinator
                         </button>
                       )}
 
                       {(log.status === "revision" || log.status === "draft") && (
                         <button
                           onClick={() => handleEditLog(log)}
+                          aria-label={`Edit and resubmit log dated ${formatDateOnly(log.log_date)}`}
                           className="inline-flex items-center gap-1.5 px-3.5 py-2 text-white rounded-xl text-xs font-semibold shadow hover:shadow-md transition-all"
                           style={{ background: "linear-gradient(to right, #f59e0b, #f97316)" }}
                         >
-                          <AlertCircle className="w-3.5 h-3.5" /> Edit & Resubmit
+                          <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" /> Edit & Resubmit
                         </button>
                       )}
                     </div>
@@ -926,6 +1096,8 @@ const DailyLogs = () => {
                               <button
                                 key={file.attachment_id}
                                 onClick={() => setPreviewFile(file)}
+                                aria-label={`Preview attachment: ${file.file_name}`}
+                                title={`Click to preview ${file.file_name}`}
                                 className="w-full flex items-center gap-3 p-3 bg-white rounded-xl transition-all group text-left"
                                 style={{ border: `1px solid rgb(var(--primary-100))` }}
                                 onMouseEnter={(e) => { e.currentTarget.style.background = `rgb(var(--primary-50))`; }}

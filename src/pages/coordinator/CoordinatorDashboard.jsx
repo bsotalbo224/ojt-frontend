@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Users, FileText, BookOpen,
   TrendingUp, Activity,
   Building2, ChevronRight, PlusCircle,
   BarChart2, CheckCircle, AlertTriangle,
   LogIn, Coffee, LogOut, Moon, Clock,
+  Sun, Zap, Utensils
 } from 'lucide-react';
 import { getCoordinatorDashboardStats } from '../../api/stats';
 import { useNavigate } from 'react-router-dom';
@@ -36,9 +37,11 @@ const HoverButton = ({ children, baseStyle, hoverStyle, className, disabled, onC
 // ─── Coordinator Dashboard ─────────────────────────────────────────────────────
 
 const CoordinatorDashboard = () => {
-  const [stats, setStats]               = useState(null);
-  const [loading, setLoading]           = useState(true);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
+  // Local state to toggle workflow preview (helpful for coordinators to see different shift views)
+  const [viewShift, setViewShift] = useState('day'); 
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -57,105 +60,123 @@ const CoordinatorDashboard = () => {
       const f = (n.f_name ?? '').trim();
       const l = (n.l_name ?? '').trim();
       const fullName = [f, l].filter(Boolean).join(' ') || 'Unknown user';
-      const type     = n.type === 'narrative' ? 'narrative' : 'log';
+      const type = n.type === 'narrative' ? 'narrative' : 'log';
       return {
-        initials:   (f[0] ?? '') + (l[0] ?? '') || fullName.slice(0, 2).toUpperCase(),
-        name:       fullName,
-        action:     type === 'narrative' ? 'submitted a narrative' : 'submitted a daily log',
-        status:     'green',
+        initials: (f[0] ?? '') + (l[0] ?? '') || fullName.slice(0, 2).toUpperCase(),
+        name: fullName,
+        action: type === 'narrative' ? 'submitted a narrative' : 'submitted a daily log',
+        status: 'green',
         usePrimary: type === 'log',
-        avatarBg:   type === 'narrative' ? '#faf5ff' : '#fff7ed',
-        avatarText: type === 'narrative' ? '#7e22ce'  : '#c2410c',
+        avatarBg: type === 'narrative' ? '#faf5ff' : '#fff7ed',
+        avatarText: type === 'narrative' ? '#7e22ce' : '#c2410c',
       };
     }));
   }, [stats]);
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const totalStudents       = stats?.totalStudents       ?? 0;
-  const ongoing             = stats?.ongoing             ?? 0;
-  const submittedLogs       = stats?.submittedLogs       ?? 0;
+  const totalStudents = stats?.totalStudents ?? 0;
+  const ongoing = stats?.ongoing ?? 0;
+  const submittedLogs = stats?.submittedLogs ?? 0;
   const submittedNarratives = stats?.submittedNarratives ?? 0;
 
   const clamp = (v, max) => Math.min(100, Math.max(0, max ? Math.round((v / max) * 100) : 0));
-  const studentPct   = clamp(totalStudents, 150);
-  const ongoingPct   = clamp(ongoing, totalStudents || 1);
-  const logPct       = clamp(submittedLogs, 50);
-  const narrativePct = clamp(submittedNarratives, 50);
+  
+  // Shift Analytics
+  const dayShiftCount = stats?.dayShiftCount ?? 0;
+  const nightShiftCount = stats?.nightShiftCount ?? 0;
+  const halfDayCount = stats?.halfDayCount ?? 0;
 
-  const flaggedAttendance    = stats?.flaggedAttendance   ?? 0;
-  const attentionPendingLogs = stats?.submittedLogs       ?? 0;
-  const attentionNarratives  = stats?.submittedNarratives ?? 0;
+  // Attendance Summaries
+  const workingCount = stats?.workingCount ?? 0;
+  const onBreakCount = stats?.onBreakCount ?? 0;
+  const onMealCount = stats?.onMealCount ?? 0;
+  const otActiveCount = stats?.otActiveCount ?? 0;
+  const completedCount = stats?.completedCount ?? 0;
 
   const attentionRows = [
     {
-      label:       'Flagged Attendance',
-      sublabel:    'Students not in their assigned location',
-      value:       flaggedAttendance,
-      pct:         clamp(flaggedAttendance, 20),
+      label: 'Flagged Attendance',
+      sublabel: 'Students not in their assigned location',
+      value: stats?.flaggedAttendance ?? 0,
+      pct: clamp(stats?.flaggedAttendance ?? 0, 20),
       accentColor: '#ef4444',
-      barColor:    '#fca5a5',
-      textColor:   '#b91c1c',
+      barColor: '#fca5a5',
+      textColor: '#b91c1c',
       iconBgColor: '#fff1f2',
-      icon:        AlertTriangle,
-      to:          '/coordinator/attendance',
+      icon: AlertTriangle,
+      to: '/coordinator/attendance',
     },
     {
-      label:       'Submitted Daily Logs',
-      sublabel:    null,
-      value:       attentionPendingLogs,
-      pct:         clamp(attentionPendingLogs, 50),
+      label: 'Submitted Daily Logs',
+      sublabel: null,
+      value: submittedLogs,
+      pct: clamp(submittedLogs, 50),
       accentColor: '#f97316',
-      barColor:    '#fdba74',
-      textColor:   '#c2410c',
+      barColor: '#fdba74',
+      textColor: '#c2410c',
       iconBgColor: '#fff7ed',
-      icon:        FileText,
-      to:          '/coordinator/daily-logs',
+      icon: FileText,
+      to: '/coordinator/daily-logs',
     },
     {
-      label:       'Submitted Narratives',
-      sublabel:    null,
-      value:       attentionNarratives,
-      pct:         clamp(attentionNarratives, 50),
+      label: 'Submitted Narratives',
+      sublabel: null,
+      value: submittedNarratives,
+      pct: clamp(submittedNarratives, 50),
       accentColor: '#a855f7',
-      barColor:    '#d8b4fe',
-      textColor:   '#7e22ce',
+      barColor: '#d8b4fe',
+      textColor: '#7e22ce',
       iconBgColor: '#faf5ff',
-      icon:        BookOpen,
-      to:          '/coordinator/narratives',
+      icon: BookOpen,
+      to: '/coordinator/narratives',
     },
   ];
 
   const statCards = [
-    { title: 'Total Students',       subtitle: 'Total in department', value: totalStudents,       pct: studentPct,   icon: Users,     usePrimary: true,  to: '/coordinator/students'   },
-    { title: 'Ongoing OJT',          subtitle: 'Students assigned',   value: ongoing,             pct: ongoingPct,   icon: Activity,  usePrimary: true,  to: '/coordinator/students'   },
-    { title: 'Submitted Daily Logs', subtitle: 'Awaiting review',     value: submittedLogs,       pct: logPct,       icon: FileText,  usePrimary: false, accentColor: '#f97316', iconBgColor: '#fff7ed', barColor: '#fdba74', textColor: '#c2410c', to: '/coordinator/daily-logs' },
-    { title: 'Submitted Narratives', subtitle: 'Awaiting review',     value: submittedNarratives, pct: narrativePct, icon: BookOpen,  usePrimary: false, accentColor: '#a855f7', iconBgColor: '#faf5ff', barColor: '#d8b4fe', textColor: '#7e22ce', to: '/coordinator/narratives' },
+    { title: 'Total Students', subtitle: 'Total in department', value: totalStudents, pct: clamp(totalStudents, 150), icon: Users, usePrimary: true, to: '/coordinator/students' },
+    { title: 'Ongoing OJT', subtitle: 'Students assigned', value: ongoing, pct: clamp(ongoing, totalStudents || 1), icon: Activity, usePrimary: true, to: '/coordinator/students' },
+    { title: 'Submitted Daily Logs', subtitle: 'Awaiting review', value: submittedLogs, pct: clamp(submittedLogs, 50), icon: FileText, usePrimary: false, accentColor: '#f97316', iconBgColor: '#fff7ed', barColor: '#fdba74', textColor: '#c2410c', to: '/coordinator/daily-logs' },
+    { title: 'Submitted Narratives', subtitle: 'Awaiting review', value: submittedNarratives, pct: clamp(submittedNarratives, 50), icon: BookOpen, usePrimary: false, accentColor: '#a855f7', iconBgColor: '#faf5ff', barColor: '#d8b4fe', textColor: '#7e22ce', to: '/coordinator/narratives' },
   ];
 
-  const workflowSteps = [
-    { label: 'Review Logs',         icon: FileText,   to: '/coordinator/daily-logs', usePrimary: false, ringColor: '#fff7ed', iconColor: '#f97316' },
-    { label: 'Evaluate Narratives', icon: BookOpen,   to: '/coordinator/narratives', usePrimary: false, ringColor: '#faf5ff', iconColor: '#a855f7' },
-    { label: 'Monitor Progress',    icon: TrendingUp, to: '/coordinator/students',   usePrimary: true  },
-    { label: 'Assign Companies',    icon: Building2,  to: '/coordinator/students',   usePrimary: false, ringColor: '#eff6ff', iconColor: '#3b82f6' },
+  // Dynamic Shift Cards
+  const shiftCards = [
+    { label: 'Day Shift', value: dayShiftCount, icon: Sun, color: '#f59e0b', bg: '#fffbeb', border: '#fde68a' },
+    { label: 'Night Shift', value: nightShiftCount, icon: Moon, color: '#6366f1', bg: '#eef2ff', border: '#c7d2fe' },
+    { label: 'Half-Day', value: halfDayCount, icon: Clock, color: '#06b6d4', bg: '#ecfeff', border: '#a5f3fc' },
   ];
 
-  const avgHours      = stats?.avgHoursLogged ?? 0;
-  const requiredHours = stats?.requiredHours  ?? 0;
-  const hoursPct      = Math.min(100, Math.max(0, requiredHours > 0 ? Math.round((avgHours / requiredHours) * 100) : 0));
+  // Dynamic Workflow Logic
+  const getDynamicWorkflow = (shift) => {
+    const steps = [
+      { Icon: LogIn, label: 'Time In', color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0' },
+    ];
+
+    if (shift !== 'half-day') {
+      steps.push({
+        Icon: shift === 'night' ? Utensils : Coffee,
+        label: shift === 'night' ? 'Meal Break' : 'Lunch',
+        color: '#f59e0b', bg: '#fffbeb', border: '#fde68a'
+      });
+    }
+
+    steps.push({ Icon: LogOut, label: 'Time Out', color: '#ef4444', bg: '#fff1f2', border: '#fecaca' });
+    steps.push({ Icon: Moon, label: 'Overtime', color: '#8b5cf6', bg: '#f5f3ff', border: '#ddd6fe' });
+
+    return steps;
+  };
+
+  const attendanceWorkflow = useMemo(() => getDynamicWorkflow(viewShift), [viewShift]);
+
+  const avgHours = stats?.avgHoursLogged ?? 0;
+  const requiredHours = stats?.requiredHours ?? 0;
+  const hoursPct = Math.min(100, Math.max(0, requiredHours > 0 ? Math.round((avgHours / requiredHours) * 100) : 0));
 
   const quickActions = [
     { label: 'Create evaluation', icon: PlusCircle, to: '/coordinator/evaluation', disabled: false, baseStyle: { backgroundColor: `rgb(var(--primary-600))`, color: '#fff' }, hoverStyle: { backgroundColor: `rgb(var(--primary-700))` } },
-    { label: 'Assign company',    icon: Building2,  to: '/coordinator/students',  disabled: false, baseStyle: { backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }, hoverStyle: { backgroundColor: '#dcfce7' } },
-    { label: 'Review logs',       icon: FileText,   to: '/coordinator/daily-logs',disabled: false, baseStyle: { backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff' }, hoverStyle: { backgroundColor: '#f3e8ff' } },
-    { label: 'View analytics',    icon: BarChart2,  to: null,                     disabled: true,  baseStyle: { backgroundColor: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' }, hoverStyle: {} },
-  ];
-
-  // Workflow steps for the hours section
-  const attendanceWorkflow = [
-    { Icon: LogIn,  label: 'Time In',     color: '#10b981', bg: '#f0fdf4', border: '#bbf7d0'  },
-    { Icon: Coffee, label: 'Lunch',       color: '#f59e0b', bg: '#fffbeb', border: '#fde68a'  },
-    { Icon: LogOut, label: 'Time Out',    color: '#ef4444', bg: '#fff1f2', border: '#fecaca'  },
-    { Icon: Moon,   label: 'Overtime',    color: '#8b5cf6', bg: '#f5f3ff', border: '#ddd6fe'  },
+    { label: 'Assign company', icon: Building2, to: '/coordinator/students', disabled: false, baseStyle: { backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }, hoverStyle: { backgroundColor: '#dcfce7' } },
+    { label: 'Review logs', icon: FileText, to: '/coordinator/daily-logs', disabled: false, baseStyle: { backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff' }, hoverStyle: { backgroundColor: '#f3e8ff' } },
+    { label: 'View analytics', icon: BarChart2, to: null, disabled: true, baseStyle: { backgroundColor: '#f9fafb', color: '#9ca3af', border: '1px solid #e5e7eb', cursor: 'not-allowed' }, hoverStyle: {} },
   ];
 
   return (
@@ -166,20 +187,39 @@ const CoordinatorDashboard = () => {
       <div className="max-w-7xl mx-auto space-y-6">
 
         {/* ── Page Header ── */}
-        <div className="flex items-center gap-3">
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
-            style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-500)), rgb(var(--primary-600)))` }}
-          >
-            <TrendingUp className="w-4 h-4 text-white" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm"
+              style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-500)), rgb(var(--primary-600)))` }}
+            >
+              <TrendingUp className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold leading-tight" style={{ color: `rgb(var(--primary-800))` }}>
+                Coordinator Dashboard
+              </h1>
+              <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
+                Monitor student OJT progress and manage tasks.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold leading-tight" style={{ color: `rgb(var(--primary-800))` }}>
-              Coordinator Dashboard
-            </h1>
-            <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
-              Monitor student OJT progress and manage tasks.
-            </p>
+          
+          {/* Attendance Workflow Summary (Badge style) */}
+          <div className="hidden md:flex items-center gap-2">
+            {[
+              { label: 'Working', count: workingCount, color: '#10b981' },
+              { label: 'Break', count: onBreakCount, color: '#f59e0b' },
+              { label: 'Meal', count: onMealCount, color: '#f97316' },
+              { label: 'OT', count: otActiveCount, color: '#8b5cf6' },
+              { label: 'Done', count: completedCount, color: '#3b82f6' }
+            ].map((s) => (
+              <div key={s.label} className="px-3 py-1 rounded-lg bg-white border border-gray-100 shadow-sm flex items-center gap-2">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
+                <span className="text-[10px] font-bold uppercase tracking-tight text-gray-500">{s.label}</span>
+                <span className="text-xs font-bold text-gray-800">{s.count}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -222,37 +262,28 @@ const CoordinatorDashboard = () => {
           }
         </div>
 
-        {/* ── Workflow Steps ── */}
-        <div className="bg-white rounded-2xl shadow-sm p-5" style={{ border: `1px solid rgb(var(--primary-100))` }}>
-          <p className="text-xs font-semibold uppercase tracking-widest mb-4" style={{ color: `rgb(var(--primary-400))` }}>
-            Coordinator Workflow
-          </p>
-          <div className="flex items-center">
-            {workflowSteps.map((step, idx) => (
-              <div key={step.label} className="flex items-center flex-1 min-w-0">
-                <button
-                  onClick={() => navigate(step.to)}
-                  className="group flex flex-col items-center gap-2 flex-1 min-w-0 hover:opacity-80 transition-opacity"
-                >
-                  <div
-                    className="w-10 h-10 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-200"
-                    style={{ backgroundColor: step.usePrimary ? `rgb(var(--primary-100))` : step.ringColor }}
-                  >
-                    <step.icon className="w-4 h-4" style={{ color: step.usePrimary ? `rgb(var(--primary-600))` : step.iconColor }} />
+        {/* ── Shift Analytics Indicators ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {shiftCards.map((shift) => (
+             <div 
+               key={shift.label} 
+               className="bg-white/60 backdrop-blur-sm rounded-xl p-4 flex items-center justify-between border"
+               style={{ borderColor: `rgb(var(--primary-100))` }}
+             >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: shift.bg }}>
+                    <shift.icon className="w-5 h-5" style={{ color: shift.color }} />
                   </div>
-                  <span className="text-xs font-medium text-center leading-tight px-1" style={{ color: `rgb(var(--primary-700))` }}>
-                    {step.label}
-                  </span>
-                </button>
-                {idx < workflowSteps.length - 1 && (
-                  <div className="flex items-center shrink-0 -mt-5">
-                    <div className="w-6 sm:w-10 h-px" style={{ backgroundColor: `rgb(var(--primary-200))` }} />
-                    <ChevronRight className="w-3 h-3" style={{ color: `rgb(var(--primary-300))` }} />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{shift.label}</p>
+                    <p className="text-lg font-bold text-gray-800">{shift.value} Interns</p>
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-medium text-gray-400">{Math.round((shift.value / (totalStudents || 1)) * 100)}%</span>
+                </div>
+             </div>
+          ))}
         </div>
 
         {/* ── Main 2-col Grid ── */}
@@ -298,7 +329,7 @@ const CoordinatorDashboard = () => {
                 className="px-2.5 py-1 rounded-full text-xs font-bold"
                 style={{ backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
               >
-                {flaggedAttendance + attentionPendingLogs + attentionNarratives} total
+                {(stats?.flaggedAttendance ?? 0) + submittedLogs + submittedNarratives} total
               </span>
             </div>
             <div className="space-y-4">
@@ -384,7 +415,21 @@ const CoordinatorDashboard = () => {
 
           {/* Hours Completion */}
           <div className="bg-white rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow duration-200" style={{ border: `1px solid rgb(var(--primary-100))` }}>
-            <p className="text-sm font-semibold mb-0.5" style={{ color: `rgb(var(--primary-800))` }}>Hours completion</p>
+            <div className="flex justify-between items-start mb-1">
+              <p className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>Hours completion</p>
+              <div className="flex gap-1">
+                 {['day', 'night', 'half-day'].map(s => (
+                   <button 
+                     key={s} 
+                     onClick={() => setViewShift(s)}
+                     className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${viewShift === s ? 'bg-primary-500 text-white' : 'bg-gray-50 text-gray-400'}`}
+                     style={{ backgroundColor: viewShift === s ? `rgb(var(--primary-500))` : '', borderColor: `rgb(var(--primary-200))` }}
+                   >
+                     {s.toUpperCase()}
+                   </button>
+                 ))}
+              </div>
+            </div>
             <p className="text-xs mb-1" style={{ color: `rgb(var(--primary-400))` }}>
               Average rendered work hours
             </p>
@@ -424,12 +469,12 @@ const CoordinatorDashboard = () => {
                   </span>
                 </div>
 
-                {/* Attendance Workflow indicators */}
+                {/* Dynamic Attendance Workflow indicators */}
                 <div className="flex items-center gap-2 mt-4 mb-3 flex-wrap">
                   {attendanceWorkflow.map(({ Icon, label, color, bg, border }) => (
                     <span
                       key={label}
-                      className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full"
+                      className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tight"
                       style={{ backgroundColor: bg, color, border: `1px solid ${border}` }}
                     >
                       <Icon className="w-2.5 h-2.5" />
@@ -438,7 +483,7 @@ const CoordinatorDashboard = () => {
                   ))}
                 </div>
 
-                {/* Work Structure Insight */}
+                {/* Work Structure Insight (Dynamic Text) */}
                 <div
                   className="rounded-xl p-3 mt-1"
                   style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
@@ -447,7 +492,9 @@ const CoordinatorDashboard = () => {
                     Work Structure Insight
                   </p>
                   <p className="text-xs leading-relaxed" style={{ color: `rgb(var(--primary-500))` }}>
-                    Students follow flexible company-assigned schedules. Lunch break may be logged manually or auto-deducted. Overtime is optional and supports night shift and Saturday duty.
+                    Students follow flexible company-assigned schedules including <strong>overnight attendance</strong> for night shifts. 
+                    {viewShift === 'night' ? ' Meal breaks' : ' Lunch breaks'} are logged manually or auto-deducted. 
+                    Overtime supports flexible schedules across all shift types.
                   </p>
                 </div>
 
@@ -456,7 +503,7 @@ const CoordinatorDashboard = () => {
                   <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
                     {requiredHours === 0
                       ? 'No required hours data available.'
-                      : `Students are on track — ${100 - hoursPct}% of required hours remaining on average.`
+                      : `Progress varies by shift — ${viewShift === 'half-day' ? 'Half-day' : 'Full-time'} students are currently averaging ${hoursPct}% completion.`
                     }
                   </p>
                 </div>
