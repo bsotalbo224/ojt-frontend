@@ -34,12 +34,20 @@ export const getStudentAttendanceHistory = async () => {
 /* ===============================
 STUDENT: TIME IN / START OT
 =============================== */
-export const timeIn = async (latitude, longitude) => {
+export const timeIn = async (
+  latitude,
+  longitude,
+  session = "regular"
+) => {
 
-  const res = await axios.post("/attendance/timein", {
-    latitude,
-    longitude
-  });
+  const res = await axios.post(
+    "/attendance/timein",
+    {
+      latitude,
+      longitude,
+      session
+    }
+  );
 
   return {
     success:
@@ -83,10 +91,15 @@ export const endLunchBreak = async () => {
 /* ===============================
 STUDENT: TIME OUT / END OT
 =============================== */
-export const timeOut = async () => {
+export const timeOut = async (
+  session = "regular"
+) => {
 
   const res = await axios.patch(
-    "/attendance/timeout"
+    "/attendance/timeout",
+    {
+      session
+    }
   );
 
   return {
