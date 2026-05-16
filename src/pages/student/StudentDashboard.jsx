@@ -267,8 +267,6 @@ const fetchAssignment = async () => {
 
     const res = await getStudentAssignment();
 
-    console.log("ASSIGNMENT RESPONSE:", res);
-
     if (res?.success) {
       setAssignment(res.data || null);
     }
