@@ -263,15 +263,24 @@ const StudentDashboard = () => {
   };
 
   const fetchAssignment = async () => {
-    try {
-      const res = await getStudentAssignment();
-      if (res.success) setAssignment(res.data);
-    } catch {
-      console.error('Assignment load failed');
-    } finally {
-      setAssignmentLoaded(true);
-    }
-  };
+  try {
+
+    const res = await getStudentAssignment();
+
+    console.log("ASSIGNMENT:", res);
+
+    setAssignment(res || null);
+
+  } catch (err) {
+
+    console.error('Assignment load failed', err);
+
+  } finally {
+
+    setAssignmentLoaded(true);
+
+  }
+};
 
   // Load assignment first so schedule is ready before workflow computes.
   useEffect(() => {
