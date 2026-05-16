@@ -269,11 +269,13 @@ const fetchAssignment = async () => {
 
     console.log("ASSIGNMENT RESPONSE:", res);
 
-    setAssignment(res || null);
+    if (res?.success) {
+      setAssignment(res.data || null);
+    }
 
   } catch (err) {
 
-    console.error('Assignment load failed', err);
+    console.error("Assignment load failed", err);
 
   } finally {
 
