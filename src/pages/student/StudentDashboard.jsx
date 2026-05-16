@@ -262,12 +262,12 @@ const StudentDashboard = () => {
     }
   };
 
-  const fetchAssignment = async () => {
+const fetchAssignment = async () => {
   try {
 
     const res = await getStudentAssignment();
 
-    console.log("ASSIGNMENT:", res);
+    console.log("ASSIGNMENT RESPONSE:", res);
 
     setAssignment(res || null);
 
