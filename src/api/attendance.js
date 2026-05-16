@@ -4,7 +4,17 @@ import axios from "./axios";
 COORDINATOR: DEPARTMENT ATTENDANCE
 =============================== */
 export const getCoordinatorAttendance = async () => {
-  const res = await axios.get("/attendance/coordinator");
+
+  const res = await axios.get(
+    "/attendance/coordinator",
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
+  );
+
   return res.data;
 };
 
@@ -12,7 +22,16 @@ export const getCoordinatorAttendance = async () => {
 STUDENT: TODAY ATTENDANCE
 =============================== */
 export const getStudentAttendance = async () => {
-  const res = await axios.get("/attendance/student");
+
+  const res = await axios.get(
+    "/attendance/student",
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
+  );
 
   return res.data || null;
 };
@@ -22,7 +41,15 @@ STUDENT: ATTENDANCE HISTORY
 =============================== */
 export const getStudentAttendanceHistory = async () => {
 
-  const res = await axios.get("/attendance/history");
+  const res = await axios.get(
+    "/attendance/history",
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
+  );
 
   return {
     success: res.data?.success ?? true,
@@ -46,6 +73,12 @@ export const timeIn = async (
       latitude,
       longitude,
       session
+    },
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
     }
   );
 
@@ -59,12 +92,19 @@ export const timeIn = async (
 };
 
 /* ===============================
-STUDENT: START LUNCH BREAK
+STUDENT: START LUNCH / MEAL BREAK
 =============================== */
 export const startLunchBreak = async () => {
 
   const res = await axios.patch(
-    "/attendance/lunch/start"
+    "/attendance/lunch/start",
+    {},
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
   );
 
   return {
@@ -74,12 +114,19 @@ export const startLunchBreak = async () => {
 };
 
 /* ===============================
-STUDENT: END LUNCH BREAK
+STUDENT: END LUNCH / MEAL BREAK
 =============================== */
 export const endLunchBreak = async () => {
 
   const res = await axios.patch(
-    "/attendance/lunch/end"
+    "/attendance/lunch/end",
+    {},
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
   );
 
   return {
@@ -99,6 +146,12 @@ export const timeOut = async (
     "/attendance/timeout",
     {
       session
+    },
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
     }
   );
 
@@ -120,6 +173,12 @@ export const updateAttendanceLocationStatus = async (
     `/attendance/${id}/location-status`,
     {
       location_status: status
+    },
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
     }
   );
 
