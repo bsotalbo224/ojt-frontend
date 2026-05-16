@@ -43,11 +43,11 @@ const analyzeSchedule = (startTime, endTime) => {
   if (s == null || e == null) return { isNightShift: false, isHalfDay: false, shiftMins: 480, shiftType: 'Day Shift' };
 
   const isNightShift = e < s; // end time is "earlier" clock-wise → crosses midnight
-  const shiftMins    = isNightShift ? (1440 - s + e) : (e - s);
-  const isHalfDay    = shiftMins < 300; // < 5 hours
+  const shiftMins = isNightShift ? (1440 - s + e) : (e - s);
+  const isHalfDay = shiftMins < 300; // < 5 hours
 
   let shiftType = 'Day Shift';
-  if (isHalfDay)         shiftType = 'Half Day';
+  if (isHalfDay) shiftType = 'Half Day';
   else if (isNightShift) shiftType = 'Night Shift';
 
   return { isNightShift, isHalfDay, shiftMins, shiftType };
@@ -57,31 +57,31 @@ const analyzeSchedule = (startTime, endTime) => {
    DYNAMIC WORKFLOW BUILDER
 ───────────────────────────────────────────── */
 const BREAK_LABELS = {
-  day:   { start: 'Lunch Start', end: 'Lunch End',  short: 'Lunch',  shortEnd: 'Resume' },
-  night: { start: 'Meal Start',  end: 'Meal End',   short: 'Meal',   shortEnd: 'Resume' },
+  day: { start: 'Lunch Start', end: 'Lunch End', short: 'Lunch', shortEnd: 'Resume' },
+  night: { start: 'Meal Start', end: 'Meal End', short: 'Meal', shortEnd: 'Resume' },
 };
 
 const buildWorkflow = ({ requiresLunch, isNightShift }) => {
   const bl = isNightShift ? BREAK_LABELS.night : BREAK_LABELS.day;
   const steps = [
-    { key: 'time_in',  label: 'Time In',   Icon: LogIn,  color: '#10b981', shortLabel: 'In'            },
+    { key: 'time_in', label: 'Time In', Icon: LogIn, color: '#10b981', shortLabel: 'In' },
   ];
   if (requiresLunch) {
     steps.push(
-      { key: 'lunch_break_start', label: bl.start, Icon: Coffee,          color: '#f59e0b', shortLabel: bl.short    },
-      { key: 'lunch_break_end',   label: bl.end,   Icon: UtensilsCrossed, color: '#f97316', shortLabel: bl.shortEnd },
+      { key: 'lunch_break_start', label: bl.start, Icon: Coffee, color: '#f59e0b', shortLabel: bl.short },
+      { key: 'lunch_break_end', label: bl.end, Icon: UtensilsCrossed, color: '#f97316', shortLabel: bl.shortEnd },
     );
   }
   steps.push(
-    { key: 'time_out', label: 'Time Out',  Icon: LogOut, color: '#ef4444', shortLabel: 'Out'           },
+    { key: 'time_out', label: 'Time Out', Icon: LogOut, color: '#ef4444', shortLabel: 'Out' },
   );
   return steps;
 };
 
 // OT steps are always separate / optional
 const OT_STEPS = [
-  { key: 'ot_time_in',  label: 'Start Overtime', Icon: Moon,    color: '#8b5cf6', shortLabel: 'OT In'  },
-  { key: 'ot_time_out', label: 'End Overtime',   Icon: Sunrise, color: '#6366f1', shortLabel: 'OT Out' },
+  { key: 'ot_time_in', label: 'Start Overtime', Icon: Moon, color: '#8b5cf6', shortLabel: 'OT In' },
+  { key: 'ot_time_out', label: 'End Overtime', Icon: Sunrise, color: '#6366f1', shortLabel: 'OT Out' },
 ];
 
 /* ─────────────────────────────────────────────
@@ -95,7 +95,7 @@ const getNextRequiredAction = (att, workflow) => {
 };
 
 const getNextOtAction = (att) => {
-  if (!att?.ot_time_in)  return { ...OT_STEPS[0], type: 'ot_time_in'  };
+  if (!att?.ot_time_in) return { ...OT_STEPS[0], type: 'ot_time_in' };
   if (!att?.ot_time_out) return { ...OT_STEPS[1], type: 'ot_time_out' };
   return null;
 };
@@ -105,9 +105,9 @@ const getNextOtAction = (att) => {
 ───────────────────────────────────────────── */
 const ShiftBadge = ({ shiftType }) => {
   const map = {
-    'Half Day':   { bg: '#fefce8', border: '#fde68a',  text: '#a16207' },
-    'Day Shift':  { bg: `rgb(var(--primary-50))`,  border: `rgb(var(--primary-200))`, text: `rgb(var(--primary-700))` },
-    'Night Shift':{ bg: '#f5f3ff', border: '#ddd6fe',  text: '#6d28d9' },
+    'Half Day': { bg: '#fefce8', border: '#fde68a', text: '#a16207' },
+    'Day Shift': { bg: `rgb(var(--primary-50))`, border: `rgb(var(--primary-200))`, text: `rgb(var(--primary-700))` },
+    'Night Shift': { bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9' },
   };
   const s = map[shiftType] ?? map['Day Shift'];
   return (
@@ -128,7 +128,7 @@ const ProgressStepper = ({ attendance, workflow }) => {
     <div className="flex items-center mb-5">
       {workflow.map((step, i) => {
         const isComplete = !!attendance?.[step.key];
-        const isCurrent  = !isComplete && workflow.slice(0, i).every(s => !!attendance?.[s.key]);
+        const isCurrent = !isComplete && workflow.slice(0, i).every(s => !!attendance?.[s.key]);
         return (
           <div key={step.key} className="flex items-center flex-1 min-w-0">
             <div className="flex flex-col items-center shrink-0">
@@ -168,11 +168,11 @@ const ProgressStepper = ({ attendance, workflow }) => {
 const WorkflowStepCard = ({ step, value, isActive }) => {
   const { label, Icon, color } = step;
   const isComplete = !!value;
-  const cardBg     = isComplete ? '#f0fdf4' : isActive ? '#fafafa'    : '#f9fafb';
+  const cardBg = isComplete ? '#f0fdf4' : isActive ? '#fafafa' : '#f9fafb';
   const cardBorder = isComplete ? '#bbf7d0' : isActive ? `${color}40` : '#e5e7eb';
-  const iconBg     = isComplete ? '#dcfce7' : isActive ? `${color}15` : '#f3f4f6';
+  const iconBg = isComplete ? '#dcfce7' : isActive ? `${color}15` : '#f3f4f6';
   const iconBorder = isComplete ? '#bbf7d0' : isActive ? `${color}40` : '#e5e7eb';
-  const iconColor  = isComplete ? '#22c55e' : isActive ? color         : '#9ca3af';
+  const iconColor = isComplete ? '#22c55e' : isActive ? color : '#9ca3af';
 
   return (
     <div
@@ -236,14 +236,14 @@ const OtCard = ({ step, value }) => {
    MAIN DASHBOARD
 ───────────────────────────────────────────── */
 const StudentDashboard = () => {
-  const [attendance,        setAttendance]        = useState(null);
+  const [attendance, setAttendance] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(true);  // start true so we wait for both fetches
-  const [attendanceError,   setAttendanceError]   = useState(null);
-  const [actionLoading,     setActionLoading]     = useState(false);
-  const [otLoading,         setOtLoading]         = useState(false);
-  const [assignment,        setAssignment]        = useState(null);
-  const [assignmentLoaded,  setAssignmentLoaded]  = useState(false);
-  const [otExpanded,        setOtExpanded]        = useState(false);
+  const [attendanceError, setAttendanceError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [otLoading, setOtLoading] = useState(false);
+  const [assignment, setAssignment] = useState(null);
+  const [assignmentLoaded, setAssignmentLoaded] = useState(false);
+  const [otExpanded, setOtExpanded] = useState(false);
 
   /* ── Fetch ── */
   const fetchAttendance = async () => {
@@ -287,10 +287,22 @@ const StudentDashboard = () => {
   );
 
   /* ── Dynamic workflow ── */
-  const workflow = useMemo(() =>
-    buildWorkflow({ requiresLunch: !schedule.isHalfDay, isNightShift: schedule.isNightShift }),
-    [schedule]
-  );
+  const workflow = useMemo(() => {
+
+    if (!assignmentLoaded) {
+      return [];
+    }
+
+    return buildWorkflow({
+      requiresLunch: !schedule.isHalfDay,
+      isNightShift: schedule.isNightShift
+    });
+
+  }, [
+    assignmentLoaded,
+    schedule.isHalfDay,
+    schedule.isNightShift
+  ]);
 
   /* ── Optimistic helpers ── */
   const applyOptimistic = (field) =>
@@ -362,11 +374,14 @@ const StudentDashboard = () => {
     }
   };
 
-  const nextAction    = getNextRequiredAction(attendance, workflow);
-  const nextOtAction  = getNextOtAction(attendance);
-  const requiredDone  = !nextAction;
-  const otDone        = !nextOtAction;
-  const hasOtStarted  = !!attendance?.ot_time_in;
+  const nextAction =
+    workflow.length > 0
+      ? getNextRequiredAction(attendance, workflow)
+      : null;
+  const nextOtAction = getNextOtAction(attendance);
+  const requiredDone = !nextAction;
+  const otDone = !nextOtAction;
+  const hasOtStarted = !!attendance?.ot_time_in;
 
   // Auto-expand OT section when OT has already been started
   const showOtExpanded = otExpanded || hasOtStarted;
@@ -417,11 +432,16 @@ const StudentDashboard = () => {
           ) : (
             <div className="space-y-5">
               {/* Dynamic progress stepper */}
-              <ProgressStepper attendance={attendance} workflow={workflow} />
+              {workflow.length > 0 && (
+                <ProgressStepper
+                  attendance={attendance}
+                  workflow={workflow}
+                />
+              )}
 
               {/* Dynamic workflow step cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {workflow.map((step) => (
+                {workflow.length > 0 && workflow.map((step) => (
                   <WorkflowStepCard
                     key={step.key}
                     step={step}
