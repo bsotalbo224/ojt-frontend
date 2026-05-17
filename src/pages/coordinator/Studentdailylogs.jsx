@@ -93,17 +93,36 @@ const formatSession = (timeIn, timeOut) => {
   return `${inFmt} – ${outFmt}`;
 };
 
+/**
+ * Parse a time value into total minutes from midnight.
+ * Supports both ISO datetime strings and plain "HH:MM:SS" strings.
+ */
+const parseTimeToMinutes = (t) => {
+  if (isBlankTime(t)) return null;
+  try {
+    // ISO datetime: extract time part after 'T'
+    const plain = t.includes('T') ? t.split('T')[1] : t;
+    const [h, m] = plain.split(':').map(Number);
+    return h * 60 + m;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * computeSessionMinutes(timeIn, timeOut)
+ * Supports overnight/cross-midnight shifts.
+ * If timeOut < timeIn (in minutes), adds 24*60 to timeOut.
+ */
 const computeSessionMinutes = (timeIn, timeOut) => {
   if (isBlankTime(timeIn) || isBlankTime(timeOut)) return 0;
-  try {
-    const toMins = (t) => {
-      const plain = t.includes('T') ? t.split('T')[1] : t;
-      const [h, m] = plain.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const diff = toMins(timeOut) - toMins(timeIn);
-    return diff > 0 ? diff : 0;
-  } catch { return 0; }
+  const inMins  = parseTimeToMinutes(timeIn);
+  const outMins = parseTimeToMinutes(timeOut);
+  if (inMins === null || outMins === null) return 0;
+  // Cross-midnight: if end is before start, shift end by 24 hours
+  const adjusted = outMins < inMins ? outMins + 24 * 60 : outMins;
+  const diff = adjusted - inMins;
+  return diff > 0 ? diff : 0;
 };
 
 const minutesToDisplay = (mins) => {
@@ -113,11 +132,84 @@ const minutesToDisplay = (mins) => {
   return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
 };
 
+// ─── Schedule Analysis ────────────────────────────────────────────────────────
+
+/**
+ * Detect shift type from schedule start_time / end_time.
+ * Returns: 'night' | 'half_day' | 'day'
+ */
+const detectShiftType = (log) => {
+  const startMins = parseTimeToMinutes(log.start_time);
+  const endMins   = parseTimeToMinutes(log.end_time);
+
+  if (startMins === null || endMins === null) return 'day';
+
+  // Compute scheduled duration (overnight-aware)
+  const adjustedEnd = endMins < startMins ? endMins + 24 * 60 : endMins;
+  const durationMins = adjustedEnd - startMins;
+
+  // Night shift: starts at or after 6 PM (18:00) OR ends after midnight
+  const isNightStart = startMins >= 18 * 60;
+  const isCrossMidnight = endMins < startMins;
+  if (isNightStart || isCrossMidnight) return 'night';
+
+  // Half day: scheduled duration ≤ 5 hours
+  if (durationMins <= 5 * 60) return 'half_day';
+
+  return 'day';
+};
+
+/**
+ * Determine which sessions are "active" for a given shift type.
+ * Returns array of session keys that should be rendered.
+ */
+const getActiveSessions = (shiftType, log) => {
+  const hasMorning   = !isBlankTime(log.morning_time_in);
+  const hasAfternoon = !isBlankTime(log.afternoon_time_in);
+  const hasOT        = !isBlankTime(log.ot_time_in);
+
+  if (shiftType === 'half_day') {
+    // Show whichever session has data, or morning by default
+    const sessions = [];
+    if (hasMorning)   sessions.push('morning');
+    if (hasAfternoon) sessions.push('afternoon');
+    if (hasOT)        sessions.push('ot');
+    return sessions.length > 0 ? sessions : ['morning'];
+  }
+
+  if (shiftType === 'night') {
+    // Night shifts map to afternoon (primary) + ot (overtime)
+    const sessions = [];
+    if (hasMorning)   sessions.push('morning');   // rare, but support it
+    if (hasAfternoon) sessions.push('afternoon');
+    if (hasOT)        sessions.push('ot');
+    // If nothing has data yet, show afternoon as primary
+    return sessions.length > 0 ? sessions : ['afternoon'];
+  }
+
+  // Day shift: show all three
+  return ['morning', 'afternoon', 'ot'];
+};
+
+/**
+ * computeTotalHours(log)
+ * Supports overnight shifts, half-day, and overtime.
+ * Optional lunch deduction is only applied for day shifts when both
+ * morning and afternoon sessions are complete.
+ */
 const computeTotalHours = (log) => {
-  const total =
-    computeSessionMinutes(log.morning_time_in,  log.morning_time_out)  +
-    computeSessionMinutes(log.afternoon_time_in, log.afternoon_time_out) +
-    computeSessionMinutes(log.ot_time_in,        log.ot_time_out);
+  const shiftType = detectShiftType(log);
+
+  const morningMins   = computeSessionMinutes(log.morning_time_in,   log.morning_time_out);
+  const afternoonMins = computeSessionMinutes(log.afternoon_time_in, log.afternoon_time_out);
+  const otMins        = computeSessionMinutes(log.ot_time_in,        log.ot_time_out);
+
+  let total = morningMins + afternoonMins + otMins;
+
+  // No automatic lunch deduction — actual time-in/time-out already
+  // accounts for breaks (they clock out for lunch). For half-day or
+  // night shifts there is no assumed break to deduct.
+
   return minutesToDisplay(total);
 };
 
@@ -160,6 +252,24 @@ const StatusBadge = ({ status }) => {
   );
 };
 
+// ─── ShiftBadge ───────────────────────────────────────────────────────────────
+
+const SHIFT_BADGE_STYLES = {
+  day:      { label: 'Day Shift',   className: 'bg-sky-50 text-sky-700 border border-sky-200',       dot: 'bg-sky-400'    },
+  night:    { label: 'Night Shift', className: 'bg-indigo-50 text-indigo-700 border border-indigo-200', dot: 'bg-indigo-400' },
+  half_day: { label: 'Half Day',    className: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-400'  },
+};
+
+const ShiftBadge = ({ shiftType }) => {
+  const cfg = SHIFT_BADGE_STYLES[shiftType] ?? SHIFT_BADGE_STYLES.day;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.className}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+};
+
 // ─── SectionLabel ─────────────────────────────────────────────────────────────
 
 const SectionLabel = ({ icon: Icon, label }) => (
@@ -195,10 +305,42 @@ const SESSION_META = {
   ot:        { icon: Moon,   color: 'text-indigo-500', progressColor: 'text-indigo-600', progressBg: 'bg-indigo-50',  progressBorder: 'border-indigo-100'  },
 };
 
-const SessionField = ({ label, sessionKey, timeIn, timeOut }) => {
+/**
+ * Resolve a human-readable session label based on shift type and session key.
+ * Night shifts rename "Afternoon Session" to primary slot and use "Meal Break" terminology.
+ */
+const resolveSessionLabel = (sessionKey, shiftType) => {
+  if (shiftType === 'night') {
+    if (sessionKey === 'morning')   return 'Early Session';
+    if (sessionKey === 'afternoon') return 'Night Session';
+    if (sessionKey === 'ot')        return 'OT Session';
+  }
+  if (shiftType === 'half_day') {
+    if (sessionKey === 'morning')   return 'Morning Session';
+    if (sessionKey === 'afternoon') return 'Afternoon Session';
+    if (sessionKey === 'ot')        return 'OT Session';
+  }
+  // day shift defaults
+  if (sessionKey === 'morning')   return 'Morning Session';
+  if (sessionKey === 'afternoon') return 'Afternoon Session';
+  if (sessionKey === 'ot')        return 'OT Session';
+  return sessionKey;
+};
+
+const SessionField = ({ label, sessionKey, timeIn, timeOut, shiftType }) => {
   const meta    = SESSION_META[sessionKey];
   const Icon    = meta.icon;
   const session = formatSession(timeIn, timeOut);
+
+  // For overnight sessions, append a "next day" indicator when applicable
+  const isOvernight = (() => {
+    if (isBlankTime(timeIn) || isBlankTime(timeOut)) return false;
+    const inM  = parseTimeToMinutes(timeIn);
+    const outM = parseTimeToMinutes(timeOut);
+    return outM !== null && inM !== null && outM < inM;
+  })();
+
+  const displayLabel = label ?? resolveSessionLabel(sessionKey, shiftType);
 
   const valueNode = (() => {
     if (session === null) {
@@ -213,8 +355,13 @@ const SessionField = ({ label, sessionKey, timeIn, timeOut }) => {
       );
     }
     return (
-      <span className="text-sm font-semibold pl-0.5" style={{ color: `rgb(var(--primary-800))` }}>
+      <span className="flex items-center gap-1.5 text-sm font-semibold pl-0.5" style={{ color: `rgb(var(--primary-800))` }}>
         {session}
+        {isOvernight && (
+          <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">
+            +1 day
+          </span>
+        )}
       </span>
     );
   })();
@@ -224,7 +371,7 @@ const SessionField = ({ label, sessionKey, timeIn, timeOut }) => {
       <div className="flex items-center gap-1">
         <Icon className={`w-3 h-3 ${meta.color}`} />
         <span className="text-xs font-medium uppercase tracking-wide" style={{ color: `rgb(var(--primary-500))` }}>
-          {label}
+          {displayLabel}
         </span>
       </div>
       {valueNode}
@@ -294,7 +441,19 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
   useModalOverlay(!!log);
   if (!log) return null;
 
-  const totalHours = computeTotalHours(log);
+  const shiftType    = detectShiftType(log);
+  const activeSessions = getActiveSessions(shiftType, log);
+  const totalHours   = computeTotalHours(log);
+
+  // Meal break label: "Lunch Break" for day shifts, "Meal Break" for night shifts
+  const mealBreakLabel = shiftType === 'night' ? 'Meal Break' : 'Lunch Break';
+
+  // Session time field map
+  const sessionTimeMap = {
+    morning:   { timeIn: log.morning_time_in,   timeOut: log.morning_time_out   },
+    afternoon: { timeIn: log.afternoon_time_in,  timeOut: log.afternoon_time_out },
+    ot:        { timeIn: log.ot_time_in,         timeOut: log.ot_time_out        },
+  };
 
   const handleRevisionSubmit = () => {
     onRevision(log.log_id, feedback);
@@ -336,6 +495,7 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              <ShiftBadge shiftType={shiftType} />
               <StatusBadge status={log.status} />
               <button
                 onClick={onClose}
@@ -389,25 +549,19 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
                   value={formatDate(log.log_date)}
                 />
 
-                {/* ── Session fields ── */}
-                <SessionField
-                  label="Morning Session"
-                  sessionKey="morning"
-                  timeIn={log.morning_time_in}
-                  timeOut={log.morning_time_out}
-                />
-                <SessionField
-                  label="Afternoon Session"
-                  sessionKey="afternoon"
-                  timeIn={log.afternoon_time_in}
-                  timeOut={log.afternoon_time_out}
-                />
-                <SessionField
-                  label="OT Session"
-                  sessionKey="ot"
-                  timeIn={log.ot_time_in}
-                  timeOut={log.ot_time_out}
-                />
+                {/* ── Schedule-aware session fields ── */}
+                {activeSessions.map((sessionKey) => {
+                  const times = sessionTimeMap[sessionKey];
+                  return (
+                    <SessionField
+                      key={sessionKey}
+                      sessionKey={sessionKey}
+                      shiftType={shiftType}
+                      timeIn={times.timeIn}
+                      timeOut={times.timeOut}
+                    />
+                  );
+                })}
 
                 {/* Total Hours */}
                 <div className="flex flex-col gap-0.5">
@@ -669,10 +823,10 @@ const StudentDailyLogs = () => {
               <table className="w-full">
                 <thead>
                   <tr style={{ backgroundColor: `rgb(var(--primary-50))`, borderBottom: `1px solid rgb(var(--primary-100))` }}>
-                    {['Date', 'Logs', 'Status', 'Actions'].map((col, i) => (
+                    {['Date', 'Shift', 'Logs', 'Status', 'Actions'].map((col, i) => (
                       <th
                         key={col}
-                        className={`text-left py-3.5 px-${i === 0 || i === 3 ? '5' : '4'} text-xs font-semibold uppercase tracking-wide ${i === 1 ? 'hidden md:table-cell' : ''}`}
+                        className={`text-left py-3.5 px-${i === 0 || i === 4 ? '5' : '4'} text-xs font-semibold uppercase tracking-wide ${i === 2 ? 'hidden md:table-cell' : ''} ${i === 1 ? 'hidden sm:table-cell' : ''}`}
                         style={{ color: `rgb(var(--primary-700))` }}
                       >
                         {col}
@@ -681,76 +835,83 @@ const StudentDailyLogs = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.map((log) => (
-                    <tr
-                      key={log.log_id}
-                      className="transition-colors"
-                      style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
-                      onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.6)`}
-                      onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
-                    >
-                      {/* Date */}
-                      <td className="py-3.5 px-5">
-                        <span className="text-sm font-medium whitespace-nowrap" style={{ color: `rgb(var(--primary-700))` }}>
-                          {log.log_date
-                            ? new Date(log.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                            : '—'}
-                        </span>
-                      </td>
-                      {/* Narrative preview */}
-                      <td className="py-3.5 px-4 hidden md:table-cell">
-                        <span className="text-sm text-gray-600">{truncate(log.narrative)}</span>
-                      </td>
-                      {/* Status */}
-                      <td className="py-3.5 px-4">
-                        <StatusBadge status={log.status} />
-                      </td>
-                      {/* Actions */}
-                      <td className="py-3.5 px-5">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {/* View */}
-                          <button
-                            onClick={async () => {
-                              const fullLog = await getCoordinatorLogDetails(log.log_id);
-                              setSelectedLog(fullLog);
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors"
-                            style={{ backgroundColor: `rgb(var(--primary-600))` }}
-                            onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`}
-                            onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
-                          >
-                            <Eye className="w-3.5 h-3.5" />View
-                          </button>
-                          {/* Approve */}
-                          {log.status === 'submitted' && (
-                            <button
-                              onClick={() => handleApprove(log.log_id)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-xs font-medium rounded-lg transition-colors"
-                              style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
-                              onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
-                              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
-                            >
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Approve</span>
-                            </button>
-                          )}
-                          {/* Revise */}
-                          {log.status === 'submitted' && (
+                  {logs.map((log) => {
+                    const shiftType = detectShiftType(log);
+                    return (
+                      <tr
+                        key={log.log_id}
+                        className="transition-colors"
+                        style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.6)`}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
+                      >
+                        {/* Date */}
+                        <td className="py-3.5 px-5">
+                          <span className="text-sm font-medium whitespace-nowrap" style={{ color: `rgb(var(--primary-700))` }}>
+                            {log.log_date
+                              ? new Date(log.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                              : '—'}
+                          </span>
+                        </td>
+                        {/* Shift Badge */}
+                        <td className="py-3.5 px-4 hidden sm:table-cell">
+                          <ShiftBadge shiftType={shiftType} />
+                        </td>
+                        {/* Narrative preview */}
+                        <td className="py-3.5 px-4 hidden md:table-cell">
+                          <span className="text-sm text-gray-600">{truncate(log.narrative)}</span>
+                        </td>
+                        {/* Status */}
+                        <td className="py-3.5 px-4">
+                          <StatusBadge status={log.status} />
+                        </td>
+                        {/* Actions */}
+                        <td className="py-3.5 px-5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {/* View */}
                             <button
                               onClick={async () => {
                                 const fullLog = await getCoordinatorLogDetails(log.log_id);
-                                setSelectedLog({ ...fullLog, _startRevision: true });
+                                setSelectedLog(fullLog);
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 border border-red-200 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors"
+                              style={{ backgroundColor: `rgb(var(--primary-600))` }}
+                              onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`}
+                              onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
                             >
-                              <RefreshCcw className="w-3.5 h-3.5" />
-                              <span className="hidden sm:inline">Revise</span>
+                              <Eye className="w-3.5 h-3.5" />View
                             </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {/* Approve */}
+                            {log.status === 'submitted' && (
+                              <button
+                                onClick={() => handleApprove(log.log_id)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-xs font-medium rounded-lg transition-colors"
+                                style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
+                                onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
+                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+                              >
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Approve</span>
+                              </button>
+                            )}
+                            {/* Revise */}
+                            {log.status === 'submitted' && (
+                              <button
+                                onClick={async () => {
+                                  const fullLog = await getCoordinatorLogDetails(log.log_id);
+                                  setSelectedLog({ ...fullLog, _startRevision: true });
+                                }}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 border border-red-200 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors"
+                              >
+                                <RefreshCcw className="w-3.5 h-3.5" />
+                                <span className="hidden sm:inline">Revise</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
 

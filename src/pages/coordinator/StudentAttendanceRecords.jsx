@@ -38,6 +38,41 @@ const FILTER_OPTIONS = [
   { value: 'incomplete', label: 'Incomplete Attendance' },
 ];
 
+// ─── Shift type constants ─────────────────────────────────────────────────────
+
+const SHIFT_TYPES = {
+  HALF_DAY:  'half_day',
+  DAY_SHIFT: 'day_shift',
+  NIGHT_SHIFT: 'night_shift',
+};
+
+const SHIFT_BADGE_CONFIG = {
+  [SHIFT_TYPES.HALF_DAY]: {
+    label: 'Half Day',
+    style: {
+      backgroundColor: 'rgb(239 246 255)',
+      color: 'rgb(37 99 235)',
+      border: '1px solid rgb(191 219 254)',
+    },
+  },
+  [SHIFT_TYPES.DAY_SHIFT]: {
+    label: 'Day Shift',
+    style: {
+      backgroundColor: 'rgb(240 253 244)',
+      color: 'rgb(22 163 74)',
+      border: '1px solid rgb(187 247 208)',
+    },
+  },
+  [SHIFT_TYPES.NIGHT_SHIFT]: {
+    label: 'Night Shift',
+    style: {
+      backgroundColor: 'rgb(238 242 255)',
+      color: 'rgb(99 102 241)',
+      border: '1px solid rgb(199 210 254)',
+    },
+  },
+};
+
 // ─── Workflow config ──────────────────────────────────────────────────────────
 
 const WORKFLOW_CONFIG = {
@@ -56,6 +91,18 @@ const WORKFLOW_CONFIG = {
   lunch: {
     label: 'Lunch Break',
     icon: Coffee,
+    inKey: 'lunch_break_start',
+    outKey: 'lunch_break_end',
+    color: 'text-amber-500',
+    bg: 'bg-amber-50',
+    border: 'border-amber-100',
+    progressColor: 'text-amber-600',
+    progressBg: 'bg-amber-50',
+    progressBorder: 'border-amber-100',
+  },
+  meal: {
+    label: 'Meal Break',
+    icon: UtensilsCrossed,
     inKey: 'lunch_break_start',
     outKey: 'lunch_break_end',
     color: 'text-amber-500',
@@ -108,11 +155,24 @@ const formatSession = (timeIn, timeOut) => {
   return { range: `${formatTime(timeIn)} – ${formatTime(timeOut)}` };
 };
 
+/**
+ * Overnight-aware session minutes computation.
+ * If end < start, we assume it crossed midnight and add 24 hours to end.
+ */
 const computeSessionMinutes = (timeIn, timeOut) => {
   if (isBlankTime(timeIn) || isBlankTime(timeOut)) return 0;
   try {
-    const toMins = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
-    const diff = toMins(timeOut) - toMins(timeIn);
+    const toMins = (t) => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+    const startMins = toMins(timeIn);
+    let endMins = toMins(timeOut);
+    // Overnight shift: end time is earlier than start time
+    if (endMins < startMins) {
+      endMins += 24 * 60;
+    }
+    const diff = endMins - startMins;
     return diff > 0 ? diff : 0;
   } catch { return 0; }
 };
@@ -125,20 +185,75 @@ const minutesToDisplay = (mins) => {
 };
 
 /**
- * Regular hours = time_in → time_out
- * Minus lunch break duration (or auto-deduct 1 hr if >= 5 hrs work and no lunch)
- * Plus overtime
+ * Parse a time string (HH:MM or HH:MM:SS) into total minutes from midnight.
+ * Returns null if blank/invalid.
+ */
+const timeToMins = (t) => {
+  if (isBlankTime(t)) return null;
+  try {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  } catch { return null; }
+};
+
+/**
+ * Determine the shift type from schedule start_time / end_time.
+ *
+ * Rules:
+ *  - If total scheduled duration <= 5 hours → Half Day
+ *  - If start_time is between 18:00–05:59 → Night Shift
+ *  - Otherwise → Day Shift
+ *
+ * Falls back gracefully when start_time / end_time are absent.
+ */
+const analyzeShift = (record) => {
+  const startMins = timeToMins(record.start_time);
+  const endMins_raw = timeToMins(record.end_time);
+
+  if (startMins === null || endMins_raw === null) return null;
+
+  // Support overnight schedule end times
+  let endMins = endMins_raw;
+  if (endMins < startMins) endMins += 24 * 60;
+
+  const durationMins = endMins - startMins;
+
+  if (durationMins <= 5 * 60) return SHIFT_TYPES.HALF_DAY;
+
+  // Night shift: scheduled start is 18:00 (1080) or later, or before 06:00 (360)
+  if (startMins >= 18 * 60 || startMins < 6 * 60) return SHIFT_TYPES.NIGHT_SHIFT;
+
+  return SHIFT_TYPES.DAY_SHIFT;
+};
+
+/**
+ * Total hours computation — now schedule-aware.
+ *
+ * Half Day  → no lunch deduction, no auto-deduct
+ * Night Shift → deduct meal break if present; no auto-deduct
+ * Day Shift / unknown → deduct lunch if present; auto-deduct 1h if >= 5h work and no lunch
  */
 const computeTotalHours = (r) => {
+  const shiftType = analyzeShift(r);
   const workMins  = computeSessionMinutes(r.time_in, r.time_out);
   const lunchMins = computeSessionMinutes(r.lunch_break_start, r.lunch_break_end);
   const otMins    = computeSessionMinutes(r.ot_time_in, r.ot_time_out);
 
   let deductMins = 0;
-  if (lunchMins > 0) {
-    deductMins = lunchMins;
-  } else if (workMins / 60 >= 5) {
-    deductMins = 60; // auto-deduct 1 hr
+
+  if (shiftType === SHIFT_TYPES.HALF_DAY) {
+    // No lunch deduction for half day
+    deductMins = 0;
+  } else if (shiftType === SHIFT_TYPES.NIGHT_SHIFT) {
+    // Deduct meal break only if recorded; no auto-deduct
+    deductMins = lunchMins > 0 ? lunchMins : 0;
+  } else {
+    // Day Shift or unknown: deduct lunch if present; auto-deduct 1h if >= 5h and no lunch
+    if (lunchMins > 0) {
+      deductMins = lunchMins;
+    } else if (workMins / 60 >= 5) {
+      deductMins = 60;
+    }
   }
 
   const total = Math.max(0, workMins - deductMins) + otMins;
@@ -147,15 +262,49 @@ const computeTotalHours = (r) => {
 
 /**
  * Incomplete = any started-but-not-finished step.
+ * For half-day shifts, lunch_break steps are not required.
  */
-const isIncompleteAttendance = (r) =>
-  (!isBlankTime(r.time_in)           && isBlankTime(r.time_out))          ||
-  (!isBlankTime(r.lunch_break_start) && isBlankTime(r.lunch_break_end))   ||
-  (!isBlankTime(r.ot_time_in)        && isBlankTime(r.ot_time_out));
+const isIncompleteAttendance = (r) => {
+  const shiftType = analyzeShift(r);
+  const workIncomplete = !isBlankTime(r.time_in) && isBlankTime(r.time_out);
+  const otIncomplete   = !isBlankTime(r.ot_time_in) && isBlankTime(r.ot_time_out);
+
+  // Lunch/meal break incomplete check only for non-half-day
+  const lunchIncomplete =
+    shiftType !== SHIFT_TYPES.HALF_DAY &&
+    !isBlankTime(r.lunch_break_start) &&
+    isBlankTime(r.lunch_break_end);
+
+  return workIncomplete || lunchIncomplete || otIncomplete;
+};
 
 const formatDate = (dateStr, opts = {}) => {
   if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', ...opts });
+};
+
+// ─── ShiftBadge ───────────────────────────────────────────────────────────────
+
+const ShiftBadge = ({ shiftType }) => {
+  if (!shiftType) return null;
+  const config = SHIFT_BADGE_CONFIG[shiftType];
+  if (!config) return null;
+
+  const iconMap = {
+    [SHIFT_TYPES.HALF_DAY]:   <Sunrise className="w-3 h-3" />,
+    [SHIFT_TYPES.DAY_SHIFT]:  <LogIn className="w-3 h-3" />,
+    [SHIFT_TYPES.NIGHT_SHIFT]: <Moon className="w-3 h-3" />,
+  };
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap"
+      style={config.style}
+    >
+      {iconMap[shiftType]}
+      {config.label}
+    </span>
+  );
 };
 
 // ─── WorkflowStatus indicator (table cell) ────────────────────────────────────
@@ -348,6 +497,12 @@ const MapPlaceholder = ({ latitude, longitude }) => {
 const DetailsModal = ({ record, onClose }) => {
   const totalHours = computeTotalHours(record);
   const isFlagged  = record.location_status === 'flagged';
+  const shiftType  = analyzeShift(record);
+
+  // Determine break workflow key based on shift type
+  const breakWorkflowKey  = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'meal' : 'lunch';
+  const breakLabel        = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'Meal Break' : 'Lunch Break';
+  const showBreak         = shiftType !== SHIFT_TYPES.HALF_DAY;
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
@@ -383,9 +538,12 @@ const DetailsModal = ({ record, onClose }) => {
               <Calendar className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h2 id="modal-title" className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>
-                {resolveFullName(record)}
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 id="modal-title" className="text-base font-bold" style={{ color: `rgb(var(--primary-800))` }}>
+                  {resolveFullName(record)}
+                </h2>
+                {shiftType && <ShiftBadge shiftType={shiftType} />}
+              </div>
               <p className="text-xs" style={{ color: `rgb(var(--primary-500))` }}>
                 Attendance Record · {formatDate(record.attendance_date)}
                 {isFlagged && (
@@ -433,7 +591,14 @@ const DetailsModal = ({ record, onClose }) => {
               </div>
 
               <WorkflowDetail label="Work Schedule"  workflowKey="work"  timeIn={record.time_in}           timeOut={record.time_out}          />
-              <WorkflowDetail label="Lunch Break"    workflowKey="lunch" timeIn={record.lunch_break_start} timeOut={record.lunch_break_end}   />
+              {showBreak && (
+                <WorkflowDetail
+                  label={breakLabel}
+                  workflowKey={breakWorkflowKey}
+                  timeIn={record.lunch_break_start}
+                  timeOut={record.lunch_break_end}
+                />
+              )}
               <WorkflowDetail label="Overtime"       workflowKey="ot"    timeIn={record.ot_time_in}        timeOut={record.ot_time_out}       />
 
               {/* Total Hours */}
@@ -631,7 +796,7 @@ const StudentAttendance = () => {
   const TABLE_HEADERS = [
     { label: 'Date'            },
     { label: 'Work Hours',   Icon: LogIn,          iconClass: 'text-emerald-500' },
-    { label: 'Lunch Break',  Icon: Coffee,          iconClass: 'text-amber-500'  },
+    { label: 'Lunch / Meal', Icon: Coffee,          iconClass: 'text-amber-500'  },
     { label: 'Overtime',     Icon: Moon,            iconClass: 'text-indigo-500' },
     { label: 'Total Hours'   },
     { label: 'Location Status' },
@@ -806,6 +971,11 @@ const StudentAttendance = () => {
                       const incomplete = isIncompleteAttendance(rec);
                       const config     = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
                       const isUpdating = updatingIds.has(rec.attendance_id);
+                      const shiftType  = analyzeShift(rec);
+
+                      // Per-row lunch/meal column: hide for half-day
+                      const showLunchCol  = shiftType !== SHIFT_TYPES.HALF_DAY;
+                      const lunchKey      = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'meal' : 'lunch';
 
                       return (
                         <tr
@@ -820,13 +990,14 @@ const StudentAttendance = () => {
                             <span className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>
                               {formatDate(rec.attendance_date)}
                             </span>
-                            {incomplete && (
-                              <div className="mt-0.5">
+                            <div className="mt-0.5 flex items-center gap-1 flex-wrap">
+                              {incomplete && (
                                 <span className="text-[10px] font-medium text-orange-500 bg-orange-50 border border-orange-100 px-1.5 py-0.5 rounded-full">
                                   Incomplete
                                 </span>
-                              </div>
-                            )}
+                              )}
+                              {shiftType && <ShiftBadge shiftType={shiftType} />}
+                            </div>
                           </td>
 
                           {/* Work Hours */}
@@ -834,9 +1005,19 @@ const StudentAttendance = () => {
                             <WorkflowStatus timeIn={rec.time_in} timeOut={rec.time_out} workflowKey="work" />
                           </td>
 
-                          {/* Lunch Break */}
+                          {/* Lunch / Meal Break */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            <WorkflowStatus timeIn={rec.lunch_break_start} timeOut={rec.lunch_break_end} workflowKey="lunch" />
+                            {showLunchCol ? (
+                              <WorkflowStatus
+                                timeIn={rec.lunch_break_start}
+                                timeOut={rec.lunch_break_end}
+                                workflowKey={lunchKey}
+                              />
+                            ) : (
+                              <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: 'rgb(239 246 255)', color: 'rgb(37 99 235)', border: '1px solid rgb(191 219 254)' }}>
+                                N/A
+                              </span>
+                            )}
                           </td>
 
                           {/* Overtime */}
@@ -898,7 +1079,7 @@ const StudentAttendance = () => {
                     <LogIn className="w-3 h-3 text-emerald-500" />Work Hours
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <Coffee className="w-3 h-3 text-amber-500" />Lunch Break
+                    <Coffee className="w-3 h-3 text-amber-500" />Lunch / Meal Break
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Moon className="w-3 h-3 text-indigo-500" />Overtime
