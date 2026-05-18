@@ -578,7 +578,10 @@ const CoordinatorAttendance = () => {
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState(false);
   const [searchQuery,  setSearchQuery]  = useState('');
-  const [selectedDate, setSelectedDate] = useState(todayString());
+  // FIX 1: Default to '' so all records show on initial load instead of
+  // filtering to today (which produced an empty dashboard when no one had
+  // timed-in yet on the current day).
+  const [selectedDate, setSelectedDate] = useState('');
 
   useEffect(() => {
     getCoordinatorAttendance()
@@ -587,7 +590,7 @@ const CoordinatorAttendance = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  // Step 1: filter records by selected date
+  // FIX 2: When selectedDate is empty return ALL records; otherwise filter by date.
   const filteredRecords = useMemo(() => {
     if (!selectedDate) return records;
     return records.filter((r) => normalizeDate(r.attendance_date) === selectedDate);
@@ -621,8 +624,12 @@ const CoordinatorAttendance = () => {
     return filteredRecords.filter((r) => ids.has(r.student_id));
   }, [filteredRecords, filteredStudents, searchQuery]);
 
-  const hasFilter = searchQuery.trim() !== '' || selectedDate !== todayString();
-  const isToday   = selectedDate === todayString();
+  // FIX 3: hasFilter is true when a search query exists OR a date is selected.
+  // No longer compared against todayString().
+  const hasFilter = searchQuery.trim() !== '' || !!selectedDate;
+
+  // FIX 4: isToday is only true when a date is explicitly selected AND it equals today.
+  const isToday = !!selectedDate && selectedDate === todayString();
 
   return (
     <div
@@ -681,8 +688,16 @@ const CoordinatorAttendance = () => {
                 />
               </div>
 
-              {/* Today quick-filter */}
-              {!isToday && (
+              {/* Today quick-filter: show as active badge when already on today,
+                  or as a clickable button when on any other date/no date */}
+              {isToday ? (
+                <span
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg"
+                  style={{ backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-600))`, border: `1px solid rgb(var(--primary-200))` }}
+                >
+                  <Clock className="w-3.5 h-3.5" />Today
+                </span>
+              ) : (
                 <button
                   onClick={() => setSelectedDate(todayString())}
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors"
@@ -695,14 +710,6 @@ const CoordinatorAttendance = () => {
                 >
                   <Clock className="w-3.5 h-3.5" />Today
                 </button>
-              )}
-              {isToday && (
-                <span
-                  className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg"
-                  style={{ backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-600))`, border: `1px solid rgb(var(--primary-200))` }}
-                >
-                  <Clock className="w-3.5 h-3.5" />Today
-                </span>
               )}
 
               {/* Search */}
@@ -726,16 +733,19 @@ const CoordinatorAttendance = () => {
             </div>
           </div>
 
-          {(hasFilter || !isToday) && !loading && (
+          {hasFilter && !loading && (
             <p className="text-xs mt-2" style={{ color: `rgb(var(--primary-500))` }}>
               Showing{' '}
               <span className="font-semibold" style={{ color: `rgb(var(--primary-700))` }}>{filteredStudents.length}</span>{' '}
               of{' '}
               <span className="font-semibold" style={{ color: `rgb(var(--primary-700))` }}>{students.length}</span>{' '}
-              student{students.length !== 1 ? 's' : ''} for{' '}
-              <span className="font-semibold" style={{ color: `rgb(var(--primary-700))` }}>
-                {selectedDate ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'all dates'}
-              </span>
+              student{students.length !== 1 ? 's' : ''}{selectedDate ? (
+                <> for{' '}
+                  <span className="font-semibold" style={{ color: `rgb(var(--primary-700))` }}>
+                    {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </>
+              ) : null}
             </p>
           )}
         </div>
@@ -747,7 +757,7 @@ const CoordinatorAttendance = () => {
           ) : error ? (
             <ErrorState />
           ) : filteredStudents.length === 0 ? (
-            <EmptyState hasFilter={hasFilter || !isToday} />
+            <EmptyState hasFilter={hasFilter} />
           ) : (
             filteredStudents.map((student) => (
               <StudentCard
