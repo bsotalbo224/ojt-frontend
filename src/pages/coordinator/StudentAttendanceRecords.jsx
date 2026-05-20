@@ -1,11 +1,14 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, MapPin, AlertTriangle, Eye, Filter,
   CheckCircle, Clock, X, Navigation,
   ChevronDown, TrendingUp, LogIn, LogOut, Coffee, UtensilsCrossed, Moon, Sunrise,
 } from 'lucide-react';
-import { getCoordinatorAttendance } from '../../api/attendance';
+import {
+  getStudentAttendanceRecords,
+  updateAttendanceLocationStatus
+} from '../../api/attendance';
 import Avatar from '../../components/ui/Avatar';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -32,16 +35,16 @@ const LOCATION_CONFIG = {
 };
 
 const FILTER_OPTIONS = [
-  { value: 'all',        label: 'All Records'           },
-  { value: 'flagged',    label: 'Flagged'               },
-  { value: 'complete',   label: 'Complete Records'      },
+  { value: 'all', label: 'All Records' },
+  { value: 'flagged', label: 'Flagged' },
+  { value: 'complete', label: 'Complete Records' },
   { value: 'incomplete', label: 'Incomplete Attendance' },
 ];
 
 // ─── Shift type constants ─────────────────────────────────────────────────────
 
 const SHIFT_TYPES = {
-  HALF_DAY:  'half_day',
+  HALF_DAY: 'half_day',
   DAY_SHIFT: 'day_shift',
   NIGHT_SHIFT: 'night_shift',
 };
@@ -148,7 +151,7 @@ const formatTime = (timeStr) => {
 };
 
 const formatSession = (timeIn, timeOut) => {
-  const hasIn  = !isBlankTime(timeIn);
+  const hasIn = !isBlankTime(timeIn);
   const hasOut = !isBlankTime(timeOut);
   if (!hasIn) return null;
   if (!hasOut) return 'in_progress';
@@ -158,18 +161,19 @@ const formatSession = (timeIn, timeOut) => {
 /**
  * Overnight-aware session minutes computation.
  * If end < start, we assume it crossed midnight and add 24 hours to end.
+ * Supports e.g. 22:00 → 06:00 (10PM to 6AM = 8h).
  */
 const computeSessionMinutes = (timeIn, timeOut) => {
   if (isBlankTime(timeIn) || isBlankTime(timeOut)) return 0;
   try {
     const toMins = (t) => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
+      const parts = t.split(':').map(Number);
+      return parts[0] * 60 + (parts[1] ?? 0);
     };
     const startMins = toMins(timeIn);
     let endMins = toMins(timeOut);
-    // Overnight shift: end time is earlier than start time
-    if (endMins < startMins) {
+    // Overnight shift: end time is earlier than or equal to start time
+    if (endMins <= startMins) {
       endMins += 24 * 60;
     }
     const diff = endMins - startMins;
@@ -212,9 +216,9 @@ const analyzeShift = (record) => {
 
   if (startMins === null || endMins_raw === null) return null;
 
-  // Support overnight schedule end times
+  // Support overnight schedule end times (e.g. 22:00–06:00)
   let endMins = endMins_raw;
-  if (endMins < startMins) endMins += 24 * 60;
+  if (endMins <= startMins) endMins += 24 * 60;
 
   const durationMins = endMins - startMins;
 
@@ -235,20 +239,17 @@ const analyzeShift = (record) => {
  */
 const computeTotalHours = (r) => {
   const shiftType = analyzeShift(r);
-  const workMins  = computeSessionMinutes(r.time_in, r.time_out);
+  const workMins = computeSessionMinutes(r.time_in, r.time_out);
   const lunchMins = computeSessionMinutes(r.lunch_break_start, r.lunch_break_end);
-  const otMins    = computeSessionMinutes(r.ot_time_in, r.ot_time_out);
+  const otMins = computeSessionMinutes(r.ot_time_in, r.ot_time_out);
 
   let deductMins = 0;
 
   if (shiftType === SHIFT_TYPES.HALF_DAY) {
-    // No lunch deduction for half day
     deductMins = 0;
   } else if (shiftType === SHIFT_TYPES.NIGHT_SHIFT) {
-    // Deduct meal break only if recorded; no auto-deduct
     deductMins = lunchMins > 0 ? lunchMins : 0;
   } else {
-    // Day Shift or unknown: deduct lunch if present; auto-deduct 1h if >= 5h and no lunch
     if (lunchMins > 0) {
       deductMins = lunchMins;
     } else if (workMins / 60 >= 5) {
@@ -267,9 +268,8 @@ const computeTotalHours = (r) => {
 const isIncompleteAttendance = (r) => {
   const shiftType = analyzeShift(r);
   const workIncomplete = !isBlankTime(r.time_in) && isBlankTime(r.time_out);
-  const otIncomplete   = !isBlankTime(r.ot_time_in) && isBlankTime(r.ot_time_out);
+  const otIncomplete = !isBlankTime(r.ot_time_in) && isBlankTime(r.ot_time_out);
 
-  // Lunch/meal break incomplete check only for non-half-day
   const lunchIncomplete =
     shiftType !== SHIFT_TYPES.HALF_DAY &&
     !isBlankTime(r.lunch_break_start) &&
@@ -291,8 +291,8 @@ const ShiftBadge = ({ shiftType }) => {
   if (!config) return null;
 
   const iconMap = {
-    [SHIFT_TYPES.HALF_DAY]:   <Sunrise className="w-3 h-3" />,
-    [SHIFT_TYPES.DAY_SHIFT]:  <LogIn className="w-3 h-3" />,
+    [SHIFT_TYPES.HALF_DAY]: <Sunrise className="w-3 h-3" />,
+    [SHIFT_TYPES.DAY_SHIFT]: <LogIn className="w-3 h-3" />,
     [SHIFT_TYPES.NIGHT_SHIFT]: <Moon className="w-3 h-3" />,
   };
 
@@ -310,7 +310,7 @@ const ShiftBadge = ({ shiftType }) => {
 // ─── WorkflowStatus indicator (table cell) ────────────────────────────────────
 
 const WorkflowStatus = ({ timeIn, timeOut, workflowKey }) => {
-  const cfg     = WORKFLOW_CONFIG[workflowKey];
+  const cfg = WORKFLOW_CONFIG[workflowKey];
   const session = formatSession(timeIn, timeOut);
 
   if (session === null) return <span className="text-xs text-gray-300 italic select-none">—</span>;
@@ -332,10 +332,10 @@ const WorkflowStatus = ({ timeIn, timeOut, workflowKey }) => {
 // ─── WorkflowDetail (modal row) ───────────────────────────────────────────────
 
 const WorkflowDetail = ({ label, workflowKey, timeIn, timeOut }) => {
-  const cfg     = WORKFLOW_CONFIG[workflowKey];
-  const Icon    = cfg.icon;
+  const cfg = WORKFLOW_CONFIG[workflowKey];
+  const Icon = cfg.icon;
   const session = formatSession(timeIn, timeOut);
-  const mins    = computeSessionMinutes(timeIn, timeOut);
+  const mins = computeSessionMinutes(timeIn, timeOut);
 
   const statusNode = (() => {
     if (session === null) return <span className="text-xs text-gray-400 italic">Not recorded</span>;
@@ -414,7 +414,7 @@ const LocationStatusDropdown = ({ status, onChange, disabled }) => {
           border: `1px solid rgb(var(--primary-200))`,
         }}
         onFocus={e => { e.target.style.boxShadow = isFlagged ? '0 0 0 2px rgb(253 230 138)' : `0 0 0 2px rgb(var(--primary-300))`; }}
-        onBlur={e  => { e.target.style.boxShadow = 'none'; }}
+        onBlur={e => { e.target.style.boxShadow = 'none'; }}
       >
         <option value="verified">Verified</option>
         <option value="flagged">Flagged</option>
@@ -422,7 +422,7 @@ const LocationStatusDropdown = ({ status, onChange, disabled }) => {
       <div className="absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none">
         {isFlagged
           ? <AlertTriangle className="w-3 h-3 text-amber-600" />
-          : <CheckCircle   className="w-3 h-3" style={{ color: `rgb(var(--primary-600))` }} />}
+          : <CheckCircle className="w-3 h-3" style={{ color: `rgb(var(--primary-600))` }} />}
       </div>
       <ChevronDown
         className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none"
@@ -436,7 +436,7 @@ const LocationStatusDropdown = ({ status, onChange, disabled }) => {
 
 const MapPlaceholder = ({ latitude, longitude }) => {
   const hasCoords = latitude != null && longitude != null;
-  const mapsUrl   = hasCoords ? `https://maps.google.com/?q=${latitude},${longitude}` : null;
+  const mapsUrl = hasCoords ? `https://maps.google.com/?q=${latitude},${longitude}` : null;
 
   return (
     <div
@@ -496,13 +496,12 @@ const MapPlaceholder = ({ latitude, longitude }) => {
 
 const DetailsModal = ({ record, onClose }) => {
   const totalHours = computeTotalHours(record);
-  const isFlagged  = record.location_status === 'flagged';
-  const shiftType  = analyzeShift(record);
+  const isFlagged = record.location_status === 'flagged';
+  const shiftType = analyzeShift(record);
 
-  // Determine break workflow key based on shift type
-  const breakWorkflowKey  = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'meal' : 'lunch';
-  const breakLabel        = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'Meal Break' : 'Lunch Break';
-  const showBreak         = shiftType !== SHIFT_TYPES.HALF_DAY;
+  const breakWorkflowKey = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'meal' : 'lunch';
+  const breakLabel = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'Meal Break' : 'Lunch Break';
+  const showBreak = shiftType !== SHIFT_TYPES.HALF_DAY;
 
   useEffect(() => {
     const h = (e) => { if (e.key === 'Escape') onClose(); };
@@ -590,7 +589,7 @@ const DetailsModal = ({ record, onClose }) => {
                 </div>
               </div>
 
-              <WorkflowDetail label="Work Schedule"  workflowKey="work"  timeIn={record.time_in}           timeOut={record.time_out}          />
+              <WorkflowDetail label="Work Schedule" workflowKey="work" timeIn={record.time_in} timeOut={record.time_out} />
               {showBreak && (
                 <WorkflowDetail
                   label={breakLabel}
@@ -599,7 +598,7 @@ const DetailsModal = ({ record, onClose }) => {
                   timeOut={record.lunch_break_end}
                 />
               )}
-              <WorkflowDetail label="Overtime"       workflowKey="ot"    timeIn={record.ot_time_in}        timeOut={record.ot_time_out}       />
+              <WorkflowDetail label="Overtime" workflowKey="ot" timeIn={record.ot_time_in} timeOut={record.ot_time_out} />
 
               {/* Total Hours */}
               {totalHours && (
@@ -715,43 +714,129 @@ const EmptyTableState = ({ hasFilter }) => (
   </tr>
 );
 
+// ─── Highlight Row CSS ────────────────────────────────────────────────────────
+
+/**
+ * Injects keyframe animations for the drill-down highlight effect.
+ * Uses a warm amber/orange glow that pulses briefly then fades out naturally.
+ */
+const HIGHLIGHT_STYLES = `
+  @keyframes rowHighlightPulse {
+    0%   { box-shadow: inset 0 0 0 0 rgba(251, 146, 60, 0); background-color: rgba(255, 237, 213, 0.9); }
+    15%  { box-shadow: inset 0 0 0 2px rgba(251, 146, 60, 0.7), 0 0 18px 4px rgba(251, 146, 60, 0.25); background-color: rgba(255, 237, 213, 0.95); }
+    45%  { box-shadow: inset 0 0 0 2px rgba(251, 146, 60, 0.5), 0 0 12px 2px rgba(251, 146, 60, 0.15); background-color: rgba(255, 237, 213, 0.85); }
+    100% { box-shadow: inset 0 0 0 0 rgba(251, 146, 60, 0); background-color: rgba(255, 237, 213, 0.2); }
+  }
+  @keyframes rowHighlightFade {
+    0%   { background-color: rgba(255, 237, 213, 0.2); }
+    100% { background-color: transparent; }
+  }
+  .attendance-row-highlight-active {
+    animation: rowHighlightPulse 2.2s ease-out forwards;
+    border-left: 4px solid rgb(251, 146, 60) !important;
+    position: relative;
+    z-index: 1;
+  }
+  .attendance-row-highlight-settle {
+    animation: rowHighlightFade 1.8s ease-out forwards;
+    border-left: 4px solid rgba(251, 146, 60, 0.35) !important;
+    background-color: rgba(255, 237, 213, 0.2);
+    transition: border-left-color 1.8s ease-out, background-color 1.8s ease-out;
+  }
+`;
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const StudentAttendance = () => {
   const { studentId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [allRecords,   setAllRecords]   = useState([]);
-  const [loading,      setLoading]      = useState(true);
-  const [error,        setError]        = useState(false);
-  const [selected,     setSelected]     = useState(null);
-  const [search,       setSearch]       = useState('');
-  const [dateFilter,   setDateFilter]   = useState('');
+  // Drill-down: attendance_id to highlight (from CoordinatorAttendance navigation state)
+  const highlightAttendanceId = location.state?.highlightAttendanceId ?? null;
+
+  const [allRecords, setAllRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [updatingIds,  setUpdatingIds]  = useState(new Set());
+  const [updatingIds, setUpdatingIds] = useState(new Set());
+
+  // Track highlight animation phase: 'active' | 'settle' | null
+  const [highlightPhase, setHighlightPhase] = useState(null);
+  const highlightRowRef = useRef(null);
+  const highlightTimers = useRef([]);
 
   useEffect(() => {
-    getCoordinatorAttendance()
+
+    setLoading(true);
+
+    getStudentAttendanceRecords(studentId)
+
       .then((data) => {
-        const records = (Array.isArray(data) ? data : [])
-          .filter((r) => String(r.student_id) === String(studentId))
-          .map(({ coordinator_note: _note, ...rest }) => rest);
-        records.sort((a, b) => new Date(b.attendance_date) - new Date(a.attendance_date));
+
+        const records = (
+          Array.isArray(data)
+            ? data
+            : []
+        ).map(
+          ({ coordinator_note: _note, ...rest }) => rest
+        );
+
         setAllRecords(records);
       })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+
+      .catch(() => {
+        setError(true);
+      })
+
+      .finally(() => {
+        setLoading(false);
+      });
+
   }, [studentId]);
+
+  // Trigger highlight sequence once data is loaded and a target id exists
+  useEffect(() => {
+    if (!highlightAttendanceId || loading || allRecords.length === 0) return;
+
+    // Clear any running timers from a previous highlight
+    highlightTimers.current.forEach(clearTimeout);
+    highlightTimers.current = [];
+
+    // Start active phase
+    setHighlightPhase('active');
+
+    // Scroll into view after a brief paint delay
+    const scrollTimer = setTimeout(() => {
+      if (highlightRowRef.current) {
+        highlightRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 120);
+
+    // Transition to settle phase after active animation finishes
+    const settleTimer = setTimeout(() => {
+      setHighlightPhase('settle');
+    }, 2400);
+
+    // Clear completely after settle fades out
+    const clearTimer = setTimeout(() => {
+      setHighlightPhase(null);
+    }, 4400);
+
+    highlightTimers.current = [scrollTimer, settleTimer, clearTimer];
+    return () => highlightTimers.current.forEach(clearTimeout);
+  }, [highlightAttendanceId, loading, allRecords]);
 
   const handleStatusChange = useCallback(async (attendanceId, newStatus) => {
     setUpdatingIds((prev) => new Set(prev).add(attendanceId));
     try {
-      const res = await fetch(`/api/attendance/${attendanceId}/status`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ location_status: newStatus }),
-      });
-      if (!res.ok) throw new Error('Failed to update status');
+      await updateAttendanceLocationStatus(
+        attendanceId,
+        newStatus
+      );
       setAllRecords((prev) =>
         prev.map((r) => r.attendance_id === attendanceId ? { ...r, location_status: newStatus } : r)
       );
@@ -769,42 +854,50 @@ const StudentAttendance = () => {
   }, [allRecords]);
 
   const stats = useMemo(() => ({
-    total:                allRecords.length,
-    verified:             allRecords.filter((r) => r.location_status === 'verified').length,
-    flagged:              allRecords.filter((r) => r.location_status === 'flagged').length,
+    total: allRecords.length,
+    verified: allRecords.filter((r) => r.location_status === 'verified').length,
+    flagged: allRecords.filter((r) => r.location_status === 'flagged').length,
     incompleteAttendance: allRecords.filter(isIncompleteAttendance).length,
   }), [allRecords]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return allRecords.filter((r) => {
-      const matchesSearch  = !q || formatDate(r.attendance_date).toLowerCase().includes(q);
-      const matchesDate    = !dateFilter || r.attendance_date?.startsWith(dateFilter);
-      const matchesStatus  =
+      const matchesSearch = !q || formatDate(r.attendance_date).toLowerCase().includes(q);
+      const matchesDate = !dateFilter || r.attendance_date?.startsWith(dateFilter);
+      const matchesStatus =
         statusFilter === 'all' ||
-        (statusFilter === 'flagged'    && r.location_status === 'flagged') ||
-        (statusFilter === 'complete'   && !isIncompleteAttendance(r))      ||
+        (statusFilter === 'flagged' && r.location_status === 'flagged') ||
+        (statusFilter === 'complete' && !isIncompleteAttendance(r)) ||
         (statusFilter === 'incomplete' && isIncompleteAttendance(r));
-      return matchesSearch && matchesDate && matchesStatus;
-    });
-  }, [allRecords, search, dateFilter, statusFilter]);
 
-  const hasFilter  = search.trim() !== '' || dateFilter !== '' || statusFilter !== 'all';
+      // Always keep the highlighted record visible regardless of active filters
+      const isHighlightTarget = highlightAttendanceId != null &&
+        String(r.attendance_id) === String(highlightAttendanceId);
+
+      return isHighlightTarget || (matchesSearch && matchesDate && matchesStatus);
+    });
+  }, [allRecords, search, dateFilter, statusFilter, highlightAttendanceId]);
+
+  const hasFilter = search.trim() !== '' || dateFilter !== '' || statusFilter !== 'all';
   const clearFilters = useCallback(() => { setSearch(''); setDateFilter(''); setStatusFilter('all'); }, []);
 
   // Table column headers
   const TABLE_HEADERS = [
-    { label: 'Date'            },
-    { label: 'Work Hours',   Icon: LogIn,          iconClass: 'text-emerald-500' },
-    { label: 'Lunch / Meal', Icon: Coffee,          iconClass: 'text-amber-500'  },
-    { label: 'Overtime',     Icon: Moon,            iconClass: 'text-indigo-500' },
-    { label: 'Total Hours'   },
+    { label: 'Date' },
+    { label: 'Work Hours', Icon: LogIn, iconClass: 'text-emerald-500' },
+    { label: 'Lunch / Meal', Icon: Coffee, iconClass: 'text-amber-500' },
+    { label: 'Overtime', Icon: Moon, iconClass: 'text-indigo-500' },
+    { label: 'Total Hours' },
     { label: 'Location Status' },
-    { label: 'Action'          },
+    { label: 'Action' },
   ];
 
   return (
     <>
+      {/* Inject highlight keyframe styles once */}
+      <style>{HIGHLIGHT_STYLES}</style>
+
       <div
         className="min-h-screen p-4 sm:p-6"
         style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-50)), white)` }}
@@ -882,7 +975,7 @@ const StudentAttendance = () => {
                       className="pl-9 pr-3 py-2 text-sm rounded-lg transition cursor-pointer outline-none"
                       style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50) / 0.4)`, color: `rgb(var(--primary-800))` }}
                       onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                      onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                      onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     />
                   </div>
                   {/* Status filter */}
@@ -894,7 +987,7 @@ const StudentAttendance = () => {
                       className="pl-9 pr-8 py-2 text-sm rounded-lg outline-none appearance-none cursor-pointer transition"
                       style={{ border: `1px solid rgb(var(--primary-200))`, backgroundColor: `rgb(var(--primary-50) / 0.4)`, color: `rgb(var(--primary-800))` }}
                       onFocus={e => { e.target.style.boxShadow = `0 0 0 2px rgb(var(--primary-300))`; e.target.style.borderColor = `rgb(var(--primary-300))`; }}
-                      onBlur={e  => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
+                      onBlur={e => { e.target.style.boxShadow = 'none'; e.target.style.borderColor = `rgb(var(--primary-200))`; }}
                     >
                       {FILTER_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                     </select>
@@ -967,23 +1060,46 @@ const StudentAttendance = () => {
                     <EmptyTableState hasFilter={hasFilter} />
                   ) : (
                     filtered.map((rec) => {
-                      const total      = computeTotalHours(rec);
+                      const total = computeTotalHours(rec);
                       const incomplete = isIncompleteAttendance(rec);
-                      const config     = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
+                      const config = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
                       const isUpdating = updatingIds.has(rec.attendance_id);
-                      const shiftType  = analyzeShift(rec);
+                      const shiftType = analyzeShift(rec);
 
-                      // Per-row lunch/meal column: hide for half-day
-                      const showLunchCol  = shiftType !== SHIFT_TYPES.HALF_DAY;
-                      const lunchKey      = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'meal' : 'lunch';
+                      const showLunchCol = shiftType !== SHIFT_TYPES.HALF_DAY;
+                      const lunchKey = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'meal' : 'lunch';
+
+                      // ── Drill-down highlight logic ──────────────────────
+                      const isHighlightTarget = highlightAttendanceId != null &&
+                        String(rec.attendance_id) === String(highlightAttendanceId);
+
+                      // When highlighted, the border-left from the highlight class takes precedence
+                      // over the flagged row's border-left; we keep flagged background if both apply.
+                      const highlightClass = isHighlightTarget && highlightPhase
+                        ? `attendance-row-highlight-${highlightPhase}`
+                        : '';
+
+                      // For non-highlighted flagged rows, use the existing config highlight
+                      const baseRowClass = !isHighlightTarget && config.rowHighlight
+                        ? config.rowHighlight
+                        : '';
 
                       return (
                         <tr
                           key={rec.attendance_id}
-                          className={`transition-colors duration-150 group ${config.rowHighlight}`}
+                          ref={isHighlightTarget ? highlightRowRef : null}
+                          className={`transition-colors duration-150 group ${baseRowClass} ${highlightClass}`}
                           style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
-                          onMouseEnter={e => { if (!config.rowHighlight) e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.6)`; }}
-                          onMouseLeave={e => { if (!config.rowHighlight) e.currentTarget.style.backgroundColor = ''; }}
+                          onMouseEnter={e => {
+                            if (!config.rowHighlight && !isHighlightTarget) {
+                              e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.6)`;
+                            }
+                          }}
+                          onMouseLeave={e => {
+                            if (!config.rowHighlight && !isHighlightTarget) {
+                              e.currentTarget.style.backgroundColor = '';
+                            }
+                          }}
                         >
                           {/* Date */}
                           <td className="py-4 px-4 whitespace-nowrap">

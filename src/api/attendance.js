@@ -184,3 +184,22 @@ export const updateAttendanceLocationStatus = async (
 
   return res.data;
 };
+
+/* ===============================
+COORDINATOR: STUDENT ATTENDANCE RECORDS
+=============================== */
+export const getStudentAttendanceRecords =
+  async (studentId) => {
+
+    const res = await axios.get(
+      `/attendance/student/${studentId}`,
+      {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache"
+        }
+      }
+    );
+
+    return res.data;
+};
