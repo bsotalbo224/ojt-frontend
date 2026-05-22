@@ -58,6 +58,15 @@ const toMins = (t) => {
   return isNaN(h) || isNaN(m) ? null : h * 60 + m;
 };
 
+/**
+ * Safe percentage calculation — returns 0 when required hours is 0 or missing.
+ */
+const safePercent = (completed, required) => {
+  const req = Number(required);
+  if (!req || req <= 0) return 0;
+  return Math.min(Math.round((Number(completed) / req) * 100), 100);
+};
+
 // ─── Shift analysis ───────────────────────────────────────────────────────────
 
 const analyzeShift = (startTime, endTime) => {
@@ -887,24 +896,30 @@ const CoordinatorStudents = () => {
                     ))}
                   </div>
 
-                  <div className="rounded-xl px-5 py-5 mb-4" style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100)))`, border: `1px solid rgb(var(--primary-100))` }}>
-                    <div className="flex justify-between items-end mb-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: `rgb(var(--primary-400))` }}>Hours Completed</p>
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-3xl font-bold" style={{ color: `rgb(var(--primary-800))` }}>{progressData.hoursCompleted}</span>
-                          <span className="text-sm" style={{ color: `rgb(var(--primary-500))` }}>/ {progressData.student?.ojt_hours_required} hrs</span>
+                  {/* ── Progress bar — guarded against division by zero ── */}
+                  {(() => {
+                    const pct = safePercent(progressData.hoursCompleted, progressData.student?.ojt_hours_required);
+                    return (
+                      <div className="rounded-xl px-5 py-5 mb-4" style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100)))`, border: `1px solid rgb(var(--primary-100))` }}>
+                        <div className="flex justify-between items-end mb-3">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-widest mb-1" style={{ color: `rgb(var(--primary-400))` }}>Hours Completed</p>
+                            <div className="flex items-baseline gap-1">
+                              <span className="text-3xl font-bold" style={{ color: `rgb(var(--primary-800))` }}>{progressData.hoursCompleted}</span>
+                              <span className="text-sm" style={{ color: `rgb(var(--primary-500))` }}>/ {progressData.student?.ojt_hours_required} hrs</span>
+                            </div>
+                          </div>
+                          <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ color: `rgb(var(--primary-600))`, backgroundColor: `rgb(var(--primary-100))` }}>
+                            {pct}%
+                          </span>
+                        </div>
+                        <div className="w-full rounded-full h-2.5 overflow-hidden" style={{ backgroundColor: `rgb(var(--primary-100))` }}>
+                          <div className="h-2.5 rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, background: `linear-gradient(to right, rgb(var(--primary-500)), rgb(var(--primary-400)))` }} />
                         </div>
                       </div>
-                      <span className="text-sm font-semibold px-3 py-1 rounded-full" style={{ color: `rgb(var(--primary-600))`, backgroundColor: `rgb(var(--primary-100))` }}>
-                        {Math.min(Math.round((progressData.hoursCompleted / progressData.student?.ojt_hours_required) * 100), 100)}%
-                      </span>
-                    </div>
-                    <div className="w-full rounded-full h-2.5 overflow-hidden" style={{ backgroundColor: `rgb(var(--primary-100))` }}>
-                      <div className="h-2.5 rounded-full transition-all duration-700"
-                        style={{ width: `${Math.min((progressData.hoursCompleted / progressData.student?.ojt_hours_required) * 100, 100)}%`, background: `linear-gradient(to right, rgb(var(--primary-500)), rgb(var(--primary-400)))` }} />
-                    </div>
-                  </div>
+                    );
+                  })()}
 
                   <div className="grid grid-cols-3 gap-3 mb-4">
                     {[{ label: 'Days Attended', value: progressData.attendanceDays ?? 0 }, { label: 'Records', value: progressData.attendanceRecords ?? 0 }].map(({ label, value }) => (
@@ -928,7 +943,12 @@ const CoordinatorStudents = () => {
                         style={{ borderBottom: `1px solid rgb(var(--primary-50))`, backgroundColor: `rgb(var(--primary-50))` }}>
                         <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: `rgb(var(--primary-600))` }}>Recent Attendance</p>
                         <div className="flex items-center gap-3">
-                          {[{ dot: '#e5e7eb', label: 'No record', text: '#9ca3af' }, { dot: '#fde68a', label: 'In progress', text: '#a16207' }, { dot: '#bbf7d0', label: 'Completed', text: '#15803d' }].map(({ dot, label, text }) => (
+                          {[
+                            { dot: '#e5e7eb', label: 'No record',  text: '#9ca3af' },
+                            { dot: '#fde68a', label: 'In progress', text: '#a16207' },
+                            { dot: '#bbf7d0', label: 'Completed',   text: '#15803d' },
+                            { dot: '#fecaca', label: 'Excluded',    text: '#dc2626' },
+                          ].map(({ dot, label, text }) => (
                             <span key={label} className="flex items-center gap-1 text-xs" style={{ color: text }}>
                               <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: dot }} />{label}
                             </span>
@@ -961,12 +981,15 @@ const CoordinatorStudents = () => {
                           </thead>
                           <tbody>
                             {progressData.recentAttendance.filter((r) => r?.date).map((rec, idx) => {
+                              const isFlagged = rec.location_status === 'flagged';
+
                               const startT  = rec.start_time || progressData.student?.start_time;
                               const endT    = rec.end_time   || progressData.student?.end_time;
                               const recWithSched = { ...rec, start_time: startT, end_time: endT };
                               const { isNightShift, isHalfDay } = analyzeShift(startT, endT);
                               const breakLabel    = isNightShift ? 'On Meal Break' : 'On Break';
-                              const total         = computeTotalHours(recWithSched);
+                              // Only compute total hours for non-flagged records
+                              const total         = isFlagged ? 'excluded' : computeTotalHours(recWithSched);
                               const status        = getAttendanceStatus(recWithSched);
                               const schedStart    = formatTime12h(startT);
                               const schedEnd      = formatTime12h(endT);
@@ -1027,14 +1050,21 @@ const CoordinatorStudents = () => {
                                     <WorkflowCell start={rec.ot_time_in} end={rec.ot_time_out} inProgressLabel="OT Active" />
                                   </td>
 
-                                  {/* Total */}
+                                  {/* Total — "Excluded" for flagged, computed hours otherwise */}
                                   <td className="py-3 px-4 whitespace-nowrap">
-                                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
-                                      style={total === '—'
-                                        ? { backgroundColor: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }
-                                        : { backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-100))` }}>
-                                      {total === '—' ? '—' : `${total} hrs`}
-                                    </span>
+                                    {isFlagged ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
+                                        style={{ backgroundColor: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca' }}>
+                                        Excluded
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
+                                        style={total === '—'
+                                          ? { backgroundColor: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb' }
+                                          : { backgroundColor: `rgb(var(--primary-50))`, color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-100))` }}>
+                                        {total === '—' ? '—' : `${total} hrs`}
+                                      </span>
+                                    )}
                                   </td>
 
                                   {/* Status */}
