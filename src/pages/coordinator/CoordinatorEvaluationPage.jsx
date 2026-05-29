@@ -13,21 +13,21 @@ import {
    CONSTANTS
 ══════════════════════════════════════════════════════════════════════════ */
 const QUESTION_TYPES = [
-  { value: "rating",          label: "Rating Scale",    icon: Star },
-  { value: "yesno",           label: "Yes / No",        icon: CheckSquare },
-  { value: "text",            label: "Text",             icon: AlignLeft },
+  { value: "rating", label: "Rating Scale", icon: Star },
+  { value: "yesno", label: "Yes / No", icon: CheckSquare },
+  { value: "text", label: "Text", icon: AlignLeft },
   { value: "multiple_choice", label: "Multiple Choice", icon: ListChecks },
 ];
 
 const RATING_SCALES = [
-  { value: "1-5",    label: "1 – 5 Scale" },
-  { value: "1-4",    label: "1 – 4 Scale" },
+  { value: "1-5", label: "1 – 5 Scale" },
+  { value: "1-4", label: "1 – 4 Scale" },
   { value: "custom", label: "Custom Labels" },
 ];
 
-const uid          = () => Math.random().toString(36).slice(2, 9);
+const uid = () => Math.random().toString(36).slice(2, 9);
 const newCriterion = () => ({ id: uid(), title: "", type: "rating", required: true, options: [] });
-const newSection   = () => ({ id: uid(), title: "", criteria: [newCriterion()] });
+const newSection = () => ({ id: uid(), title: "", criteria: [newCriterion()] });
 
 const resolveOptionText = (opt, fallback = "") => {
   if (!opt) return fallback;
@@ -39,7 +39,7 @@ const resolveOptionText = (opt, fallback = "") => {
 /* ══════════════════════════════════════════════════════════════════════════
    SHARED STYLE TOKENS
 ══════════════════════════════════════════════════════════════════════════ */
-const card       = "bg-white rounded-2xl shadow-sm";
+const card = "bg-white rounded-2xl shadow-sm";
 const cardBorder = { border: "1px solid rgb(var(--primary-50))" };
 
 const btnPrimary = {
@@ -119,7 +119,7 @@ function GhostBtn({ children, onClick, className = "" }) {
   );
 }
 
-const inputCls  = "w-full px-3 py-2 rounded-lg text-sm outline-none transition";
+const inputCls = "w-full px-3 py-2 rounded-lg text-sm outline-none transition";
 const selectCls = "w-full px-3 py-2 rounded-lg text-sm outline-none transition";
 
 function StyledInput({ className = "", onFocus, onBlur, ...props }) {
@@ -195,7 +195,7 @@ const SkeletonCard = () => (
       <div className="h-3 rounded w-1/3" style={{ backgroundColor: "rgb(var(--primary-50))" }} />
     </div>
     <div className="grid grid-cols-3 gap-2">
-      {[0,1,2].map(i => (
+      {[0, 1, 2].map(i => (
         <div key={i} className="h-16 rounded-lg" style={{ backgroundColor: "rgb(var(--primary-50))" }} />
       ))}
     </div>
@@ -317,7 +317,7 @@ function TemplateSettingsModal({ open, template, onClose, onUpdate }) {
     template?.isAcceptingResponses === 1 || template?.isAcceptingResponses === true
   );
   const [toggling, setToggling] = useState(false);
-  const [copied,   setCopied]   = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Sync local state when template prop changes
   useEffect(() => {
@@ -405,7 +405,7 @@ function TemplateSettingsModal({ open, template, onClose, onUpdate }) {
               <input
                 readOnly
                 value={template.link}
-                className="flex-1 bg-transparent text-xs outline-none cursor-text truncate"
+                className="flex-1 bg-transparent text-xs outline-none cursor-text"
                 style={{ color: "rgb(var(--primary-700))" }}
                 onFocus={e => e.target.select()}
               />
@@ -578,7 +578,7 @@ function TemplatePreviewModal({ open, template, onClose }) {
    OPTIONS EDITOR
 ══════════════════════════════════════════════════════════════════════════ */
 function OptionsEditor({ options = [], onChange }) {
-  const addOption    = () => onChange([...options, ""]);
+  const addOption = () => onChange([...options, ""]);
   const updateOption = (idx, val) => { const next = [...options]; next[idx] = val; onChange(next); };
   const deleteOption = (idx) => onChange(options.filter((_, i) => i !== idx));
   return (
@@ -643,7 +643,7 @@ function CriterionRow({ criterion, onChange, onDelete }) {
 function SectionBlock({ section, onChange, onDelete, onMoveUp, onMoveDown }) {
   const updateCriterion = (idx, updated) => { const criteria = [...section.criteria]; criteria[idx] = updated; onChange({ ...section, criteria }); };
   const deleteCriterion = (idx) => onChange({ ...section, criteria: section.criteria.filter((_, i) => i !== idx) });
-  const addCriterion    = () => onChange({ ...section, criteria: [...section.criteria, newCriterion()] });
+  const addCriterion = () => onChange({ ...section, criteria: [...section.criteria, newCriterion()] });
 
   return (
     <div className={`${card} p-5 space-y-4`} style={cardBorder}>
@@ -716,16 +716,16 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
     template
       ? { ...template, courseId: template.course }
       : {
-          name: "", description: "", courseId: "",
-          academicYear: "2024-2025",
-          sections: [newSection()],
-          ratingSettings: { scale: "1-5", minLabel: "Poor", maxLabel: "Excellent" },
-        }
+        name: "", description: "", courseId: "",
+        academicYear: "2024-2025",
+        sections: [newSection()],
+        ratingSettings: { scale: "1-5", minLabel: "Poor", maxLabel: "Excellent" },
+      }
   );
 
   const updateSection = (idx, updated) => { const sections = [...form.sections]; sections[idx] = updated; setForm({ ...form, sections }); };
   const deleteSection = (idx) => setForm({ ...form, sections: form.sections.filter((_, i) => i !== idx) });
-  const moveSection   = (idx, dir) => {
+  const moveSection = (idx, dir) => {
     const sections = [...form.sections];
     const target = idx + dir;
     if (target < 0 || target >= sections.length) return;
@@ -800,8 +800,8 @@ function TemplateEditor({ template, courses, onCancel, onSave, onPublish }) {
 function TemplateCard({ template, onEdit, onDuplicate, onPublish, onPreview, onViewResponses, onOpenSettings, responseCount }) {
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const sectionCount  = Array.isArray(template.sections) ? template.sections.length  : (template.sections  || 0);
-  const criteriaCount = Array.isArray(template.criteria) ? template.criteria.length  : (template.criteria  || 0);
+  const sectionCount = Array.isArray(template.sections) ? template.sections.length : (template.sections || 0);
+  const criteriaCount = Array.isArray(template.criteria) ? template.criteria.length : (template.criteria || 0);
 
   // ── FIX 3: Use isActive instead of status for badge ──────────────────────
   const isActive = template.isActive === 1 || template.isActive === true;
@@ -1043,11 +1043,11 @@ function MultipleChoiceAnswer({ value }) {
 function AnswerBlock({ answer }) {
   const renderValue = () => {
     switch (answer.criterion_type) {
-      case "rating":          return <RatingAnswer         value={answer.rating_value} />;
-      case "yesno":           return <YesNoAnswer          value={answer.yesno_value} />;
-      case "text":            return <TextAnswer           value={answer.text_value} />;
+      case "rating": return <RatingAnswer value={answer.rating_value} />;
+      case "yesno": return <YesNoAnswer value={answer.yesno_value} />;
+      case "text": return <TextAnswer value={answer.text_value} />;
       case "multiple_choice": return <MultipleChoiceAnswer value={answer.selected_option} />;
-      default:                return <span className="text-xs italic" style={{ color: "rgb(var(--primary-400))" }}>Unknown type</span>;
+      default: return <span className="text-xs italic" style={{ color: "rgb(var(--primary-400))" }}>Unknown type</span>;
     }
   };
   return (
@@ -1062,7 +1062,7 @@ function AnswerBlock({ answer }) {
    RESPONSE DETAIL MODAL
 ══════════════════════════════════════════════════════════════════════════ */
 function ResponseModal({ responseId, onClose }) {
-  const [data,    setData]    = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -1082,16 +1082,77 @@ function ResponseModal({ responseId, onClose }) {
 
   const sections = data
     ? data.answers.reduce((acc, ans) => {
-        const key = ans.section_title || "General";
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(ans);
-        return acc;
-      }, {})
+      const key = ans.section_title || "General";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(ans);
+      return acc;
+    }, {})
     : {};
 
   const submittedDate = data?.response?.submitted_at
     ? new Date(data.response.submitted_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
     : "—";
+
+  const calculateScores = (answers = []) => {
+    if (!Array.isArray(answers)) {
+      return {
+        total: 0,
+        average: 0,
+        percentage: 0,
+        remarks: "No Ratings",
+      };
+    }
+
+    const ratingAnswers = answers.filter(
+      (answer) =>
+        answer?.criterion_type === "rating" &&
+        answer?.rating_value !== null &&
+        answer?.rating_value !== undefined
+    );
+
+    const count = ratingAnswers.length;
+
+    if (count === 0) {
+      return {
+        total: 0,
+        average: 0,
+        percentage: 0,
+        remarks: "No Ratings",
+      };
+    }
+
+    const total = ratingAnswers.reduce(
+      (sum, answer) => sum + Number(answer.rating_value || 0),
+      0
+    );
+
+    const average = total / count;
+
+    const percentage = (total / (count * 5)) * 100;
+
+    let remarks = "Poor";
+
+    if (average >= 4.5) {
+      remarks = "Excellent";
+    } else if (average >= 3.5) {
+      remarks = "Very Good";
+    } else if (average >= 2.5) {
+      remarks = "Good";
+    } else if (average >= 1.5) {
+      remarks = "Fair";
+    }
+
+    return {
+      total,
+      average: average.toFixed(2),
+      percentage: percentage.toFixed(2),
+      remarks,
+    };
+  };
+
+  const scoreData = data
+    ? calculateScores(data.answers)
+    : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1127,10 +1188,10 @@ function ResponseModal({ responseId, onClose }) {
               <div className="rounded-xl p-4 space-y-3" style={{ backgroundColor: "rgb(var(--primary-50))", border: "1px solid rgb(var(--primary-100))" }}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {[
-                    { Icon: User,      label: "Student",          value: data.response.student_name },
-                    { Icon: Building2, label: "Supervisor",       value: data.response.supervisor_name },
-                    { Icon: Mail,      label: "Supervisor Email", value: data.response.supervisor_email },
-                    { Icon: Calendar,  label: "Submitted",        value: submittedDate },
+                    { Icon: User, label: "Student", value: data.response.student_name },
+                    { Icon: Building2, label: "Supervisor", value: data.response.supervisor_name },
+                    { Icon: Mail, label: "Supervisor Email", value: data.response.supervisor_email },
+                    { Icon: Calendar, label: "Submitted", value: submittedDate },
                   ].map(({ Icon, label, value }) => (
                     <div key={label} className="flex items-start gap-2.5">
                       <Icon size={14} className="mt-0.5 shrink-0" style={{ color: "rgb(var(--primary-600))" }} />
@@ -1149,17 +1210,159 @@ function ResponseModal({ responseId, onClose }) {
                   </div>
                 </div>
               </div>
+              {scoreData && (
+                <div
+                  className="rounded-xl p-5"
+                  style={{
+                    backgroundColor: "rgb(var(--primary-50))",
+                    border: "1px solid rgb(var(--primary-100))",
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-4">
+                    <BarChart2
+                      size={18}
+                      style={{ color: "rgb(var(--primary-600))" }}
+                    />
+
+                    <h3
+                      className="text-sm font-bold uppercase tracking-wide"
+                      style={{ color: "rgb(var(--primary-700))" }}
+                    >
+                      Evaluation Result
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div
+                      className="rounded-xl p-4"
+                      style={{
+                        backgroundColor: "white",
+                        border: "1px solid rgb(var(--primary-100))",
+                      }}
+                    >
+                      <p
+                        className="text-xs font-semibold uppercase"
+                        style={{ color: "rgb(var(--primary-400))" }}
+                      >
+                        Total Score
+                      </p>
+
+                      <p
+                        className="text-2xl font-bold mt-1"
+                        style={{ color: "rgb(var(--primary-800))" }}
+                      >
+                        {scoreData.total}
+                      </p>
+                    </div>
+
+                    <div
+                      className="rounded-xl p-4"
+                      style={{
+                        backgroundColor: "white",
+                        border: "1px solid rgb(var(--primary-100))",
+                      }}
+                    >
+                      <p
+                        className="text-xs font-semibold uppercase"
+                        style={{ color: "rgb(var(--primary-400))" }}
+                      >
+                        Average
+                      </p>
+
+                      <p
+                        className="text-2xl font-bold mt-1"
+                        style={{ color: "rgb(var(--primary-800))" }}
+                      >
+                        {scoreData.average}
+                      </p>
+                    </div>
+
+                    <div
+                      className="rounded-xl p-4"
+                      style={{
+                        backgroundColor: "white",
+                        border: "1px solid rgb(var(--primary-100))",
+                      }}
+                    >
+                      <p
+                        className="text-xs font-semibold uppercase"
+                        style={{ color: "rgb(var(--primary-400))" }}
+                      >
+                        Percentage
+                      </p>
+
+                      <p
+                        className="text-2xl font-bold mt-1"
+                        style={{ color: "rgb(var(--primary-800))" }}
+                      >
+                        {scoreData.percentage}%
+                      </p>
+                    </div>
+
+                    <div
+                      className="rounded-xl p-4"
+                      style={{
+                        backgroundColor: "white",
+                        border: "1px solid rgb(var(--primary-100))",
+                      }}
+                    >
+                      <p
+                        className="text-xs font-semibold uppercase"
+                        style={{ color: "rgb(var(--primary-400))" }}
+                      >
+                        Remarks
+                      </p>
+
+                      <p
+                        className="text-lg font-bold mt-2"
+                        style={{ color: "rgb(var(--primary-700))" }}
+                      >
+                        {scoreData.remarks}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {Object.keys(sections).length === 0 ? (
-                <p className="text-sm italic text-center py-6" style={{ color: "rgb(var(--primary-400))" }}>No answers recorded.</p>
+                <p
+                  className="text-sm italic text-center py-6"
+                  style={{ color: "rgb(var(--primary-400))" }}
+                >
+                  No answers recorded.
+                </p>
               ) : (
                 Object.entries(sections).map(([sectionTitle, answers]) => (
-                  <div key={sectionTitle} className="rounded-xl overflow-hidden" style={{ border: "1px solid rgb(var(--primary-100))" }}>
-                    <div className="px-4 py-2.5 flex items-center gap-2" style={{ backgroundColor: "rgb(var(--primary-50))", borderBottom: "1px solid rgb(var(--primary-100))" }}>
-                      <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: "rgb(var(--primary-500))" }} />
-                      <h4 className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgb(var(--primary-700))" }}>{sectionTitle}</h4>
+                  <div
+                    key={sectionTitle}
+                    className="rounded-xl overflow-hidden"
+                    style={{ border: "1px solid rgb(var(--primary-100))" }}
+                  >
+                    <div
+                      className="px-4 py-2.5 flex items-center gap-2"
+                      style={{
+                        backgroundColor: "rgb(var(--primary-50))",
+                        borderBottom: "1px solid rgb(var(--primary-100))",
+                      }}
+                    >
+                      <div
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: "rgb(var(--primary-500))" }}
+                      />
+
+                      <h4
+                        className="text-xs font-bold uppercase tracking-widest"
+                        style={{ color: "rgb(var(--primary-700))" }}
+                      >
+                        {sectionTitle}
+                      </h4>
                     </div>
-                    <div>{answers.map((ans, i) => <AnswerBlock key={i} answer={ans} />)}</div>
+
+                    <div>
+                      {answers.map((ans, i) => (
+                        <AnswerBlock key={i} answer={ans} />
+                      ))}
+                    </div>
                   </div>
                 ))
               )}
@@ -1179,25 +1382,25 @@ function ResponseModal({ responseId, onClose }) {
    TAB 1: FORMS
 ══════════════════════════════════════════════════════════════════════════ */
 function FormsTab({ onViewResponses }) {
-  const [templates,    setTemplates]    = useState([]);
-  const [courses,      setCourses]      = useState([]);
-  const [editorView,   setEditorView]   = useState(false);
-  const [editTarget,   setEditTarget]   = useState(null);
-  const [search,       setSearch]       = useState("");
+  const [templates, setTemplates] = useState([]);
+  const [courses, setCourses] = useState([]);
+  const [editorView, setEditorView] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
-  const [loading,      setLoading]      = useState(false);
+  const [loading, setLoading] = useState(false);
   const [responseCounts, setResponseCounts] = useState({});
 
-  const [confirmTarget,    setConfirmTarget]    = useState(null);
-  const [confirmOpen,      setConfirmOpen]      = useState(false);
-  const [publishLoading,   setPublishLoading]   = useState(false);
-  const [publishLink,      setPublishLink]      = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [publishLoading, setPublishLoading] = useState(false);
+  const [publishLink, setPublishLink] = useState(null);
   const [publishModalOpen, setPublishModalOpen] = useState(false);
-  const [previewTemplate,  setPreviewTemplate]  = useState(null);
+  const [previewTemplate, setPreviewTemplate] = useState(null);
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
 
   // FIX 6: Settings modal state
-  const [settingsTemplate,  setSettingsTemplate]  = useState(null);
+  const [settingsTemplate, setSettingsTemplate] = useState(null);
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
 
   const fetchData = async () => {
@@ -1214,7 +1417,7 @@ function FormsTab({ onViewResponses }) {
         const countsMap = {};
         (countsRes.data || []).forEach(item => { countsMap[item.template_id] = item.count; });
         setResponseCounts(countsMap);
-      } catch (_) {}
+      } catch (_) { }
     } catch (err) {
       console.error("Error fetching data:", err);
     } finally {
@@ -1224,7 +1427,7 @@ function FormsTab({ onViewResponses }) {
 
   useEffect(() => { fetchData(); }, []);
 
-  const openNew  = () => { setEditTarget(null); setEditorView(true); };
+  const openNew = () => { setEditTarget(null); setEditorView(true); };
   const openEdit = async (id) => {
     try {
       const res = await api.get(`/evaluation-templates/${id}`);
@@ -1238,10 +1441,10 @@ function FormsTab({ onViewResponses }) {
       const cleanedSections = (form.sections || []).map(section => ({
         title: section.title,
         criteria: (section.criteria || []).map(criterion => ({
-          title:    criterion.title,
-          type:     criterion.type,
+          title: criterion.title,
+          type: criterion.type,
           required: criterion.required,
-          options:  (criterion.options || []).map(opt => resolveOptionText(opt, "")).filter(opt => opt.trim() !== ""),
+          options: (criterion.options || []).map(opt => resolveOptionText(opt, "")).filter(opt => opt.trim() !== ""),
         })),
       }));
       const payload = { name: form.name, description: form.description, courseId: form.courseId, academicYear: form.academicYear, ratingSettings: form.ratingSettings, sections: cleanedSections };
@@ -1257,14 +1460,14 @@ function FormsTab({ onViewResponses }) {
 
   const handleDuplicate = async (t) => {
     try {
-      const res  = await api.get(`/evaluation-templates/${t.id}`);
+      const res = await api.get(`/evaluation-templates/${t.id}`);
       const copy = { ...res.data, id: undefined, name: `${res.data.name} (Copy)` };
       await api.post("/evaluation-templates", copy);
       fetchData();
     } catch (err) { console.error("Error duplicating:", err); }
   };
 
-  const handlePublish        = (template) => { setConfirmTarget(template); setConfirmOpen(true); };
+  const handlePublish = (template) => { setConfirmTarget(template); setConfirmOpen(true); };
   const handlePublishConfirm = async () => {
     if (!confirmTarget) return;
     try {
@@ -1278,7 +1481,7 @@ function FormsTab({ onViewResponses }) {
     } catch (err) { console.error("Error publishing:", err); }
     finally { setPublishLoading(false); }
   };
-  const handlePublishCancel     = () => { setConfirmOpen(false); setConfirmTarget(null); };
+  const handlePublishCancel = () => { setConfirmOpen(false); setConfirmTarget(null); };
   const handlePublishModalClose = () => { setPublishModalOpen(false); setPublishLink(null); };
 
   const handleEditorPublish = async (template) => {
@@ -1457,11 +1660,11 @@ function FormsTab({ onViewResponses }) {
    TAB 2: RESPONSES
 ══════════════════════════════════════════════════════════════════════════ */
 function ResponsesTab({ filteredTemplateId, filteredTemplateName, onClearFilter }) {
-  const [responses,  setResponses]  = useState([]);
-  const [loading,    setLoading]    = useState(true);
-  const [search,     setSearch]     = useState("");
+  const [responses, setResponses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
-  const [modalOpen,  setModalOpen]  = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
 
   const fetchResponses = useCallback(async () => {
     try {
@@ -1621,8 +1824,8 @@ function ResponsesTab({ filteredTemplateId, filteredTemplateName, onClearFilter 
    MAIN PAGE COMPONENT
 ══════════════════════════════════════════════════════════════════════════ */
 export default function CoordinatorEvaluationPage() {
-  const [activeTab,            setActiveTab]            = useState("forms");
-  const [selectedTemplateId,   setSelectedTemplateId]   = useState(null);
+  const [activeTab, setActiveTab] = useState("forms");
+  const [selectedTemplateId, setSelectedTemplateId] = useState(null);
   const [selectedTemplateName, setSelectedTemplateName] = useState(null);
 
   const handleViewResponses = (template) => {
@@ -1665,8 +1868,8 @@ export default function CoordinatorEvaluationPage() {
         {/* Tab navigation */}
         <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ backgroundColor: "rgb(var(--primary-50))" }}>
           {[
-            { key: "forms",     label: "Evaluation Forms", icon: FileText },
-            { key: "responses", label: "Responses",        icon: ClipboardList },
+            { key: "forms", label: "Evaluation Forms", icon: FileText },
+            { key: "responses", label: "Responses", icon: ClipboardList },
           ].map(({ key, label, icon: Icon }) => (
             <button
               key={key}
