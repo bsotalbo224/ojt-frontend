@@ -301,7 +301,7 @@ const PublicEvaluation = () => {
       setSubmitting(true);
 
       const payload = {
-        templateId: token,
+        templateId: formSettings.id,
         studentName,
         supervisorName: supervisor.name,
         supervisorEmail: null,
