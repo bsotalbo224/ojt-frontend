@@ -56,7 +56,6 @@ const downloadAttachment = async (file) => {
   window.URL.revokeObjectURL(url);
 };
 
-// Formats a single time string → "8:00 AM" or null
 const formatTime = (value) => {
   if (!value) return null;
   try {
@@ -75,10 +74,6 @@ const formatTime = (value) => {
 
 const isBlankTime = (t) => !t || t === '00:00:00' || t === '0000-00-00 00:00:00';
 
-/**
- * Parse a time value into total minutes from midnight.
- * Supports both ISO datetime strings and plain "HH:MM:SS" strings.
- */
 const parseTimeToMinutes = (t) => {
   if (isBlankTime(t)) return null;
   try {
@@ -101,22 +96,23 @@ const formatDate = (value) => {
   }
 };
 
-// ─── Schedule Analysis ────────────────────────────────────────────────────────
+// ─── Schedule Analysis (modal only) ──────────────────────────────────────────
 
 /**
  * Detect shift type from schedule start_time / end_time.
+ * Used only in the modal to determine meal break label.
  * Returns: 'night' | 'half_day' | 'day'
  */
 const detectShiftType = (log) => {
   const startMins = parseTimeToMinutes(log.start_time);
-  const endMins = parseTimeToMinutes(log.end_time);
+  const endMins   = parseTimeToMinutes(log.end_time);
 
   if (startMins === null || endMins === null) return 'day';
 
-  const adjustedEnd = endMins < startMins ? endMins + 24 * 60 : endMins;
+  const adjustedEnd  = endMins < startMins ? endMins + 24 * 60 : endMins;
   const durationMins = adjustedEnd - startMins;
 
-  const isNightStart = startMins >= 18 * 60;
+  const isNightStart   = startMins >= 18 * 60;
   const isCrossMidnight = endMins < startMins;
   if (isNightStart || isCrossMidnight) return 'night';
 
@@ -149,24 +145,6 @@ const StatusBadge = ({ status }) => {
     >
       <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[status] ?? 'bg-gray-400'}`} />
       {status}
-    </span>
-  );
-};
-
-// ─── ShiftBadge ───────────────────────────────────────────────────────────────
-
-const SHIFT_BADGE_STYLES = {
-  day: { label: 'Day Shift', className: 'bg-sky-50 text-sky-700 border border-sky-200', dot: 'bg-sky-400' },
-  night: { label: 'Night Shift', className: 'bg-indigo-50 text-indigo-700 border border-indigo-200', dot: 'bg-indigo-400' },
-  half_day: { label: 'Half Day', className: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-400' },
-};
-
-const ShiftBadge = ({ shiftType }) => {
-  const cfg = SHIFT_BADGE_STYLES[shiftType] ?? SHIFT_BADGE_STYLES.day;
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.className}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
-      {cfg.label}
     </span>
   );
 };
@@ -262,30 +240,25 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
 
   const shiftType = detectShiftType(log);
 
-  // ── Schedule display: "8:00 AM – 5:00 PM" or just "8:00 AM" if no end
   const scheduleDisplay = (() => {
     const start = formatTime(log.start_time);
-    const end = formatTime(log.end_time);
+    const end   = formatTime(log.end_time);
     if (start && end) return `${start} – ${end}`;
     if (start) return start;
     return null;
   })();
 
-  // ── Attendance field formatted values
-  const timeInFmt = !isBlankTime(log.time_in) ? formatTime(log.time_in) : null;
+  const timeInFmt          = !isBlankTime(log.time_in)           ? formatTime(log.time_in)           : null;
   const lunchBreakStartFmt = !isBlankTime(log.lunch_break_start) ? formatTime(log.lunch_break_start) : null;
-  const lunchBreakEndFmt = !isBlankTime(log.lunch_break_end) ? formatTime(log.lunch_break_end) : null;
-  const timeOutFmt = !isBlankTime(log.time_out) ? formatTime(log.time_out) : null;
-  const otTimeInFmt = !isBlankTime(log.ot_time_in) ? formatTime(log.ot_time_in) : null;
-  const otTimeOutFmt = !isBlankTime(log.ot_time_out) ? formatTime(log.ot_time_out) : null;
+  const lunchBreakEndFmt   = !isBlankTime(log.lunch_break_end)   ? formatTime(log.lunch_break_end)   : null;
+  const timeOutFmt         = !isBlankTime(log.time_out)          ? formatTime(log.time_out)           : null;
+  const otTimeInFmt        = !isBlankTime(log.ot_time_in)        ? formatTime(log.ot_time_in)         : null;
+  const otTimeOutFmt       = !isBlankTime(log.ot_time_out)       ? formatTime(log.ot_time_out)        : null;
 
-  // Show OT section only if either OT field has data
   const hasOT = otTimeInFmt || otTimeOutFmt;
 
-  // Lunch break label: day shifts use "Lunch Break", night shifts use "Meal Break"
   const mealBreakLabel = shiftType === 'night' ? 'Meal Break' : 'Lunch Break';
 
-  // Total hours: use backend value directly
   const totalHoursDisplay = log.total_hours != null ? `${log.total_hours} hrs` : null;
 
   const handleRevisionSubmit = () => {
@@ -328,7 +301,6 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <ShiftBadge shiftType={shiftType} />
               <StatusBadge status={log.status} />
               <button
                 onClick={onClose}
@@ -393,45 +365,18 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
               <SectionLabel icon={Clock} label="Attendance" />
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                <DetailField icon={LogIn}   label="Time In"                  value={timeInFmt} />
+                <DetailField icon={Coffee}  label={`${mealBreakLabel} Start`} value={lunchBreakStartFmt} />
+                <DetailField icon={Coffee}  label={`${mealBreakLabel} End`}   value={lunchBreakEndFmt} />
+                <DetailField icon={LogOut}  label="Time Out"                  value={timeOutFmt} />
 
-                <DetailField
-                  icon={LogIn}
-                  label="Time In"
-                  value={timeInFmt}
-                />
-                <DetailField
-                  icon={Coffee}
-                  label={`${mealBreakLabel} Start`}
-                  value={lunchBreakStartFmt}
-                />
-                <DetailField
-                  icon={Coffee}
-                  label={`${mealBreakLabel} End`}
-                  value={lunchBreakEndFmt}
-                />
-                <DetailField
-                  icon={LogOut}
-                  label="Time Out"
-                  value={timeOutFmt}
-                />
-
-                {/* OT fields — only rendered when there is OT data */}
                 {hasOT && (
                   <>
-                    <DetailField
-                      icon={LogIn}
-                      label="OT Time In"
-                      value={otTimeInFmt}
-                    />
-                    <DetailField
-                      icon={LogOut}
-                      label="OT Time Out"
-                      value={otTimeOutFmt}
-                    />
+                    <DetailField icon={LogIn}  label="OT Time In"  value={otTimeInFmt} />
+                    <DetailField icon={LogOut} label="OT Time Out" value={otTimeOutFmt} />
                   </>
                 )}
 
-                {/* Total Hours */}
                 <div className="flex flex-col gap-0.5">
                   <div className="flex items-center gap-1">
                     <TrendingUp className="w-3 h-3" style={{ color: `rgb(var(--primary-400))` }} />
@@ -443,7 +388,6 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
                     {totalHoursDisplay ?? <span className="text-gray-400 font-normal">—</span>}
                   </span>
                 </div>
-
               </div>
             </div>
 
@@ -691,10 +635,10 @@ const StudentDailyLogs = () => {
               <table className="w-full">
                 <thead>
                   <tr style={{ backgroundColor: `rgb(var(--primary-50))`, borderBottom: `1px solid rgb(var(--primary-100))` }}>
-                    {['Date', 'Shift', 'Logs', 'Status', 'Actions'].map((col, i) => (
+                    {['Date', 'Logs', 'Status', 'Actions'].map((col, i) => (
                       <th
                         key={col}
-                        className={`text-left py-3.5 px-${i === 0 || i === 4 ? '5' : '4'} text-xs font-semibold uppercase tracking-wide ${i === 2 ? 'hidden md:table-cell' : ''} ${i === 1 ? 'hidden sm:table-cell' : ''}`}
+                        className={`text-left py-3.5 px-${i === 0 || i === 3 ? '5' : '4'} text-xs font-semibold uppercase tracking-wide${i === 1 ? ' hidden md:table-cell' : ''}`}
                         style={{ color: `rgb(var(--primary-700))` }}
                       >
                         {col}
@@ -703,83 +647,76 @@ const StudentDailyLogs = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.map((log) => {
-                    const shiftType = detectShiftType(log);
-                    return (
-                      <tr
-                        key={log.log_id}
-                        className="transition-colors"
-                        style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.6)`}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
-                      >
-                        {/* Date */}
-                        <td className="py-3.5 px-5">
-                          <span className="text-sm font-medium whitespace-nowrap" style={{ color: `rgb(var(--primary-700))` }}>
-                            {log.log_date
-                              ? new Date(log.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-                              : '—'}
-                          </span>
-                        </td>
-                        {/* Shift Badge */}
-                        <td className="py-3.5 px-4 hidden sm:table-cell">
-                          <ShiftBadge shiftType={shiftType} />
-                        </td>
-                        {/* Narrative preview */}
-                        <td className="py-3.5 px-4 hidden md:table-cell">
-                          <span className="text-sm text-gray-600">{truncate(log.narrative)}</span>
-                        </td>
-                        {/* Status */}
-                        <td className="py-3.5 px-4">
-                          <StatusBadge status={log.status} />
-                        </td>
-                        {/* Actions */}
-                        <td className="py-3.5 px-5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {/* View */}
+                  {logs.map((log) => (
+                    <tr
+                      key={log.log_id}
+                      className="transition-colors"
+                      style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
+                      onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50) / 0.6)`}
+                      onMouseLeave={e => e.currentTarget.style.backgroundColor = ''}
+                    >
+                      {/* Date */}
+                      <td className="py-3.5 px-5">
+                        <span className="text-sm font-medium whitespace-nowrap" style={{ color: `rgb(var(--primary-700))` }}>
+                          {log.log_date
+                            ? new Date(log.log_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                            : '—'}
+                        </span>
+                      </td>
+                      {/* Narrative preview */}
+                      <td className="py-3.5 px-4 hidden md:table-cell">
+                        <span className="text-sm text-gray-600">{truncate(log.narrative)}</span>
+                      </td>
+                      {/* Status */}
+                      <td className="py-3.5 px-4">
+                        <StatusBadge status={log.status} />
+                      </td>
+                      {/* Actions */}
+                      <td className="py-3.5 px-5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {/* View */}
+                          <button
+                            onClick={async () => {
+                              const fullLog = await getCoordinatorLogDetails(log.log_id);
+                              setSelectedLog(fullLog);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors"
+                            style={{ backgroundColor: `rgb(var(--primary-600))` }}
+                            onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`}
+                            onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
+                          >
+                            <Eye className="w-3.5 h-3.5" />View
+                          </button>
+                          {/* Approve */}
+                          {log.status === 'submitted' && (
+                            <button
+                              onClick={() => handleApprove(log.log_id)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-xs font-medium rounded-lg transition-colors"
+                              style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
+                              onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
+                              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
+                            >
+                              <CheckCircle className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Approve</span>
+                            </button>
+                          )}
+                          {/* Revise */}
+                          {log.status === 'submitted' && (
                             <button
                               onClick={async () => {
                                 const fullLog = await getCoordinatorLogDetails(log.log_id);
-                                setSelectedLog(fullLog);
+                                setSelectedLog({ ...fullLog, _startRevision: true });
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-medium rounded-lg transition-colors"
-                              style={{ backgroundColor: `rgb(var(--primary-600))` }}
-                              onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-700))`}
-                              onMouseLeave={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 border border-red-200 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors"
                             >
-                              <Eye className="w-3.5 h-3.5" />View
+                              <RefreshCcw className="w-3.5 h-3.5" />
+                              <span className="hidden sm:inline">Revise</span>
                             </button>
-                            {/* Approve */}
-                            {log.status === 'submitted' && (
-                              <button
-                                onClick={() => handleApprove(log.log_id)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-xs font-medium rounded-lg transition-colors"
-                                style={{ color: `rgb(var(--primary-700))`, border: `1px solid rgb(var(--primary-200))` }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = `rgb(var(--primary-50))`}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'white'}
-                              >
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Approve</span>
-                              </button>
-                            )}
-                            {/* Revise */}
-                            {log.status === 'submitted' && (
-                              <button
-                                onClick={async () => {
-                                  const fullLog = await getCoordinatorLogDetails(log.log_id);
-                                  setSelectedLog({ ...fullLog, _startRevision: true });
-                                }}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 border border-red-200 text-xs font-medium rounded-lg hover:bg-red-50 transition-colors"
-                              >
-                                <RefreshCcw className="w-3.5 h-3.5" />
-                                <span className="hidden sm:inline">Revise</span>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
 
