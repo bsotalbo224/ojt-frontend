@@ -16,14 +16,14 @@ const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const STATUS_STYLES = {
   submitted: 'bg-yellow-100 text-yellow-800 border border-yellow-200',
-  approved:  null,
-  revision:  'bg-red-100 text-red-800 border border-red-200',
+  approved: null,
+  revision: 'bg-red-100 text-red-800 border border-red-200',
 };
 
 const STATUS_DOT = {
   submitted: 'bg-yellow-400',
-  approved:  null,
-  revision:  'bg-red-400',
+  approved: null,
+  revision: 'bg-red-400',
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -109,7 +109,7 @@ const formatDate = (value) => {
  */
 const detectShiftType = (log) => {
   const startMins = parseTimeToMinutes(log.start_time);
-  const endMins   = parseTimeToMinutes(log.end_time);
+  const endMins = parseTimeToMinutes(log.end_time);
 
   if (startMins === null || endMins === null) return 'day';
 
@@ -134,8 +134,8 @@ const StatusBadge = ({ status }) => {
         className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize border"
         style={{
           backgroundColor: `rgb(var(--primary-100))`,
-          color:           `rgb(var(--primary-800))`,
-          borderColor:     `rgb(var(--primary-200))`,
+          color: `rgb(var(--primary-800))`,
+          borderColor: `rgb(var(--primary-200))`,
         }}
       >
         <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: `rgb(var(--primary-500))` }} />
@@ -156,9 +156,9 @@ const StatusBadge = ({ status }) => {
 // ─── ShiftBadge ───────────────────────────────────────────────────────────────
 
 const SHIFT_BADGE_STYLES = {
-  day:      { label: 'Day Shift',   className: 'bg-sky-50 text-sky-700 border border-sky-200',           dot: 'bg-sky-400'    },
-  night:    { label: 'Night Shift', className: 'bg-indigo-50 text-indigo-700 border border-indigo-200',  dot: 'bg-indigo-400' },
-  half_day: { label: 'Half Day',    className: 'bg-amber-50 text-amber-700 border border-amber-200',     dot: 'bg-amber-400'  },
+  day: { label: 'Day Shift', className: 'bg-sky-50 text-sky-700 border border-sky-200', dot: 'bg-sky-400' },
+  night: { label: 'Night Shift', className: 'bg-indigo-50 text-indigo-700 border border-indigo-200', dot: 'bg-indigo-400' },
+  half_day: { label: 'Half Day', className: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-400' },
 };
 
 const ShiftBadge = ({ shiftType }) => {
@@ -252,9 +252,9 @@ const ImagePreviewModal = ({ src, fileName, onClose }) => {
 // ─── LogModal ─────────────────────────────────────────────────────────────────
 
 const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
-  const [feedback,        setFeedback]        = useState('');
-  const [revisionMode,    setRevisionMode]    = useState(startRevision || false);
-  const [previewImage,    setPreviewImage]    = useState(null);
+  const [feedback, setFeedback] = useState('');
+  const [revisionMode, setRevisionMode] = useState(startRevision || false);
+  const [previewImage, setPreviewImage] = useState(null);
   const [previewFileName, setPreviewFileName] = useState('');
 
   useModalOverlay(!!log);
@@ -265,19 +265,19 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
   // ── Schedule display: "8:00 AM – 5:00 PM" or just "8:00 AM" if no end
   const scheduleDisplay = (() => {
     const start = formatTime(log.start_time);
-    const end   = formatTime(log.end_time);
-    if (start && end)  return `${start} – ${end}`;
-    if (start)         return start;
+    const end = formatTime(log.end_time);
+    if (start && end) return `${start} – ${end}`;
+    if (start) return start;
     return null;
   })();
 
   // ── Attendance field formatted values
-  const timeInFmt           = !isBlankTime(log.time_in)            ? formatTime(log.time_in)            : null;
-  const lunchBreakStartFmt  = !isBlankTime(log.lunch_break_start)  ? formatTime(log.lunch_break_start)  : null;
-  const lunchBreakEndFmt    = !isBlankTime(log.lunch_break_end)    ? formatTime(log.lunch_break_end)    : null;
-  const timeOutFmt          = !isBlankTime(log.time_out)           ? formatTime(log.time_out)           : null;
-  const otTimeInFmt         = !isBlankTime(log.ot_time_in)         ? formatTime(log.ot_time_in)         : null;
-  const otTimeOutFmt        = !isBlankTime(log.ot_time_out)        ? formatTime(log.ot_time_out)        : null;
+  const timeInFmt = !isBlankTime(log.time_in) ? formatTime(log.time_in) : null;
+  const lunchBreakStartFmt = !isBlankTime(log.lunch_break_start) ? formatTime(log.lunch_break_start) : null;
+  const lunchBreakEndFmt = !isBlankTime(log.lunch_break_end) ? formatTime(log.lunch_break_end) : null;
+  const timeOutFmt = !isBlankTime(log.time_out) ? formatTime(log.time_out) : null;
+  const otTimeInFmt = !isBlankTime(log.ot_time_in) ? formatTime(log.ot_time_in) : null;
+  const otTimeOutFmt = !isBlankTime(log.ot_time_out) ? formatTime(log.ot_time_out) : null;
 
   // Show OT section only if either OT field has data
   const hasOT = otTimeInFmt || otTimeOutFmt;
@@ -347,9 +347,11 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
               className="flex items-center gap-3 p-3 rounded-xl"
               style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
             >
-              <div className="p-2.5 rounded-full" style={{ backgroundColor: `rgb(var(--primary-200))` }}>
-                <User className="w-4 h-4" style={{ color: `rgb(var(--primary-700))` }} />
-              </div>
+              <Avatar
+                name={`${log.f_name} ${log.l_name}`}
+                src={log.photo}
+                size="lg"
+              />
               <p className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>
                 {log.f_name} {log.l_name}
               </p>
@@ -577,10 +579,10 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
 
 const StudentDailyLogs = () => {
   const { studentId } = useParams();
-  const navigate      = useNavigate();
+  const navigate = useNavigate();
 
-  const [logs,        setLogs]        = useState([]);
-  const [loading,     setLoading]     = useState(true);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState(null);
   const [studentInfo, setStudentInfo] = useState(null);
 
@@ -588,7 +590,7 @@ const StudentDailyLogs = () => {
     const fetchLogs = async () => {
       try {
         const data = await getCoordinatorLogs();
-        const all      = Array.isArray(data) ? data : [];
+        const all = Array.isArray(data) ? data : [];
         const filtered = all.filter((log) => String(log.student_id) === String(studentId));
         setLogs(filtered);
         if (filtered.length > 0) {
