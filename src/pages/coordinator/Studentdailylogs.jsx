@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   FileText, Eye, CheckCircle, RefreshCcw, X, Paperclip,
   ArrowLeft, Loader2, InboxIcon, MessageSquare, User, BookOpen, Download,
-  Building2, Clock, CalendarDays, Briefcase, Sun, Sunset, Moon, TrendingUp,
+  Building2, CalendarDays, Briefcase, TrendingUp, Clock, Coffee, LogIn, LogOut,
 } from 'lucide-react';
 import {
   getCoordinatorLogs, getCoordinatorLogDetails, approveLog, rejectLog,
@@ -76,31 +76,12 @@ const formatTime = (value) => {
 const isBlankTime = (t) => !t || t === '00:00:00' || t === '0000-00-00 00:00:00';
 
 /**
- * formatSession(timeIn, timeOut)
- * Returns:
- *   null          → not started (no time_in)
- *   'in_progress' → has time_in, missing time_out
- *   string        → "8:00 AM – 12:00 PM"
- */
-const formatSession = (timeIn, timeOut) => {
-  const hasIn  = !isBlankTime(timeIn);
-  const hasOut = !isBlankTime(timeOut);
-  if (!hasIn) return null;
-  if (!hasOut) return 'in_progress';
-  const inFmt  = formatTime(timeIn);
-  const outFmt = formatTime(timeOut);
-  if (!inFmt || !outFmt) return null;
-  return `${inFmt} – ${outFmt}`;
-};
-
-/**
  * Parse a time value into total minutes from midnight.
  * Supports both ISO datetime strings and plain "HH:MM:SS" strings.
  */
 const parseTimeToMinutes = (t) => {
   if (isBlankTime(t)) return null;
   try {
-    // ISO datetime: extract time part after 'T'
     const plain = t.includes('T') ? t.split('T')[1] : t;
     const [h, m] = plain.split(':').map(Number);
     return h * 60 + m;
@@ -109,27 +90,15 @@ const parseTimeToMinutes = (t) => {
   }
 };
 
-/**
- * computeSessionMinutes(timeIn, timeOut)
- * Supports overnight/cross-midnight shifts.
- * If timeOut < timeIn (in minutes), adds 24*60 to timeOut.
- */
-const computeSessionMinutes = (timeIn, timeOut) => {
-  if (isBlankTime(timeIn) || isBlankTime(timeOut)) return 0;
-  const inMins  = parseTimeToMinutes(timeIn);
-  const outMins = parseTimeToMinutes(timeOut);
-  if (inMins === null || outMins === null) return 0;
-  // Cross-midnight: if end is before start, shift end by 24 hours
-  const adjusted = outMins < inMins ? outMins + 24 * 60 : outMins;
-  const diff = adjusted - inMins;
-  return diff > 0 ? diff : 0;
-};
-
-const minutesToDisplay = (mins) => {
-  if (!mins) return null;
-  const hrs = Math.floor(mins / 60);
-  const rem = mins % 60;
-  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+const formatDate = (value) => {
+  if (!value) return '—';
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '—';
+    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  } catch {
+    return '—';
+  }
 };
 
 // ─── Schedule Analysis ────────────────────────────────────────────────────────
@@ -144,84 +113,16 @@ const detectShiftType = (log) => {
 
   if (startMins === null || endMins === null) return 'day';
 
-  // Compute scheduled duration (overnight-aware)
   const adjustedEnd = endMins < startMins ? endMins + 24 * 60 : endMins;
   const durationMins = adjustedEnd - startMins;
 
-  // Night shift: starts at or after 6 PM (18:00) OR ends after midnight
   const isNightStart = startMins >= 18 * 60;
   const isCrossMidnight = endMins < startMins;
   if (isNightStart || isCrossMidnight) return 'night';
 
-  // Half day: scheduled duration ≤ 5 hours
   if (durationMins <= 5 * 60) return 'half_day';
 
   return 'day';
-};
-
-/**
- * Determine which sessions are "active" for a given shift type.
- * Returns array of session keys that should be rendered.
- */
-const getActiveSessions = (shiftType, log) => {
-  const hasMorning   = !isBlankTime(log.morning_time_in);
-  const hasAfternoon = !isBlankTime(log.afternoon_time_in);
-  const hasOT        = !isBlankTime(log.ot_time_in);
-
-  if (shiftType === 'half_day') {
-    // Show whichever session has data, or morning by default
-    const sessions = [];
-    if (hasMorning)   sessions.push('morning');
-    if (hasAfternoon) sessions.push('afternoon');
-    if (hasOT)        sessions.push('ot');
-    return sessions.length > 0 ? sessions : ['morning'];
-  }
-
-  if (shiftType === 'night') {
-    // Night shifts map to afternoon (primary) + ot (overtime)
-    const sessions = [];
-    if (hasMorning)   sessions.push('morning');   // rare, but support it
-    if (hasAfternoon) sessions.push('afternoon');
-    if (hasOT)        sessions.push('ot');
-    // If nothing has data yet, show afternoon as primary
-    return sessions.length > 0 ? sessions : ['afternoon'];
-  }
-
-  // Day shift: show all three
-  return ['morning', 'afternoon', 'ot'];
-};
-
-/**
- * computeTotalHours(log)
- * Supports overnight shifts, half-day, and overtime.
- * Optional lunch deduction is only applied for day shifts when both
- * morning and afternoon sessions are complete.
- */
-const computeTotalHours = (log) => {
-  const shiftType = detectShiftType(log);
-
-  const morningMins   = computeSessionMinutes(log.morning_time_in,   log.morning_time_out);
-  const afternoonMins = computeSessionMinutes(log.afternoon_time_in, log.afternoon_time_out);
-  const otMins        = computeSessionMinutes(log.ot_time_in,        log.ot_time_out);
-
-  let total = morningMins + afternoonMins + otMins;
-
-  // No automatic lunch deduction — actual time-in/time-out already
-  // accounts for breaks (they clock out for lunch). For half-day or
-  // night shifts there is no assumed break to deduct.
-
-  return minutesToDisplay(total);
-};
-
-const formatDate = (value) => {
-  if (!value) return '—';
-  try {
-    const date = new Date(value);
-    if (isNaN(date.getTime())) return '—';
-    return date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  } catch {
-    return '—';
-  }
 };
 
 // ─── StatusBadge ──────────────────────────────────────────────────────────────
@@ -255,9 +156,9 @@ const StatusBadge = ({ status }) => {
 // ─── ShiftBadge ───────────────────────────────────────────────────────────────
 
 const SHIFT_BADGE_STYLES = {
-  day:      { label: 'Day Shift',   className: 'bg-sky-50 text-sky-700 border border-sky-200',       dot: 'bg-sky-400'    },
-  night:    { label: 'Night Shift', className: 'bg-indigo-50 text-indigo-700 border border-indigo-200', dot: 'bg-indigo-400' },
-  half_day: { label: 'Half Day',    className: 'bg-amber-50 text-amber-700 border border-amber-200', dot: 'bg-amber-400'  },
+  day:      { label: 'Day Shift',   className: 'bg-sky-50 text-sky-700 border border-sky-200',           dot: 'bg-sky-400'    },
+  night:    { label: 'Night Shift', className: 'bg-indigo-50 text-indigo-700 border border-indigo-200',  dot: 'bg-indigo-400' },
+  half_day: { label: 'Half Day',    className: 'bg-amber-50 text-amber-700 border border-amber-200',     dot: 'bg-amber-400'  },
 };
 
 const ShiftBadge = ({ shiftType }) => {
@@ -292,92 +193,10 @@ const DetailField = ({ icon: Icon, label, value }) => (
       </span>
     </div>
     <span className="text-sm font-semibold pl-0.5" style={{ color: `rgb(var(--primary-800))` }}>
-      {value || '—'}
+      {value || <span className="text-gray-400 font-normal">—</span>}
     </span>
   </div>
 );
-
-// ─── SessionField ─────────────────────────────────────────────────────────────
-
-const SESSION_META = {
-  morning:   { icon: Sun,    color: 'text-amber-500',  progressColor: 'text-yellow-600', progressBg: 'bg-yellow-50',  progressBorder: 'border-yellow-100'  },
-  afternoon: { icon: Sunset, color: 'text-orange-500', progressColor: 'text-orange-600', progressBg: 'bg-orange-50',  progressBorder: 'border-orange-100'  },
-  ot:        { icon: Moon,   color: 'text-indigo-500', progressColor: 'text-indigo-600', progressBg: 'bg-indigo-50',  progressBorder: 'border-indigo-100'  },
-};
-
-/**
- * Resolve a human-readable session label based on shift type and session key.
- * Night shifts rename "Afternoon Session" to primary slot and use "Meal Break" terminology.
- */
-const resolveSessionLabel = (sessionKey, shiftType) => {
-  if (shiftType === 'night') {
-    if (sessionKey === 'morning')   return 'Early Session';
-    if (sessionKey === 'afternoon') return 'Night Session';
-    if (sessionKey === 'ot')        return 'OT Session';
-  }
-  if (shiftType === 'half_day') {
-    if (sessionKey === 'morning')   return 'Morning Session';
-    if (sessionKey === 'afternoon') return 'Afternoon Session';
-    if (sessionKey === 'ot')        return 'OT Session';
-  }
-  // day shift defaults
-  if (sessionKey === 'morning')   return 'Morning Session';
-  if (sessionKey === 'afternoon') return 'Afternoon Session';
-  if (sessionKey === 'ot')        return 'OT Session';
-  return sessionKey;
-};
-
-const SessionField = ({ label, sessionKey, timeIn, timeOut, shiftType }) => {
-  const meta    = SESSION_META[sessionKey];
-  const Icon    = meta.icon;
-  const session = formatSession(timeIn, timeOut);
-
-  // For overnight sessions, append a "next day" indicator when applicable
-  const isOvernight = (() => {
-    if (isBlankTime(timeIn) || isBlankTime(timeOut)) return false;
-    const inM  = parseTimeToMinutes(timeIn);
-    const outM = parseTimeToMinutes(timeOut);
-    return outM !== null && inM !== null && outM < inM;
-  })();
-
-  const displayLabel = label ?? resolveSessionLabel(sessionKey, shiftType);
-
-  const valueNode = (() => {
-    if (session === null) {
-      return <span className="text-sm font-semibold pl-0.5 text-gray-400">—</span>;
-    }
-    if (session === 'in_progress') {
-      return (
-        <span className={`inline-flex items-center gap-1 text-xs font-medium mt-0.5 px-2 py-0.5 rounded-full border ${meta.progressBg} ${meta.progressColor} ${meta.progressBorder}`}>
-          <span className={`w-1.5 h-1.5 rounded-full animate-pulse ${meta.progressColor.replace('text-', 'bg-')}`} />
-          In progress
-        </span>
-      );
-    }
-    return (
-      <span className="flex items-center gap-1.5 text-sm font-semibold pl-0.5" style={{ color: `rgb(var(--primary-800))` }}>
-        {session}
-        {isOvernight && (
-          <span className="text-xs font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">
-            +1 day
-          </span>
-        )}
-      </span>
-    );
-  })();
-
-  return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1">
-        <Icon className={`w-3 h-3 ${meta.color}`} />
-        <span className="text-xs font-medium uppercase tracking-wide" style={{ color: `rgb(var(--primary-500))` }}>
-          {displayLabel}
-        </span>
-      </div>
-      {valueNode}
-    </div>
-  );
-};
 
 // ─── useModalOverlay ──────────────────────────────────────────────────────────
 
@@ -441,22 +260,33 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
   useModalOverlay(!!log);
   if (!log) return null;
 
-  const shiftType    = detectShiftType(log);
-  const activeSessions = getActiveSessions(shiftType, log);
-  const totalHours =
-  log.total_hours != null
-    ? `${log.total_hours} hrs`
-    : computeTotalHours(log);
+  const shiftType = detectShiftType(log);
 
-  // Meal break label: "Lunch Break" for day shifts, "Meal Break" for night shifts
+  // ── Schedule display: "8:00 AM – 5:00 PM" or just "8:00 AM" if no end
+  const scheduleDisplay = (() => {
+    const start = formatTime(log.start_time);
+    const end   = formatTime(log.end_time);
+    if (start && end)  return `${start} – ${end}`;
+    if (start)         return start;
+    return null;
+  })();
+
+  // ── Attendance field formatted values
+  const timeInFmt           = !isBlankTime(log.time_in)            ? formatTime(log.time_in)            : null;
+  const lunchBreakStartFmt  = !isBlankTime(log.lunch_break_start)  ? formatTime(log.lunch_break_start)  : null;
+  const lunchBreakEndFmt    = !isBlankTime(log.lunch_break_end)    ? formatTime(log.lunch_break_end)    : null;
+  const timeOutFmt          = !isBlankTime(log.time_out)           ? formatTime(log.time_out)           : null;
+  const otTimeInFmt         = !isBlankTime(log.ot_time_in)         ? formatTime(log.ot_time_in)         : null;
+  const otTimeOutFmt        = !isBlankTime(log.ot_time_out)        ? formatTime(log.ot_time_out)        : null;
+
+  // Show OT section only if either OT field has data
+  const hasOT = otTimeInFmt || otTimeOutFmt;
+
+  // Lunch break label: day shifts use "Lunch Break", night shifts use "Meal Break"
   const mealBreakLabel = shiftType === 'night' ? 'Meal Break' : 'Lunch Break';
 
-  // Session time field map
-  const sessionTimeMap = {
-    morning:   { timeIn: log.morning_time_in,   timeOut: log.morning_time_out   },
-    afternoon: { timeIn: log.afternoon_time_in,  timeOut: log.afternoon_time_out },
-    ot:        { timeIn: log.ot_time_in,         timeOut: log.ot_time_out        },
-  };
+  // Total hours: use backend value directly
+  const totalHoursDisplay = log.total_hours != null ? `${log.total_hours} hrs` : null;
 
   const handleRevisionSubmit = () => {
     onRevision(log.log_id, feedback);
@@ -525,12 +355,10 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
               </p>
             </div>
 
-            {/* ── Log Details ─────────────────────────────────────────────── */}
+            {/* ── Log Details ──────────────────────────────────────────────── */}
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
               <SectionLabel icon={Briefcase} label="Log Details" />
               <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-
-                {/* Non-session fields */}
                 <DetailField
                   icon={User}
                   label="Student Name"
@@ -551,20 +379,55 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
                   label="Date"
                   value={formatDate(log.log_date)}
                 />
+                <DetailField
+                  icon={Clock}
+                  label="Schedule"
+                  value={scheduleDisplay}
+                />
+              </div>
+            </div>
 
-                {/* ── Schedule-aware session fields ── */}
-                {activeSessions.map((sessionKey) => {
-                  const times = sessionTimeMap[sessionKey];
-                  return (
-                    <SessionField
-                      key={sessionKey}
-                      sessionKey={sessionKey}
-                      shiftType={shiftType}
-                      timeIn={times.timeIn}
-                      timeOut={times.timeOut}
+            {/* ── Attendance ───────────────────────────────────────────────── */}
+            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+              <SectionLabel icon={Clock} label="Attendance" />
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+
+                <DetailField
+                  icon={LogIn}
+                  label="Time In"
+                  value={timeInFmt}
+                />
+                <DetailField
+                  icon={Coffee}
+                  label={`${mealBreakLabel} Start`}
+                  value={lunchBreakStartFmt}
+                />
+                <DetailField
+                  icon={Coffee}
+                  label={`${mealBreakLabel} End`}
+                  value={lunchBreakEndFmt}
+                />
+                <DetailField
+                  icon={LogOut}
+                  label="Time Out"
+                  value={timeOutFmt}
+                />
+
+                {/* OT fields — only rendered when there is OT data */}
+                {hasOT && (
+                  <>
+                    <DetailField
+                      icon={LogIn}
+                      label="OT Time In"
+                      value={otTimeInFmt}
                     />
-                  );
-                })}
+                    <DetailField
+                      icon={LogOut}
+                      label="OT Time Out"
+                      value={otTimeOutFmt}
+                    />
+                  </>
+                )}
 
                 {/* Total Hours */}
                 <div className="flex flex-col gap-0.5">
@@ -574,8 +437,8 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
                       Total Hours
                     </span>
                   </div>
-                  <span className="text-sm font-semibold pl-0.5" style={{ color: totalHours ? `rgb(var(--primary-800))` : undefined }}>
-                    {totalHours ?? <span className="text-gray-400">—</span>}
+                  <span className="text-sm font-semibold pl-0.5" style={{ color: totalHoursDisplay ? `rgb(var(--primary-800))` : undefined }}>
+                    {totalHoursDisplay ?? <span className="text-gray-400 font-normal">—</span>}
                   </span>
                 </div>
 
