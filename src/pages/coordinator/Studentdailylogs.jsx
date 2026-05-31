@@ -840,7 +840,6 @@ const StudentDailyLogs = () => {
                 <tbody>
                   {logs.map((log) => {
                     const shiftType = detectShiftType(log);
-                    console.log("LOG DETAILS:", log);
                     return (
                       <tr
                         key={log.log_id}
