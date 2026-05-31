@@ -297,20 +297,25 @@ const PublicEvaluation = () => {
       return;
     }
 
+    const payload = {
+      templateId: form.formSettings.id,
+      studentName,
+      supervisorName: supervisor.name,
+      supervisorEmail: null,
+      answers: Object.entries(answers).map(([criterionId, { type, value }]) => ({
+        criterionId,
+        type,
+        value,
+      })),
+    };
+
+    if (typeof payload.templateId !== "number") {
+      setSubmitError("Invalid template ID. Please reload the page and try again.");
+      return;
+    }
+
     try {
       setSubmitting(true);
-
-      const payload = {
-        templateId: formSettings.id,
-        studentName,
-        supervisorName: supervisor.name,
-        supervisorEmail: null,
-        answers: Object.entries(answers).map(([criterionId, { type, value }]) => ({
-          criterionId,
-          type,
-          value
-        }))
-      };
       await api.post(`/public-evaluation/submit`, payload);
       setSubmitted(true);
     } catch {
