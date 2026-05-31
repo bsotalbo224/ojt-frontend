@@ -443,7 +443,10 @@ const LogModal = ({ log, onClose, onApprove, onRevision, startRevision }) => {
 
   const shiftType    = detectShiftType(log);
   const activeSessions = getActiveSessions(shiftType, log);
-  const totalHours   = computeTotalHours(log);
+  const totalHours =
+  log.total_hours != null
+    ? `${log.total_hours} hrs`
+    : computeTotalHours(log);
 
   // Meal break label: "Lunch Break" for day shifts, "Meal Break" for night shifts
   const mealBreakLabel = shiftType === 'night' ? 'Meal Break' : 'Lunch Break';
@@ -837,6 +840,7 @@ const StudentDailyLogs = () => {
                 <tbody>
                   {logs.map((log) => {
                     const shiftType = detectShiftType(log);
+                    console.log("LOG DETAILS:", log);
                     return (
                       <tr
                         key={log.log_id}
