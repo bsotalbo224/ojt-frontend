@@ -1,18 +1,18 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { ChevronDown, GraduationCap, Check, Settings2 } from "lucide-react";
 import { getAcademicYears, getActiveAcademicYear, activateAcademicYear } from "../../api/academicYears";
 import { useAuth } from "../../context/AuthContext";
+import AcademicYearManagementModal from "./AcademicYearManagementModal";
 
 const AcademicYearSelector = () => {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const isAdmin = user?.role === "admin";
 
   const [years, setYears] = useState([]);
   const [activeYear, setActiveYear] = useState(null);
   const [open, setOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [showManageModal, setShowManageModal] = useState(false);
 
   const dropdownRef = useRef(null);
 
@@ -31,6 +31,13 @@ const AcademicYearSelector = () => {
 
   useEffect(() => {
     loadYears();
+  }, [loadYears]);
+
+  // Reload when a year is activated (also from inside the modal)
+  useEffect(() => {
+    const handler = () => loadYears();
+    window.addEventListener("academicYearChanged", handler);
+    return () => window.removeEventListener("academicYearChanged", handler);
   }, [loadYears]);
 
   useEffect(() => {
@@ -60,9 +67,7 @@ const AcademicYearSelector = () => {
     }
     try {
       setSwitching(true);
-      await activateAcademicYear(
-        year.academic_year_id
-      );
+      await activateAcademicYear(year.academic_year_id);
       const res = await getActiveAcademicYear();
       if (res.data?.success) setActiveYear(res.data.academicYear || null);
       window.dispatchEvent(new CustomEvent("academicYearChanged"));
@@ -76,130 +81,138 @@ const AcademicYearSelector = () => {
 
   const handleManage = () => {
     setOpen(false);
-    navigate("/admin/academic-years");
+    setShowManageModal(true);
   };
 
-  const label =
-    activeYear?.academic_year_name ??
-    "Select Year";
+  const label = activeYear?.academic_year_name ?? "Select Year";
 
   return (
-    <div className="relative" ref={dropdownRef}>
-      {/* Trigger Button */}
-      <button
-        onClick={() => setOpen((prev) => !prev)}
-        aria-expanded={open}
-        aria-haspopup="true"
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-sm font-medium"
-        style={{
-          borderColor: open
-            ? `rgb(var(--primary-light))`
-            : `rgb(var(--primary-light) / 0.35)`,
-          color: `rgb(var(--primary-text))`,
-          backgroundColor: open
-            ? `rgb(var(--primary-light) / 0.1)`
-            : "transparent",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = `rgb(var(--primary-light))`;
-          e.currentTarget.style.backgroundColor = `rgb(var(--primary-light) / 0.08)`;
-        }}
-        onMouseLeave={(e) => {
-          if (!open) {
-            e.currentTarget.style.borderColor = `rgb(var(--primary-light) / 0.35)`;
-            e.currentTarget.style.backgroundColor = "transparent";
-          }
-        }}
-      >
-        <GraduationCap size={15} style={{ color: `rgb(var(--primary-text))` }} />
-        <span className="hidden sm:inline max-w-30 truncate">{label}</span>
-        <ChevronDown
-          size={13}
-          className="transition-transform duration-200 shrink-0"
+    <>
+      <div className="relative" ref={dropdownRef}>
+        {/* Trigger Button */}
+        <button
+          onClick={() => setOpen((prev) => !prev)}
+          aria-expanded={open}
+          aria-haspopup="true"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all text-sm font-medium"
           style={{
-            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            borderColor: open
+              ? `rgb(var(--primary-light))`
+              : `rgb(var(--primary-light) / 0.35)`,
             color: `rgb(var(--primary-text))`,
+            backgroundColor: open
+              ? `rgb(var(--primary-light) / 0.1)`
+              : "transparent",
           }}
-        />
-      </button>
-
-      {/* Dropdown */}
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 mt-3 w-60 bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden z-50"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = `rgb(var(--primary-light))`;
+            e.currentTarget.style.backgroundColor = `rgb(var(--primary-light) / 0.08)`;
+          }}
+          onMouseLeave={(e) => {
+            if (!open) {
+              e.currentTarget.style.borderColor = `rgb(var(--primary-light) / 0.35)`;
+              e.currentTarget.style.backgroundColor = "transparent";
+            }
+          }}
         >
-          {/* Header */}
-          <div
+          <GraduationCap size={15} style={{ color: `rgb(var(--primary-text))` }} />
+          <span className="hidden sm:inline max-w-30 truncate">{label}</span>
+          <ChevronDown
+            size={13}
+            className="transition-transform duration-200 shrink-0"
             style={{
-              background: `linear-gradient(to right, rgb(var(--primary)), rgb(var(--primary-medium)))`,
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              color: `rgb(var(--primary-text))`,
             }}
-            className="px-4 py-3 flex items-center gap-2"
+          />
+        </button>
+
+        {/* Dropdown */}
+        {open && (
+          <div
+            role="menu"
+            className="absolute right-0 mt-3 w-60 bg-white border border-gray-100 rounded-2xl shadow-xl overflow-hidden z-50"
           >
-            <GraduationCap size={15} className="text-white shrink-0" />
-            <span className="text-sm font-semibold text-white">Academic Year</span>
-          </div>
-
-          {/* Year List */}
-          <ul className="max-h-56 overflow-y-auto py-1">
-            {years.length === 0 ? (
-              <li className="px-4 py-4 text-center text-xs text-gray-400">
-                No academic years found.
-              </li>
-            ) : (
-              years.map((year) => {
-                const isActive =
-                  year.academic_year_id ===
-                  activeYear?.academic_year_id;
-                const yearLabel = year.academic_year_name;
-                return (
-                  <li key={year.academic_year_id}>
-                    <button
-                      role="menuitem"
-                      disabled={switching}
-                      onClick={() => handleSelect(year)}
-                      className="w-full text-left flex items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
-                      style={isActive ? { color: `rgb(var(--primary-text))` } : { color: "#374151" }}
-                    >
-                      <span className={isActive ? "font-semibold" : "font-medium"}>
-                        {yearLabel}
-                      </span>
-                      {isActive && (
-                        <Check
-                          size={14}
-                          strokeWidth={2.5}
-                          style={{ color: `rgb(var(--primary-text))` }}
-                          className="shrink-0"
-                        />
-                      )}
-                    </button>
-                  </li>
-                );
-              })
-            )}
-          </ul>
-
-          {/* Manage (Admin only) */}
-          {isAdmin && (
-            <div className="border-t border-gray-100 px-2 py-1.5">
-              <button
-                role="menuitem"
-                onClick={handleManage}
-                className="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl transition-colors"
-              >
-                <div
-                  className="w-7 h-7 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: `rgb(var(--primary-light) / 0.15)` }}
-                >
-                  <Settings2 size={13} style={{ color: `rgb(var(--primary-text))` }} />
-                </div>
-                Manage Academic Years
-              </button>
+            {/* Header */}
+            <div
+              style={{
+                background: `linear-gradient(to right, rgb(var(--primary)), rgb(var(--primary-medium)))`,
+              }}
+              className="px-4 py-3 flex items-center gap-2"
+            >
+              <GraduationCap size={15} className="text-white shrink-0" />
+              <span className="text-sm font-semibold text-white">Academic Year</span>
             </div>
-          )}
-        </div>
+
+            {/* Year List */}
+            <ul className="max-h-56 overflow-y-auto py-1">
+              {years.length === 0 ? (
+                <li className="px-4 py-4 text-center text-xs text-gray-400">
+                  No academic years found.
+                </li>
+              ) : (
+                years.map((year) => {
+                  const isActive =
+                    year.academic_year_id === activeYear?.academic_year_id;
+                  const yearLabel = year.academic_year_name;
+                  return (
+                    <li key={year.academic_year_id}>
+                      <button
+                        role="menuitem"
+                        disabled={switching}
+                        onClick={() => handleSelect(year)}
+                        className="w-full text-left flex items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
+                        style={isActive ? { color: `rgb(var(--primary-text))` } : { color: "#374151" }}
+                      >
+                        <span className={isActive ? "font-semibold" : "font-medium"}>
+                          {yearLabel}
+                        </span>
+                        {isActive && (
+                          <Check
+                            size={14}
+                            strokeWidth={2.5}
+                            style={{ color: `rgb(var(--primary-text))` }}
+                            className="shrink-0"
+                          />
+                        )}
+                      </button>
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+
+            {/* Manage (Admin only) */}
+            {isAdmin && (
+              <div className="border-t border-gray-100 px-2 py-1.5">
+                <button
+                  role="menuitem"
+                  onClick={handleManage}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-xl transition-colors"
+                >
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center"
+                    style={{ backgroundColor: `rgb(var(--primary-light) / 0.15)` }}
+                  >
+                    <Settings2 size={13} style={{ color: `rgb(var(--primary-text))` }} />
+                  </div>
+                  Manage Academic Years
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Management Modal — admin only */}
+      {isAdmin && (
+        <AcademicYearManagementModal
+          isOpen={showManageModal}
+          onClose={() => setShowManageModal(false)}
+          isAdmin={isAdmin}
+        />
       )}
-    </div>
+    </>
   );
 };
 
