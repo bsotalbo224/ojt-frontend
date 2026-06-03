@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { ChevronDown, GraduationCap, Check, Settings2 } from "lucide-react";
 import { getAcademicYears, getActiveAcademicYear, activateAcademicYear } from "../../api/academicYears";
 import { useAuth } from "../../context/AuthContext";
-import AcademicYearManagementModal from "../../pages/admin/AcademicYearManagementModal";
+import AcademicYearManagementModal from "../admin/AcademicYearManagementModal";
 
 const AcademicYearSelector = () => {
   const { user } = useAuth();
