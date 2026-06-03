@@ -32,7 +32,7 @@ const fmt = (iso) => {
    Confirmation sub-modal
 ───────────────────────────────────────────── */
 const ConfirmModal = ({ message, onConfirm, onCancel, loading }) => (
-  <div className="fixed inset-0 z-70 flex items-center justify-center px-4">
+  <div className="fixed inset-0 z-10000 flex items-center justify-center px-4">
     {/* backdrop */}
     <div
       className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -281,7 +281,7 @@ const AcademicYearManagementModal = ({ isOpen, onClose, isAdmin = true }) => {
 
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-60 flex items-center justify-center px-4 py-6"
+        className="fixed inset-0 z-9999 flex items-center justify-center px-4 py-6"
         style={{ backgroundColor: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
       >
         {/* Panel */}
