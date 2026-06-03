@@ -4,6 +4,7 @@ import { Menu, Bell, User, Settings, LogOut, ChevronRight } from "lucide-react";
 import { getNotifications, getUnreadCount, markAsRead } from "../../api/notifications";
 import { useAuth } from "../../context/AuthContext";
 import Avatar from "../ui/Avatar";
+import AcademicYearSelector from "../ui/AcademicYearSelector";
 
 const relativeTime = (dateStr) => {
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
@@ -144,6 +145,10 @@ const TopBar = ({ onMenuClick }) => {
 
         <div className="flex items-center gap-2 md:gap-3">
 
+          {/* Academic Year Selector */}
+          <AcademicYearSelector />
+
+          {/* Notifications */}
           <div className="relative" ref={notifRef}>
             <button
               onClick={toggleNotif}
@@ -243,6 +248,7 @@ const TopBar = ({ onMenuClick }) => {
             )}
           </div>
 
+          {/* Profile */}
           <div className="relative" ref={profileRef}>
             <button
               onClick={toggleProfile}
@@ -319,7 +325,7 @@ const TopBar = ({ onMenuClick }) => {
                     onClick={handleLogout}
                     className="w-full px-3 py-2.5 hover:bg-red-50 text-gray-700 hover:text-red-600 text-sm flex items-center gap-3 rounded-xl transition-colors group"
                   >
-                    <div className="w-8 h-8 rounded-lg bg-gray-50 group-hover:bg-red-100 flex items-center justify-center transition-colors">
+                     <div className="w-8 h-8 rounded-lg bg-gray-50 group-hover:bg-red-100 flex items-center justify-center transition-colors">
                       <LogOut size={15} className="text-gray-400 group-hover:text-red-500 transition-colors" />
                     </div>
                     <span className="font-medium">Logout</span>
