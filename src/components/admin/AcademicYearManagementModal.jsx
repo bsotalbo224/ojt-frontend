@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   GraduationCap,
@@ -31,45 +32,47 @@ const fmt = (iso) => {
 /* ─────────────────────────────────────────────
    Confirmation sub-modal
 ───────────────────────────────────────────── */
-const ConfirmModal = ({ message, onConfirm, onCancel, loading }) => (
-  <div className="fixed inset-0 z-10000 flex items-center justify-center px-4">
-    {/* backdrop */}
-    <div
-      className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-      onClick={onCancel}
-    />
-    <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10 animate-modal-in">
+const ConfirmModal = ({ message, onConfirm, onCancel, loading }) =>
+  createPortal(
+    <div className="fixed inset-0 z-10000 flex items-center justify-center px-4">
+      {/* backdrop */}
       <div
-        className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
-        style={{ backgroundColor: "rgb(var(--primary-light) / 0.12)" }}
-      >
-        <AlertCircle size={22} style={{ color: "rgb(var(--primary-text))" }} />
-      </div>
-      <h3 className="text-base font-semibold text-gray-900 mb-1">
-        Activate Academic Year
-      </h3>
-      <p className="text-sm text-gray-500 mb-6">{message}</p>
-      <div className="flex gap-3">
-        <button
-          onClick={onCancel}
-          disabled={loading}
-          className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onCancel}
+      />
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 z-10 animate-modal-in">
+        <div
+          className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
+          style={{ backgroundColor: "rgb(var(--primary-light) / 0.12)" }}
         >
-          Cancel
-        </button>
-        <button
-          onClick={onConfirm}
-          disabled={loading}
-          className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-70 flex items-center justify-center gap-2"
-          style={{ backgroundColor: "rgb(var(--primary))" }}
-        >
-          {loading && <Loader2 size={14} className="animate-spin" />}
-          Confirm
-        </button>
+          <AlertCircle size={22} style={{ color: "rgb(var(--primary-text))" }} />
+        </div>
+        <h3 className="text-base font-semibold text-gray-900 mb-1">
+          Activate Academic Year
+        </h3>
+        <p className="text-sm text-gray-500 mb-6">{message}</p>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+            style={{ backgroundColor: "rgb(var(--primary))" }}
+          >
+            {loading && <Loader2 size={14} className="animate-spin" />}
+            Confirm
+          </button>
+        </div>
       </div>
-    </div>
-  </div>
-);
+    </div>,
+    document.body
+  );
 
 /* ─────────────────────────────────────────────
    New Academic Year inline form
@@ -233,6 +236,15 @@ const AcademicYearManagementModal = ({ isOpen, onClose, isAdmin = true }) => {
     }
   }, [isOpen, load]);
 
+  // Prevent background scroll while open
+  useEffect(() => {
+    if (!isOpen) return;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
+
   // Close on Escape
   useEffect(() => {
     const handler = (e) => {
@@ -267,7 +279,7 @@ const AcademicYearManagementModal = ({ isOpen, onClose, isAdmin = true }) => {
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <>
       {/* Confirm sub-modal */}
       {confirm && (
@@ -283,6 +295,7 @@ const AcademicYearManagementModal = ({ isOpen, onClose, isAdmin = true }) => {
       <div
         className="fixed inset-0 z-9999 flex items-center justify-center px-4 py-6"
         style={{ backgroundColor: "rgba(0,0,0,0.45)", backdropFilter: "blur(4px)" }}
+        onClick={onClose}
       >
         {/* Panel */}
         <div
@@ -509,7 +522,8 @@ const AcademicYearManagementModal = ({ isOpen, onClose, isAdmin = true }) => {
         }
         .animate-modal-in { animation: modal-in 0.22s cubic-bezier(0.16,1,0.3,1) both; }
       `}</style>
-    </>
+    </>,
+    document.body
   );
 };
 
