@@ -51,13 +51,18 @@ const AcademicYearSelector = () => {
   }, []);
 
   const handleSelect = async (year) => {
-    if (switching || year.id === activeYear?.id) {
+    if (
+      switching ||
+      year.academic_year_id === activeYear?.academic_year_id
+    ) {
       setOpen(false);
       return;
     }
     try {
       setSwitching(true);
-      await activateAcademicYear(year.id);
+      await activateAcademicYear(
+        year.academic_year_id
+      );
       const res = await getActiveAcademicYear();
       if (res.data?.success) setActiveYear(res.data.academicYear || null);
       window.dispatchEvent(new CustomEvent("academicYearChanged"));
@@ -74,7 +79,9 @@ const AcademicYearSelector = () => {
     navigate("/admin/academic-years");
   };
 
-  const label = activeYear?.year_label ?? activeYear?.name ?? "Select Year";
+  const label =
+    activeYear?.academic_year_name ??
+    "Select Year";
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -141,10 +148,12 @@ const AcademicYearSelector = () => {
               </li>
             ) : (
               years.map((year) => {
-                const isActive = year.id === activeYear?.id;
+                const isActive =
+                  year.academic_year_id ===
+                  activeYear?.academic_year_id;
                 const yearLabel = year.year_label ?? year.name ?? `Year ${year.id}`;
                 return (
-                  <li key={year.id}>
+                  <li key={year.academic_year_id}>
                     <button
                       role="menuitem"
                       disabled={switching}
