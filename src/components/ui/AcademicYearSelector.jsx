@@ -151,7 +151,7 @@ const AcademicYearSelector = () => {
                 const isActive =
                   year.academic_year_id ===
                   activeYear?.academic_year_id;
-                const yearLabel = year.year_label ?? year.name ?? `Year ${year.id}`;
+                const yearLabel = year.academic_year_name;
                 return (
                   <li key={year.academic_year_id}>
                     <button
