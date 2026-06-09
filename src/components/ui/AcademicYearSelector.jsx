@@ -1,20 +1,24 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { ChevronDown, GraduationCap, Check, Settings2 } from "lucide-react";
-import { getAcademicYears, getActiveAcademicYear, activateAcademicYear } from "../../api/academicYears";
+import { getAcademicYears, getActiveAcademicYear } from "../../api/academicYears";
 import { useAuth } from "../../context/AuthContext";
 import AcademicYearManagementModal from "../admin/AcademicYearManagementModal";
+import {
+  getViewedAcademicYearId,
+  setViewedAcademicYear,
+} from "../../utils/academicYearUtils";
 
 const AcademicYearSelector = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
-  const [years, setYears] = useState([]);
-  const [activeYear, setActiveYear] = useState(null);
-  const [open, setOpen] = useState(false);
-  const [switching, setSwitching] = useState(false);
+  const [years, setYears]             = useState([]);
+  const [activeYear, setActiveYear]   = useState(null); // currently VIEWED year
+  const [open, setOpen]               = useState(false);
   const [showManageModal, setShowManageModal] = useState(false);
 
   const dropdownRef = useRef(null);
+
 
   const loadYears = useCallback(async () => {
     try {
@@ -22,8 +26,25 @@ const AcademicYearSelector = () => {
         getAcademicYears(),
         getActiveAcademicYear(),
       ]);
-      if (allRes.data?.success) setYears(allRes.data.academicYears || []);
-      if (activeRes.data?.success) setActiveYear(activeRes.data.academicYear || null);
+
+      const allYears     = allRes.data?.academicYears   ?? [];
+      const systemActive = activeRes.data?.academicYear ?? null;
+
+      setYears(allYears);
+
+      const storedId = getViewedAcademicYearId();
+
+      if (storedId) {
+        const match = allYears.find(
+          (y) => String(y.academic_year_id) === String(storedId)
+        );
+        setActiveYear(match ?? systemActive);
+      } else {
+        if (systemActive) {
+          setViewedAcademicYear(systemActive);
+          setActiveYear(systemActive);
+        }
+      }
     } catch (err) {
       console.error("Failed to load academic years:", err);
     }
@@ -33,12 +54,12 @@ const AcademicYearSelector = () => {
     loadYears();
   }, [loadYears]);
 
-  // Reload when a year is activated (also from inside the modal)
   useEffect(() => {
     const handler = () => loadYears();
     window.addEventListener("academicYearChanged", handler);
     return () => window.removeEventListener("academicYearChanged", handler);
   }, [loadYears]);
+
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -57,26 +78,15 @@ const AcademicYearSelector = () => {
     };
   }, []);
 
-  const handleSelect = async (year) => {
-    if (
-      switching ||
-      year.academic_year_id === activeYear?.academic_year_id
-    ) {
+
+  const handleSelect = (year) => {
+    if (year.academic_year_id === activeYear?.academic_year_id) {
       setOpen(false);
       return;
     }
-    try {
-      setSwitching(true);
-      await activateAcademicYear(year.academic_year_id);
-      const res = await getActiveAcademicYear();
-      if (res.data?.success) setActiveYear(res.data.academicYear || null);
-      window.dispatchEvent(new CustomEvent("academicYearChanged"));
-    } catch (err) {
-      console.error("Failed to activate academic year:", err);
-    } finally {
-      setSwitching(false);
-      setOpen(false);
-    }
+    setViewedAcademicYear(year);
+    setActiveYear(year);
+    setOpen(false);
   };
 
   const handleManage = () => {
@@ -152,22 +162,25 @@ const AcademicYearSelector = () => {
                 </li>
               ) : (
                 years.map((year) => {
-                  const isActive =
-                    year.academic_year_id === activeYear?.academic_year_id;
-                  const yearLabel = year.academic_year_name;
+                  const isSelected =
+                    String(year.academic_year_id) ===
+                    String(activeYear?.academic_year_id);
                   return (
                     <li key={year.academic_year_id}>
                       <button
                         role="menuitem"
-                        disabled={switching}
                         onClick={() => handleSelect(year)}
-                        className="w-full text-left flex items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-gray-50 disabled:opacity-50"
-                        style={isActive ? { color: `rgb(var(--primary-text))` } : { color: "#374151" }}
+                        className="w-full text-left flex items-center justify-between px-4 py-2.5 text-sm transition-colors hover:bg-gray-50"
+                        style={
+                          isSelected
+                            ? { color: `rgb(var(--primary-text))` }
+                            : { color: "#374151" }
+                        }
                       >
-                        <span className={isActive ? "font-semibold" : "font-medium"}>
-                          {yearLabel}
+                        <span className={isSelected ? "font-semibold" : "font-medium"}>
+                          {year.academic_year_name}
                         </span>
-                        {isActive && (
+                        {isSelected && (
                           <Check
                             size={14}
                             strokeWidth={2.5}
@@ -182,7 +195,7 @@ const AcademicYearSelector = () => {
               )}
             </ul>
 
-            {/* Manage (Admin only) */}
+            {/* Manage — Admin only */}
             {isAdmin && (
               <div className="border-t border-gray-100 px-2 py-1.5">
                 <button
