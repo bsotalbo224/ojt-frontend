@@ -40,17 +40,39 @@ const CoordinatorDashboard = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
-  // Local state to toggle workflow preview (helpful for coordinators to see different shift views)
-  const [viewShift, setViewShift] = useState('day'); 
+  const [viewShift, setViewShift] = useState('day');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    getCoordinatorDashboardStats().then((data) => {
+  // ── Data loader ────────────────────────────────────────────────────────────
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const data = await getCoordinatorDashboardStats();
       setStats(data);
+    } catch (err) {
+      console.error('Failed to load coordinator dashboard stats:', err);
+    } finally {
       setLoading(false);
-    });
+    }
+  };
+
+  // Initial mount
+  useEffect(() => {
+    loadData();
   }, []);
 
+  // Academic year switch listener
+  useEffect(() => {
+    const handleAcademicYearChange = () => {
+      loadData();
+    };
+    window.addEventListener('academicYearChanged', handleAcademicYearChange);
+    return () => {
+      window.removeEventListener('academicYearChanged', handleAcademicYearChange);
+    };
+  }, []);
+
+  // Derive recentActivity from stats (not a fetch — runs automatically when stats updates)
   useEffect(() => {
     if (!stats) return;
     const list = stats.recentActivity;
@@ -80,7 +102,7 @@ const CoordinatorDashboard = () => {
   const submittedNarratives = stats?.submittedNarratives ?? 0;
 
   const clamp = (v, max) => Math.min(100, Math.max(0, max ? Math.round((v / max) * 100) : 0));
-  
+
   // Shift Analytics
   const dayShiftCount = stats?.dayShiftCount ?? 0;
   const nightShiftCount = stats?.nightShiftCount ?? 0;
@@ -204,7 +226,7 @@ const CoordinatorDashboard = () => {
               </p>
             </div>
           </div>
-          
+
           {/* Attendance Workflow Summary (Badge style) */}
           <div className="hidden md:flex items-center gap-2">
             {[
@@ -265,24 +287,24 @@ const CoordinatorDashboard = () => {
         {/* ── Shift Analytics Indicators ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {shiftCards.map((shift) => (
-             <div 
-               key={shift.label} 
-               className="bg-white/60 backdrop-blur-sm rounded-xl p-4 flex items-center justify-between border"
-               style={{ borderColor: `rgb(var(--primary-100))` }}
-             >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: shift.bg }}>
-                    <shift.icon className="w-5 h-5" style={{ color: shift.color }} />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{shift.label}</p>
-                    <p className="text-lg font-bold text-gray-800">{shift.value} Interns</p>
-                  </div>
+            <div
+              key={shift.label}
+              className="bg-white/60 backdrop-blur-sm rounded-xl p-4 flex items-center justify-between border"
+              style={{ borderColor: `rgb(var(--primary-100))` }}
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: shift.bg }}>
+                  <shift.icon className="w-5 h-5" style={{ color: shift.color }} />
                 </div>
-                <div className="text-right">
-                  <span className="text-xs font-medium text-gray-400">{Math.round((shift.value / (totalStudents || 1)) * 100)}%</span>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{shift.label}</p>
+                  <p className="text-lg font-bold text-gray-800">{shift.value} Interns</p>
                 </div>
-             </div>
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-medium text-gray-400">{Math.round((shift.value / (totalStudents || 1)) * 100)}%</span>
+              </div>
+            </div>
           ))}
         </div>
 
@@ -418,16 +440,16 @@ const CoordinatorDashboard = () => {
             <div className="flex justify-between items-start mb-1">
               <p className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>Hours completion</p>
               <div className="flex gap-1">
-                 {['day', 'night', 'half-day'].map(s => (
-                   <button 
-                     key={s} 
-                     onClick={() => setViewShift(s)}
-                     className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${viewShift === s ? 'bg-primary-500 text-white' : 'bg-gray-50 text-gray-400'}`}
-                     style={{ backgroundColor: viewShift === s ? `rgb(var(--primary-500))` : '', borderColor: `rgb(var(--primary-200))` }}
-                   >
-                     {s.toUpperCase()}
-                   </button>
-                 ))}
+                {['day', 'night', 'half-day'].map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setViewShift(s)}
+                    className={`text-[9px] px-1.5 py-0.5 rounded border transition-colors ${viewShift === s ? 'bg-primary-500 text-white' : 'bg-gray-50 text-gray-400'}`}
+                    style={{ backgroundColor: viewShift === s ? `rgb(var(--primary-500))` : '', borderColor: `rgb(var(--primary-200))` }}
+                  >
+                    {s.toUpperCase()}
+                  </button>
+                ))}
               </div>
             </div>
             <p className="text-xs mb-1" style={{ color: `rgb(var(--primary-400))` }}>
@@ -492,8 +514,8 @@ const CoordinatorDashboard = () => {
                     Work Structure Insight
                   </p>
                   <p className="text-xs leading-relaxed" style={{ color: `rgb(var(--primary-500))` }}>
-                    Students follow flexible company-assigned schedules including <strong>overnight attendance</strong> for night shifts. 
-                    {viewShift === 'night' ? ' Meal breaks' : ' Lunch breaks'} are logged manually or auto-deducted. 
+                    Students follow flexible company-assigned schedules including <strong>overnight attendance</strong> for night shifts.
+                    {viewShift === 'night' ? ' Meal breaks' : ' Lunch breaks'} are logged manually or auto-deducted.
                     Overtime supports flexible schedules across all shift types.
                   </p>
                 </div>
