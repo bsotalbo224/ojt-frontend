@@ -961,15 +961,41 @@ const CoordinatorAttendance = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
 
-  useEffect(() => {
-    getCoordinatorAttendance()
-      .then((data) => setRecords(Array.isArray(data) ? data : []))
-      .catch((err) => {
-        console.error('Attendance API error:', err);
-        setError(true);
-      })
-      .finally(() => setLoading(false));
+  // ─── Reusable attendance loader ───────────────────────────────────────────
+
+  const loadAttendance = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const data = await getCoordinatorAttendance();
+      setRecords(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Attendance API error:', err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // ─── Initial load ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    loadAttendance();
+  }, [loadAttendance]);
+
+  // ─── Academic year change listener ────────────────────────────────────────
+
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      loadAttendance();
+    };
+
+    window.addEventListener('academicYearChanged', handleAcademicYearChanged);
+
+    return () => {
+      window.removeEventListener('academicYearChanged', handleAcademicYearChanged);
+    };
+  }, [loadAttendance]);
 
   // Filter records by date (if selected) OR show all
   const filteredRecords = useMemo(() => {
