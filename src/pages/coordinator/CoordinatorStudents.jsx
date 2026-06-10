@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   Users, Search, Eye, CheckCircle, Clock, AlertCircle,
   FileText, BookOpen, TrendingUp, Filter, Building2, X, Loader2,
@@ -77,7 +77,7 @@ const analyzeShift = (startTime, endTime) => {
   const shiftMins    = isNightShift ? (1440 - s + e) : (e - s);
   const isHalfDay    = shiftMins < 300;
   let shiftType = 'Day Shift';
-  if (isHalfDay)     shiftType = 'Half Day';
+  if (isHalfDay)         shiftType = 'Half Day';
   else if (isNightShift) shiftType = 'Night Shift';
   return { isNightShift, isHalfDay, shiftType };
 };
@@ -593,11 +593,45 @@ const CoordinatorStudents = () => {
   const [courses,           setCourses]           = useState([]);
   const [requiredHoursOptions, setRequiredHoursOptions] = useState([]);
 
+  // ─── Reusable student loader ────────────────────────────────────────────────
+
+  const loadStudents = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getCoordinatorStudents();
+      setStudents(data ?? []);
+    } catch (err) {
+      console.error('Failed to load students:', err);
+      setStudents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ─── Initial data fetch + academicYearChanged listener ─────────────────────
+
   useEffect(() => {
-    getCoordinatorStudents().then((d) => setStudents(d ?? [])).finally(() => setLoading(false));
+    // Load students on mount
+    loadStudents();
+
+    // Load courses and required hours (unchanged)
     studentsApi.getCourses().then((d) => setCourses(d ?? [])).catch(console.error);
     studentsApi.getRequiredHours().then((d) => setRequiredHoursOptions(Array.isArray(d) ? d : [])).catch(console.error);
-  }, []);
+
+    // Listen for academic year changes and refresh student list automatically
+    const handleAcademicYearChanged = () => {
+      loadStudents();
+    };
+
+    window.addEventListener('academicYearChanged', handleAcademicYearChanged);
+
+    // Cleanup listener on unmount
+    return () => {
+      window.removeEventListener('academicYearChanged', handleAcademicYearChanged);
+    };
+  }, [loadStudents]);
+
+  // ─── Derived stats ──────────────────────────────────────────────────────────
 
   const stats = useMemo(() => {
     const total = students.length, completed = students.filter(isCompleted).length;
@@ -616,10 +650,14 @@ const CoordinatorStudents = () => {
 
   const hasFilter = search.trim() !== '' || filter !== 'all';
 
+  // ─── Toast helper ───────────────────────────────────────────────────────────
+
   const showToast = (msg) => {
     setToast({ visible: true, message: msg });
     setTimeout(() => setToast({ visible: false, message: '' }), 3000);
   };
+
+  // ─── Company assignment ─────────────────────────────────────────────────────
 
   const openAssignModal = async (student) => {
     setSelectedStudent(student);
@@ -659,6 +697,8 @@ const CoordinatorStudents = () => {
     } finally { setSubmitting(false); }
   };
 
+  // ─── Progress modal ─────────────────────────────────────────────────────────
+
   const handleViewProgress = async (studentId) => {
     setProgressLoading(true); setShowProgressModal(true);
     try { setProgressData(await getStudentProgress(studentId)); }
@@ -666,19 +706,23 @@ const CoordinatorStudents = () => {
     finally { setProgressLoading(false); }
   };
 
+  // ─── Student add / edit ─────────────────────────────────────────────────────
+
   const handleAddStudent = async (form) => {
     await studentsApi.createStudent(form);
-    setStudents((await getCoordinatorStudents()) ?? []);
+    await loadStudents();
     setStudentModal(null);
     showToast(`Student ${form.f_name} ${form.l_name} created`);
   };
 
   const handleEditStudent = async (form) => {
     await studentsApi.updateStudent(studentModal.student.student_id, form);
-    setStudents((await getCoordinatorStudents()) ?? []);
+    await loadStudents();
     setStudentModal(null);
     showToast(`${form.f_name} ${form.l_name} updated successfully`);
   };
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen p-6" style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-50)), white)` }}>
