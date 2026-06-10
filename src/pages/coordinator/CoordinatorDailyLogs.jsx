@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -166,20 +166,40 @@ const CoordinatorDailyLogs = () => {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const data = await getCoordinatorLogs();
-        setLogs(Array.isArray(data) ? data : []);
-      } catch (err) {
-        console.error('Failed to fetch logs:', err);
-        setLogs([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLogs();
+  // ─── Reusable log loader ──────────────────────────────────────────────────
+
+  const loadLogs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getCoordinatorLogs();
+      setLogs(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Failed to fetch logs:', err);
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // ─── Initial load ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    loadLogs();
+  }, [loadLogs]);
+
+  // ─── Academic year change listener ────────────────────────────────────────
+
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      loadLogs();
+    };
+
+    window.addEventListener('academicYearChanged', handleAcademicYearChanged);
+
+    return () => {
+      window.removeEventListener('academicYearChanged', handleAcademicYearChanged);
+    };
+  }, [loadLogs]);
 
   const students = groupByStudent(logs);
 
