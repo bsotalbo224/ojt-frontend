@@ -22,4 +22,27 @@ instance.interceptors.request.use((config) => {
   return config;
 });
 
+instance.interceptors.request.use(config => {
+  const token = localStorage.getItem("token");
+
+  const academicYearId =
+    localStorage.getItem("viewedAcademicYearId");
+
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+
+  if (academicYearId) {
+    config.headers["X-Academic-Year-Id"] =
+      academicYearId;
+  }
+
+  console.log(
+    config.url,
+    config.headers["X-Academic-Year-Id"]
+  );
+
+  return config;
+});
+
 export default instance;
