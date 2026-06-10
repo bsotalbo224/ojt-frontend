@@ -196,9 +196,6 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
 
   const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
 
-  // Auto-fill ojt_hours_required when course changes, using course's required_hours as a default.
-  // Only fills if the field is currently empty so user overrides are preserved.
-  // Depends on both form.course_id and courses so it runs once courses are loaded.
   useEffect(() => {
     if (!form.course_id || courses.length === 0) return;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
@@ -207,7 +204,6 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
     }
   }, [form.course_id, courses]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Derive the default hours for the currently selected course (used for the dynamic option label).
   const selectedCourseDefault = (() => {
     if (!form.course_id || courses.length === 0) return null;
     const matched = courses.find((c) => String(c.course_id) === String(form.course_id));
@@ -288,14 +284,12 @@ const StudentModal = ({ mode, student, courses, requiredHoursOptions, onClose, o
             ) : (
               <>
                 <option value="">Select required hours…</option>
-                {/* Dynamic "course default" option — only shown when a course with required_hours is selected */}
                 {selectedCourseDefault && (
                   <option value={selectedCourseDefault}>
                     Use Course Default ({selectedCourseDefault} hrs)
                   </option>
                 )}
                 {requiredHoursOptions
-                  /* Exclude the course-default value from the regular list to avoid duplicates */
                   .filter((opt) => String(opt.hours) !== String(selectedCourseDefault))
                   .map((opt) => (
                     <option key={opt.id} value={opt.hours}>
@@ -451,7 +445,7 @@ const AdminStudents = ({ isAdmin = true }) => {
   // ── Required hours state ──
   const [requiredHoursOptions, setRequiredHoursOptions] = useState([]);
 
-  // ── ✅ Success notification state ──
+  // ── Success notification state ──
   const [successMessage, setSuccessMessage] = useState('');
 
   // ── Fetch ──
@@ -480,9 +474,7 @@ const AdminStudents = ({ isAdmin = true }) => {
   const fetchRequiredHours = async () => {
     try {
       const res = await apiClient.get("/required-hours");
-
       const data = res.data?.data ?? res.data ?? [];
-
       setRequiredHoursOptions(data);
     } catch (err) {
       console.error("Failed to load required hours:", err);
@@ -490,9 +482,25 @@ const AdminStudents = ({ isAdmin = true }) => {
     }
   };
 
-  useEffect(() => { fetchStudents(); fetchCourses(); fetchRequiredHours(); }, []);
+  // ── Mount: load all data once ──
+  useEffect(() => {
+    fetchStudents();
+    fetchCourses();
+    fetchRequiredHours();
+  }, []);
 
-  // ── ✅ Auto-dismiss success message after 3 s ──
+  // ── Academic year change: re-fetch students only ──
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      fetchStudents();
+    };
+    window.addEventListener("academicYearChanged", handleAcademicYearChanged);
+    return () => {
+      window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
+    };
+  }, []);
+
+  // ── Auto-dismiss success message after 3 s ──
   useEffect(() => {
     if (!successMessage) return;
     const timer = setTimeout(() => setSuccessMessage(''), 3000);
@@ -536,8 +544,6 @@ const AdminStudents = ({ isAdmin = true }) => {
     setStudents(updatedStudents);
 
     setModal(null);
-
-    // ✅ Show success notification
     setSuccessMessage(`Student ${form.f_name} ${form.l_name} added successfully`);
   };
 
@@ -607,7 +613,7 @@ const AdminStudents = ({ isAdmin = true }) => {
           {/* ── Tab Navigation ── */}
           <TabNav activeTab={activeTab} onChange={setActiveTab} isAdmin={isAdmin} />
 
-          {/* ── ✅ Success Toast — shown above tab content ── */}
+          {/* ── Success Toast — shown above tab content ── */}
           <SuccessToast
             message={successMessage}
             onClose={() => setSuccessMessage('')}
