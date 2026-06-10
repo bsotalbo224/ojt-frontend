@@ -29,6 +29,8 @@ const TopBar = ({ onMenuClick }) => {
 
   const fullName = `${user?.f_name || ""} ${user?.l_name || ""}`.trim();
 
+  const canSeeAcademicYear = user?.role === "admin" || user?.role === "coordinator";
+
   const safeNavigate = useCallback((path) => {
     if (!path) return;
     const role = user?.role;
@@ -145,8 +147,8 @@ const TopBar = ({ onMenuClick }) => {
 
         <div className="flex items-center gap-2 md:gap-3">
 
-          {/* Academic Year Selector */}
-          <AcademicYearSelector />
+          {/* Academic Year Selector — Admin and Coordinator only */}
+          {canSeeAcademicYear && <AcademicYearSelector />}
 
           {/* Notifications */}
           <div className="relative" ref={notifRef}>
