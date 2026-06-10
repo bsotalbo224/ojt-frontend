@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -214,12 +214,40 @@ const CoordinatorNarratives = () => {
   const [error, setError] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    getCoordinatorNarratives()
-      .then((data) => setNarratives(data ?? []))
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+  // ─── Reusable narrative loader ──────────────────────────────────────────────
+
+  const loadNarratives = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const data = await getCoordinatorNarratives();
+      setNarratives(data ?? []);
+    } catch {
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // ─── Initial load ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    loadNarratives();
+  }, [loadNarratives]);
+
+  // ─── Academic year change listener ──────────────────────────────────────────
+
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      loadNarratives();
+    };
+
+    window.addEventListener('academicYearChanged', handleAcademicYearChanged);
+
+    return () => {
+      window.removeEventListener('academicYearChanged', handleAcademicYearChanged);
+    };
+  }, [loadNarratives]);
 
   const students = useMemo(() => groupByStudent(narratives), [narratives]);
 
