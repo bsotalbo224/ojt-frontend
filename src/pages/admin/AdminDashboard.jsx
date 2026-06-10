@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   Users, Clock, CheckCircle, AlertCircle,
   FileText, Building2, UserCog, Eye,
@@ -423,67 +423,86 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
 
+  // ─── Reusable dashboard loader ──────────────────────────────────────────────
+
+  const loadAdminDashboard = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [
+        statsData,
+        studentsData,
+        coordinatorsData,
+        companiesData,
+        activityData
+      ] = await Promise.all([
+        getAdminDashboardStats(),
+        getAdminStudentsOverview(),
+        getAdminCoordinatorsSummary(),
+        getAdminCompaniesSummary(),
+        getAdminRecentActivity()
+      ]);
+
+      setStats(statsData);
+      setStudents(studentsData);
+      setCoordinators(coordinatorsData);
+      setCompanies(companiesData);
+
+      const mappedActivities = Array.isArray(activityData)
+        ? activityData.map(a => {
+            let icon = FileText;
+            let type = "assigned";
+
+            if (a.type === "evaluation") {
+              icon = Award;
+              type = "completed";
+            }
+
+            if (a.type === "log") {
+              icon = BookOpen;
+            }
+
+            if (a.type === "coordinator") {
+              icon = UserPlus;
+              type = "coordinator";
+            }
+
+            return {
+              id: a.notif_id,
+              icon,
+              type,
+              text: a.message,
+              date: new Date(a.created_at).toLocaleDateString()
+            };
+          })
+        : [];
+
+      setActivities(mappedActivities);
+    } catch (err) {
+      console.error("Admin dashboard load error:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // ─── Initial load ───────────────────────────────────────────────────────────
+
   useEffect(() => {
-    const loadAdminDashboard = async () => {
-      try {
-        const [
-          statsData,
-          studentsData,
-          coordinatorsData,
-          companiesData,
-          activityData
-        ] = await Promise.all([
-          getAdminDashboardStats(),
-          getAdminStudentsOverview(),
-          getAdminCoordinatorsSummary(),
-          getAdminCompaniesSummary(),
-          getAdminRecentActivity()
-        ]);
+    loadAdminDashboard();
+  }, [loadAdminDashboard]);
 
-        setStats(statsData);
-        setStudents(studentsData);
-        setCoordinators(coordinatorsData);
-        setCompanies(companiesData);
+  // ─── Academic year change listener ──────────────────────────────────────────
 
-        const mappedActivities = Array.isArray(activityData)
-          ? activityData.map(a => {
-              let icon = FileText;
-              let type = "assigned";
-
-              if (a.type === "evaluation") {
-                icon = Award;
-                type = "completed";
-              }
-
-              if (a.type === "log") {
-                icon = BookOpen;
-              }
-
-              if (a.type === "coordinator") {
-                icon = UserPlus;
-                type = "coordinator";
-              }
-
-              return {
-                id: a.notif_id,
-                icon,
-                type,
-                text: a.message,
-                date: new Date(a.created_at).toLocaleDateString()
-              };
-            })
-          : [];
-
-        setActivities(mappedActivities);
-      } catch (err) {
-        console.error("Admin dashboard load error:", err);
-      } finally {
-        setLoading(false);
-      }
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      loadAdminDashboard();
     };
 
-    loadAdminDashboard();
-  }, []);
+    window.addEventListener('academicYearChanged', handleAcademicYearChanged);
+
+    return () => {
+      window.removeEventListener('academicYearChanged', handleAcademicYearChanged);
+    };
+  }, [loadAdminDashboard]);
 
   const handlePreviewStudent = (student) => {
     setSelectedStudent(student);
