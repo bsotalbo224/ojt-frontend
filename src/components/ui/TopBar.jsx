@@ -25,6 +25,7 @@ const TopBar = ({ onMenuClick }) => {
 
   const notifRef = useRef(null);
   const profileRef = useRef(null);
+  const notifOpenRef = useRef(notifOpen);
   const navigate = useNavigate();
 
   const fullName = `${user?.f_name || ""} ${user?.l_name || ""}`.trim();
@@ -42,15 +43,10 @@ const TopBar = ({ onMenuClick }) => {
     navigate(`/${role}${cleanPath}`);
   }, [user, navigate]);
 
-  useEffect(() => {
-    const loadUnread = () => {
-      getUnreadCount()
-        .then((res) => { if (res.data?.success) setUnread(res.data.count || 0); })
-        .catch(() => {});
-    };
-    loadUnread();
-    const interval = setInterval(loadUnread, 15000);
-    return () => clearInterval(interval);
+  const loadUnread = useCallback(() => {
+    getUnreadCount()
+      .then((res) => { if (res.data?.success) setUnread(res.data.count || 0); })
+      .catch(() => {});
   }, []);
 
   const fetchDropdownNotifications = useCallback(async () => {
@@ -67,6 +63,32 @@ const TopBar = ({ onMenuClick }) => {
       setNotifLoading(false);
     }
   }, []);
+
+  // Keep ref in sync so the academicYearChanged handler can read current value
+  useEffect(() => {
+    notifOpenRef.current = notifOpen;
+  }, [notifOpen]);
+
+  // Initial unread load + polling interval
+  useEffect(() => {
+    loadUnread();
+    const interval = setInterval(loadUnread, 15000);
+    return () => clearInterval(interval);
+  }, [loadUnread]);
+
+  // Listen for academic year changes
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      loadUnread();
+      if (notifOpenRef.current) {
+        fetchDropdownNotifications();
+      }
+    };
+    window.addEventListener("academicYearChanged", handleAcademicYearChanged);
+    return () => {
+      window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
+    };
+  }, [loadUnread, fetchDropdownNotifications]);
 
   const closeAll = useCallback(() => {
     setNotifOpen(false);
