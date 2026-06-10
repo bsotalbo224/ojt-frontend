@@ -39,6 +39,16 @@ const NotificationsPage = () => {
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      fetchNotifications();
+    };
+    window.addEventListener("academicYearChanged", handleAcademicYearChanged);
+    return () => {
+      window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
+    };
+  }, [fetchNotifications]);
+
   const handleClick = async (notif) => {
     try {
       if (!notif.is_read) {
