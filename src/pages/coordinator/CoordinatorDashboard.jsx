@@ -114,6 +114,27 @@ const CoordinatorDashboard = () => {
   const otActiveCount = stats?.otActiveCount ?? 0;
   const completedCount = stats?.completedCount ?? 0;
 
+  // ── Shift-specific Hours Completion ───────────────────────────────────────
+  const shiftHoursMap = useMemo(() => ({
+    day: {
+      avgHours: stats?.dayAvgHoursLogged ?? 0,
+      requiredHours: stats?.dayRequiredHours ?? 0,
+    },
+    night: {
+      avgHours: stats?.nightAvgHoursLogged ?? 0,
+      requiredHours: stats?.nightRequiredHours ?? 0,
+    },
+    'half-day': {
+      avgHours: stats?.halfDayAvgHoursLogged ?? 0,
+      requiredHours: stats?.halfDayRequiredHours ?? 0,
+    },
+  }), [stats]);
+
+  const activeShiftHours = shiftHoursMap[viewShift];
+  const avgHours = activeShiftHours.avgHours;
+  const requiredHours = activeShiftHours.requiredHours;
+  const hoursPct = requiredHours > 0 ? Math.min(100, Math.max(0, Math.round((avgHours / requiredHours) * 100))) : 0;
+
   const attentionRows = [
     {
       label: 'Flagged Attendance',
@@ -188,10 +209,6 @@ const CoordinatorDashboard = () => {
   };
 
   const attendanceWorkflow = useMemo(() => getDynamicWorkflow(viewShift), [viewShift]);
-
-  const avgHours = stats?.avgHoursLogged ?? 0;
-  const requiredHours = stats?.requiredHours ?? 0;
-  const hoursPct = Math.min(100, Math.max(0, requiredHours > 0 ? Math.round((avgHours / requiredHours) * 100) : 0));
 
   const quickActions = [
     { label: 'Create evaluation', icon: PlusCircle, to: '/coordinator/evaluation', disabled: false, baseStyle: { backgroundColor: `rgb(var(--primary-600))`, color: '#fff' }, hoverStyle: { backgroundColor: `rgb(var(--primary-700))` } },
