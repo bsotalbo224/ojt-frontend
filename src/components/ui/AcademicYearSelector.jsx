@@ -12,9 +12,9 @@ const AcademicYearSelector = () => {
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
 
-  const [years, setYears]             = useState([]);
-  const [activeYear, setActiveYear]   = useState(null); // currently VIEWED year
-  const [open, setOpen]               = useState(false);
+  const [years, setYears] = useState([]);
+  const [activeYear, setActiveYear] = useState(null); // currently VIEWED year
+  const [open, setOpen] = useState(false);
   const [showManageModal, setShowManageModal] = useState(false);
 
   const dropdownRef = useRef(null);
@@ -27,7 +27,7 @@ const AcademicYearSelector = () => {
         getActiveAcademicYear(),
       ]);
 
-      const allYears     = allRes.data?.academicYears   ?? [];
+      const allYears = allRes.data?.academicYears ?? [];
       const systemActive = activeRes.data?.academicYear ?? null;
 
       setYears(allYears);
@@ -84,8 +84,16 @@ const AcademicYearSelector = () => {
       setOpen(false);
       return;
     }
+
     setViewedAcademicYear(year);
     setActiveYear(year);
+
+    window.dispatchEvent(
+      new CustomEvent("academicYearChanged", {
+        detail: year
+      })
+    );
+
     setOpen(false);
   };
 
