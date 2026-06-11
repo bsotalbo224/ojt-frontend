@@ -114,18 +114,19 @@ export default function MessagesPage() {
     try {
       const res  = await api.get("/messages/conversations");
 
-
       const data =
         res?.data?.conversations && Array.isArray(res.data.conversations)
           ? res.data.conversations
           : Array.isArray(res?.data)
             ? res.data
             : [];
-            
+
       setConversations(data);
+      return data;
     } catch (err) {
       console.error("Failed to load conversations:", err);
       setConversations([]);
+      return [];
     } finally {
       setConversationsLoading(false);
     }
@@ -218,6 +219,49 @@ export default function MessagesPage() {
     sendContextAndOpen();
   }, [location.search, conversations, handleSelectUser]);
 
+  // ─── Academic Year change handler ─────────────────────────────────────────
+  useEffect(() => {
+    const handleAcademicYearChanged = async () => {
+      // Stop any active polling while we refresh
+      if (pollingRef.current) clearInterval(pollingRef.current);
+
+      setConversationsLoading(true);
+
+      // Reload conversation list and get the fresh data back
+      const freshConversations = await fetchConversations();
+
+      const currentSelected = selectedUserRef.current;
+
+      if (!currentSelected) {
+        // No active conversation — just clear messages to be clean
+        setMessages([]);
+        return;
+      }
+
+      // Check if the selected user still exists in the new Academic Year
+      const stillExists = freshConversations.some(
+        (c) => String(c.user_id) === String(currentSelected.user_id)
+      );
+
+      if (stillExists) {
+        // Re-fetch messages for the still-valid conversation
+        await fetchMessages(currentSelected.user_id);
+        await markRead(currentSelected.user_id);
+      } else {
+        // Selected user is no longer part of this Academic Year — close the chat
+        if (pollingRef.current) clearInterval(pollingRef.current);
+        setSelectedUser(null);
+        setMessages([]);
+        setShowChat(false);
+      }
+    };
+
+    window.addEventListener("academicYearChanged", handleAcademicYearChanged);
+    return () => {
+      window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
+    };
+  }, [fetchConversations, fetchMessages, markRead]);
+
   // ─── Send message ─────────────────────────────────────────────────────────
   const handleSend = useCallback(async (message) => {
     if (!selectedUser || !message?.trim()) return;
@@ -306,7 +350,6 @@ export default function MessagesPage() {
         {conversationsLoading ? (
           <div className="flex-1 flex items-center justify-center bg-white">
             <div className="flex flex-col items-center gap-2">
-              {/* Spinner uses CSS var for the active border colour */}
               <div
                 className="w-6 h-6 rounded-full animate-spin"
                 style={{
