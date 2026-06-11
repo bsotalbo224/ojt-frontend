@@ -4,8 +4,8 @@ import {
   TrendingUp, Activity,
   Building2, ChevronRight, PlusCircle,
   BarChart2, CheckCircle, AlertTriangle,
-  LogIn, Coffee, LogOut, Moon, Clock,
-  Sun, Zap, Utensils
+  LogIn, LogOut, Moon, Clock,
+  Sun, Zap, Utensils, Coffee
 } from 'lucide-react';
 import { getCoordinatorDashboardStats } from '../../api/stats';
 import { useNavigate } from 'react-router-dom';
@@ -108,9 +108,8 @@ const CoordinatorDashboard = () => {
   const nightShiftCount = stats?.nightShiftCount ?? 0;
   const halfDayCount = stats?.halfDayCount ?? 0;
 
-  // Attendance Summaries
+  // Attendance Summaries — Break removed
   const workingCount = stats?.workingCount ?? 0;
-  const onBreakCount = stats?.onBreakCount ?? 0;
   const onMealCount = stats?.onMealCount ?? 0;
   const otActiveCount = stats?.otActiveCount ?? 0;
   const completedCount = stats?.completedCount ?? 0;
@@ -227,14 +226,13 @@ const CoordinatorDashboard = () => {
             </div>
           </div>
 
-          {/* Attendance Workflow Summary (Badge style) */}
+          {/* Attendance Workflow Summary — Break removed */}
           <div className="hidden md:flex items-center gap-2">
             {[
               { label: 'Working', count: workingCount, color: '#10b981' },
-              { label: 'Break', count: onBreakCount, color: '#f59e0b' },
-              { label: 'Meal', count: onMealCount, color: '#f97316' },
-              { label: 'OT', count: otActiveCount, color: '#8b5cf6' },
-              { label: 'Done', count: completedCount, color: '#3b82f6' }
+              { label: 'Meal',    count: onMealCount,  color: '#f97316' },
+              { label: 'OT',      count: otActiveCount, color: '#8b5cf6' },
+              { label: 'Done',    count: completedCount, color: '#3b82f6' },
             ].map((s) => (
               <div key={s.label} className="px-3 py-1 rounded-lg bg-white border border-gray-100 shadow-sm flex items-center gap-2">
                 <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: s.color }} />
