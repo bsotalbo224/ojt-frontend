@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Calendar, Clock, Download, BookOpen, CalendarDays, Timer,
-  LogIn, LogOut, Coffee, UtensilsCrossed, Moon, Sunrise,
+  LogIn, LogOut, Coffee, UtensilsCrossed, Moon, Sunrise, Hourglass,
 } from 'lucide-react';
 import { getStudentAttendanceHistory } from '../../api/attendance';
 
@@ -61,9 +61,25 @@ const cssVar = (name, fallback = '22 163 74') => {
 };
 
 /* ═══════════════════════════════════════════════════════
+   EARLY ATTENDANCE LOGIC
+   - Show "Pending" only when early_attendance exists AND early_status === "pending"
+   - Everything else (approved, rejected, no request) → "—"
+   - early_status NEVER affects schedule visibility (start_time / end_time always shown)
+═══════════════════════════════════════════════════════ */
+const getEarlyAttendanceDisplay = (r) => {
+  if (r.early_attendance && r.early_status === 'pending') {
+    return 'pending';
+  }
+  return null; // approved, rejected, or no request → show "—"
+};
+
+/* ═══════════════════════════════════════════════════════
    SCHEDULE ANALYSIS
+   Always derived from record.start_time / record.end_time —
+   never influenced by early_attendance or early_status.
 ═══════════════════════════════════════════════════════ */
 const analyzeRecord = (r) => {
+  // Always use the official schedule times regardless of early_attendance / early_status
   const s = toMins(r.start_time);
   const e = toMins(r.end_time);
   if (s == null || e == null) return { isNightShift: false, isHalfDay: false };
@@ -143,6 +159,46 @@ const RangeCell = ({ start, end, color }) => {
 };
 
 /* ═══════════════════════════════════════════════════════
+   SCHEDULE CELL — always shows official start_time → end_time
+   regardless of early_attendance or early_status
+═══════════════════════════════════════════════════════ */
+const ScheduleCell = ({ record }) => {
+  const start = formatTime(record.start_time);
+  const end   = formatTime(record.end_time);
+
+  if (!start && !end) return <span className="text-gray-300 text-sm">—</span>;
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5 whitespace-nowrap"
+      style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#374151' }}>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-400" />
+      {start && end ? `${start} → ${end}` : start ?? end ?? '—'}
+    </span>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
+   EARLY ATTENDANCE BADGE
+   Pending → amber badge
+   Everything else (approved / rejected / none) → "—"
+═══════════════════════════════════════════════════════ */
+const EarlyAttendanceBadge = ({ record }) => {
+  const display = getEarlyAttendanceDisplay(record);
+
+  if (display === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-2.5 py-1.5 whitespace-nowrap"
+        style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
+        <Hourglass className="w-3 h-3" />
+        Pending
+      </span>
+    );
+  }
+
+  return <span className="text-gray-300 text-sm">—</span>;
+};
+
+/* ═══════════════════════════════════════════════════════
    MOBILE WORKFLOW CARD (dynamic)
 ═══════════════════════════════════════════════════════ */
 const MobileWorkflowCard = ({ record }) => {
@@ -176,6 +232,30 @@ const MobileWorkflowCard = ({ record }) => {
           </div>
         );
       })}
+
+      {/* Schedule row — always visible, never hidden by early_status */}
+      <div className="flex items-center gap-3 px-3 py-2.5"
+        style={{ background: '#f0fdf4', borderTop: '1px solid #f3f4f6' }}>
+        <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+          style={{ background: '#dcfce7', border: '1px solid #bbf7d0' }}>
+          <Clock className="w-3.5 h-3.5 text-emerald-600" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Schedule</span>
+          <p className="text-xs font-bold text-gray-800 tabular-nums">
+            {record.start_time && record.end_time
+              ? `${formatTime(record.start_time)} → ${formatTime(record.end_time)}`
+              : '—'}
+          </p>
+        </div>
+        {/* Early attendance status — minimal: Pending or nothing */}
+        {getEarlyAttendanceDisplay(record) === 'pending' && (
+          <span className="inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }}>
+            <Hourglass className="w-2.5 h-2.5" />Pending
+          </span>
+        )}
+      </div>
     </div>
   );
 };
@@ -218,17 +298,19 @@ const exportDTR = async (history, totalDays, totalHours) => {
   doc.text(`Total Entries: ${history.length}`, pageW - margin, y, { align: 'right' }); y += 10;
 
   const cols = [
-    { label: 'Date',          x: margin,       w: 44 },
-    { label: 'Work Schedule', x: margin + 44,  w: 58 },
-    { label: 'Break',         x: margin + 102, w: 54 },
-    { label: 'Overtime',      x: margin + 156, w: 54 },
-    { label: 'Total Hrs',     x: margin + 210, w: 55 },
+    { label: 'Date',             x: margin,       w: 36 },
+    { label: 'Time In',          x: margin + 36,  w: 30 },
+    { label: 'Schedule',         x: margin + 66,  w: 46 },
+    { label: 'Break',            x: margin + 112, w: 46 },
+    { label: 'Overtime',         x: margin + 158, w: 46 },
+    { label: 'Early Attendance', x: margin + 204, w: 38 },
+    { label: 'Total Hrs',        x: margin + 242, w: 23 },
   ];
   const rowH = 9;
 
   doc.setFillColor(...c600); doc.rect(margin, y, contentW, rowH, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(255, 255, 255);
-  cols.forEach(({ label, x }) => doc.text(label, x + 3, y + 6)); y += rowH;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
+  cols.forEach(({ label, x }) => doc.text(label, x + 2, y + 6)); y += rowH;
 
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
 
@@ -239,25 +321,42 @@ const exportDTR = async (history, totalDays, totalHours) => {
     const { isNightShift, isHalfDay } = analyzeRecord(r);
     const breakLabel  = isNightShift ? 'Meal' : 'Lunch';
     const total       = computeTotalHours(r);
-    const workStr     = timeRange(r.time_in, r.time_out) ?? '—';
+    const timeInStr   = formatTime(r.time_in) ?? '—';
+    // Schedule always from official start_time / end_time
+    const scheduleStr = r.start_time && r.end_time
+      ? `${formatTime(r.start_time)} → ${formatTime(r.end_time)}`
+      : '—';
     const autoDeduct  = !isHalfDay && !r.lunch_break_start && r.time_in && r.time_out && msToHrs(msDiff(r.time_in, r.time_out) ?? 0) >= 5;
-    const breakStr    = isHalfDay ? '—' : (timeRange(r.lunch_break_start, r.lunch_break_end) ?? (autoDeduct ? `Auto-deducted 1 hr` : '—'));
+    const breakStr    = isHalfDay ? '—' : (timeRange(r.lunch_break_start, r.lunch_break_end) ?? (autoDeduct ? 'Auto-deducted 1 hr' : '—'));
     const otStr       = timeRange(r.ot_time_in, r.ot_time_out) ?? '—';
+    // Early attendance: only "Pending" or "—"
+    const earlyStr    = (r.early_attendance && r.early_status === 'pending') ? 'Pending' : '—';
 
     doc.setTextColor(30, 30, 30);
-    doc.text(formatDateShort(r.date), cols[0].x + 3, y + 6);
-    doc.text(workStr,                 cols[1].x + 3, y + 6);
-    doc.text(breakStr,                cols[2].x + 3, y + 6);
-    doc.text(otStr,                   cols[3].x + 3, y + 6);
+    doc.text(formatDateShort(r.date), cols[0].x + 2, y + 6);
+    doc.text(timeInStr,               cols[1].x + 2, y + 6);
+    doc.text(scheduleStr,             cols[2].x + 2, y + 6);
+    doc.text(breakStr,                cols[3].x + 2, y + 6);
+    doc.text(otStr,                   cols[4].x + 2, y + 6);
+
+    if (earlyStr === 'Pending') {
+      doc.setFillColor(254, 243, 199);
+      doc.roundedRect(cols[5].x + 1, y + 1.8, 28, 5.5, 2, 2, 'F');
+      doc.setFont('helvetica', 'bold'); doc.setTextColor(146, 64, 14);
+      doc.text('Pending', cols[5].x + 15, y + 5.8, { align: 'center' });
+      doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
+    } else {
+      doc.text('—', cols[5].x + 2, y + 6);
+    }
 
     if (total > 0) {
       doc.setFillColor(...c200);
-      doc.roundedRect(cols[4].x + 2, y + 1.8, 32, 5.5, 2, 2, 'F');
+      doc.roundedRect(cols[6].x + 1, y + 1.8, 20, 5.5, 2, 2, 'F');
       doc.setFont('helvetica', 'bold'); doc.setTextColor(...c700);
-      doc.text(`${total} hrs`, cols[4].x + 18, y + 5.8, { align: 'center' });
+      doc.text(`${total}h`, cols[6].x + 11, y + 5.8, { align: 'center' });
       doc.setFont('helvetica', 'normal'); doc.setTextColor(30, 30, 30);
     } else {
-      doc.text('—', cols[4].x + 3, y + 6);
+      doc.text('—', cols[6].x + 2, y + 6);
     }
 
     doc.setDrawColor(...c100); doc.line(margin, y + rowH, margin + contentW, y + rowH); y += rowH;
@@ -369,12 +468,12 @@ export default function StudentAttendance() {
                   <h2 className="text-xl font-bold text-gray-800">Attendance Log</h2>
                   <p className="text-sm text-gray-600 mt-1">Complete work attendance history — supports day, night, and half-day shifts</p>
                 </div>
-                {/* Dynamic legend: shown as generic icons, per-row labels handle night/half-day */}
                 <div className="hidden sm:flex items-center gap-3 flex-wrap">
                   {[
-                    { Icon: LogIn,  label: 'Time In/Out', color: '#10b981' },
-                    { Icon: Coffee, label: 'Break',       color: '#f59e0b' },
-                    { Icon: Moon,   label: 'Overtime',    color: '#8b5cf6' },
+                    { Icon: LogIn,     label: 'Time In/Out',      color: '#10b981' },
+                    { Icon: Coffee,    label: 'Break',             color: '#f59e0b' },
+                    { Icon: Moon,      label: 'Overtime',          color: '#8b5cf6' },
+                    { Icon: Hourglass, label: 'Early (Pending)',   color: '#d97706' },
                   ].map(({ Icon, label, color }) => (
                     <div key={label} className="flex items-center gap-1.5 text-xs font-medium text-gray-500">
                       <Icon className="w-3.5 h-3.5" style={{ color }} /><span>{label}</span>
@@ -407,10 +506,12 @@ export default function StudentAttendance() {
                   <table className="w-full">
                     <thead>
                       <tr style={{ background: `linear-gradient(to right, rgb(var(--primary-50)), rgb(var(--primary-100) / 0.6))` }}>
-                        {['Date', 'Work Schedule', 'Break', 'Overtime', 'Total Hours'].map((label) => (
+                        {['Date', 'Time In', 'Schedule', 'Break', 'Overtime', 'Early Attendance', 'Total Hours'].map((label) => (
                           <th key={label} className="px-5 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">
                             {label === 'Total Hours'
                               ? <div className="flex items-center gap-1.5"><Timer className="w-3.5 h-3.5 text-gray-500" />{label}</div>
+                              : label === 'Early Attendance'
+                              ? <div className="flex items-center gap-1.5"><Hourglass className="w-3.5 h-3.5 text-gray-500" />{label}</div>
                               : label}
                           </th>
                         ))}
@@ -418,10 +519,11 @@ export default function StudentAttendance() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {attendanceHistory.map((r) => {
-                        const total                    = computeTotalHours(r);
+                        const total                        = computeTotalHours(r);
+                        // analyzeRecord always uses start_time / end_time — unaffected by early_status
                         const { isNightShift, isHalfDay } = analyzeRecord(r);
-                        const breakLabel               = isNightShift ? 'Meal' : 'Lunch';
-                        const autoDeduct               = !isHalfDay && !r.lunch_break_start && r.time_in && r.time_out && msToHrs(msDiff(r.time_in, r.time_out) ?? 0) >= 5;
+                        const breakLabel                   = isNightShift ? 'Meal' : 'Lunch';
+                        const autoDeduct                   = !isHalfDay && !r.lunch_break_start && r.time_in && r.time_out && msToHrs(msDiff(r.time_in, r.time_out) ?? 0) >= 5;
 
                         return (
                           <tr key={r.id} className="dtr-row">
@@ -431,9 +533,23 @@ export default function StudentAttendance() {
                               <div className="mt-0.5"><ShiftBadge isNightShift={isNightShift} isHalfDay={isHalfDay} /></div>
                             </td>
 
-                            {/* Work Schedule */}
+                            {/* Time In — actual clock-in time */}
                             <td className="px-5 py-4">
-                              <RangeCell start={r.time_in} end={r.time_out} color="#10b981" />
+                              {r.time_in ? (
+                                <span className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5 whitespace-nowrap"
+                                  style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#374151' }}>
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-500" />
+                                  {formatTime(r.time_in)}
+                                </span>
+                              ) : (
+                                <span className="text-gray-300 text-sm">—</span>
+                              )}
+                            </td>
+
+                            {/* Schedule — ALWAYS from start_time → end_time.
+                                Never hidden or altered by early_attendance / early_status. */}
+                            <td className="px-5 py-4">
+                              <ScheduleCell record={r} />
                             </td>
 
                             {/* Break (dynamic label, hidden for half-day) */}
@@ -459,6 +575,12 @@ export default function StudentAttendance() {
                             {/* Overtime */}
                             <td className="px-5 py-4">
                               <RangeCell start={r.ot_time_in} end={r.ot_time_out} color="#8b5cf6" />
+                            </td>
+
+                            {/* Early Attendance — Pending or "—" only.
+                                approved, rejected, and no-request all render "—". */}
+                            <td className="px-5 py-4">
+                              <EarlyAttendanceBadge record={r} />
                             </td>
 
                             {/* Total Hours */}
@@ -523,6 +645,10 @@ export default function StudentAttendance() {
                             <span className="text-xs text-gray-400">—</span>
                           )}
                         </div>
+                        {/*
+                          MobileWorkflowCard always renders the schedule row (start_time → end_time).
+                          early_status only affects the optional "Pending" badge inside — never hides the row.
+                        */}
                         <MobileWorkflowCard record={r} />
                       </div>
                     );

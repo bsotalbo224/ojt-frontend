@@ -3,11 +3,12 @@ import {
   Users, FileText, BookOpen,
   TrendingUp, Activity,
   Building2, ChevronRight, PlusCircle,
-  BarChart2, CheckCircle, AlertTriangle,
+  BarChart2, CheckCircle, CheckCircle2, AlertTriangle,
   LogIn, LogOut, Moon, Clock,
   Sun, Zap, Utensils, Coffee
 } from 'lucide-react';
 import { getCoordinatorDashboardStats } from '../../api/stats';
+import { getPendingEarlyAttendance } from '../../api/attendance';
 import { useNavigate } from 'react-router-dom';
 
 // ─── Skeleton helper ───────────────────────────────────────────────────────────
@@ -41,6 +42,8 @@ const CoordinatorDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [recentActivity, setRecentActivity] = useState([]);
   const [viewShift, setViewShift] = useState('day');
+  const [pendingEarlyRequests, setPendingEarlyRequests] = useState([]);
+  const [earlyLoading, setEarlyLoading] = useState(false);
   const navigate = useNavigate();
 
   // ── Data loader ────────────────────────────────────────────────────────────
@@ -56,15 +59,34 @@ const CoordinatorDashboard = () => {
     }
   };
 
+  // ── Early Attendance loader ────────────────────────────────────────────────
+  const fetchPendingEarlyAttendance = async () => {
+    try {
+      setEarlyLoading(true);
+      const res = await getPendingEarlyAttendance();
+      setPendingEarlyRequests(
+        (res.data || []).filter(
+          request => request.early_status === 'pending'
+        )
+      );
+    } catch (err) {
+      console.error('Failed to load early attendance requests', err);
+    } finally {
+      setEarlyLoading(false);
+    }
+  };
+
   // Initial mount
   useEffect(() => {
     loadData();
+    fetchPendingEarlyAttendance();
   }, []);
 
   // Academic year switch listener
   useEffect(() => {
     const handleAcademicYearChange = () => {
       loadData();
+      fetchPendingEarlyAttendance();
     };
     window.addEventListener('academicYearChanged', handleAcademicYearChange);
     return () => {
@@ -259,6 +281,71 @@ const CoordinatorDashboard = () => {
             ))}
           </div>
         </div>
+
+        {/* ── Early Attendance Alert Card ── */}
+        {earlyLoading ? (
+          <div className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+            <Skeleton className="w-9 h-9 rounded-xl shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-3 w-52" />
+              <Skeleton className="h-3 w-36" />
+            </div>
+          </div>
+        ) : pendingEarlyRequests.length > 0 ? (
+          /* ── Pending alert ── */
+          <div
+            className="rounded-2xl p-4 shadow-sm flex items-center justify-between gap-4 flex-wrap"
+            style={{ backgroundColor: '#fffbeb', border: '1px solid #fde68a' }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                style={{ backgroundColor: '#fef3c7' }}
+              >
+                <AlertTriangle className="w-4 h-4" style={{ color: '#d97706' }} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold leading-tight" style={{ color: '#92400e' }}>
+                  Pending Early Attendance Requests
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: '#b45309' }}>
+                  {pendingEarlyRequests.length} student{pendingEarlyRequests.length !== 1 ? 's are' : ' is'} waiting for approval
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/coordinator/attendance')}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-colors duration-150 shrink-0"
+              style={{ backgroundColor: '#d97706', color: '#fff' }}
+              onMouseEnter={e => e.currentTarget.style.backgroundColor = '#b45309'}
+              onMouseLeave={e => e.currentTarget.style.backgroundColor = '#d97706'}
+            >
+              Review Now
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          /* ── Empty state ── */
+          <div
+            className="rounded-2xl p-4 shadow-sm flex items-center gap-3"
+            style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}
+          >
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{ backgroundColor: '#dcfce7' }}
+            >
+              <CheckCircle2 className="w-4 h-4" style={{ color: '#16a34a' }} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold leading-tight" style={{ color: '#15803d' }}>
+                Early Attendance Requests
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: '#16a34a' }}>
+                No pending requests
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Stat Cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

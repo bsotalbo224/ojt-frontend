@@ -64,31 +64,57 @@ STUDENT: TIME IN / START OT
 export const timeIn = async (
   latitude,
   longitude,
-  session = "regular"
+  early_reason = null,
+  early_attachment = null
 ) => {
 
-  const res = await axios.post(
-    "/attendance/timein",
-    {
-      latitude,
-      longitude,
-      session
-    },
-    {
-      headers: {
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache"
+  const formData = new FormData();
+
+  if (latitude != null) {
+    formData.append("latitude", latitude);
+  }
+
+  if (longitude != null) {
+    formData.append("longitude", longitude);
+  }
+
+  if (early_reason) {
+    formData.append("early_reason", early_reason);
+  }
+
+  if (early_attachment) {
+    formData.append("early_attachment", early_attachment);
+  }
+
+  try {
+
+    const res = await axios.post(
+      "/attendance/timein",
+      formData,
+      {
+        headers: {
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache"
+        }
       }
-    }
-  );
+    );
 
-  return {
-    success:
-      res.data?.attendance_id !== undefined ||
-      res.data?.success !== false,
+    return {
+      success:
+        res.data?.attendance_id !== undefined ||
+        res.data?.success !== false,
 
-    data: res.data
-  };
+      data: res.data
+    };
+
+  } catch (err) {
+    throw {
+      message:
+        err.response?.data?.message ||
+        err.message ||
+        "Request failed"
+    };
+  }
 };
 
 /* ===============================
@@ -138,15 +164,11 @@ export const endLunchBreak = async () => {
 /* ===============================
 STUDENT: TIME OUT / END OT
 =============================== */
-export const timeOut = async (
-  session = "regular"
-) => {
+export const timeOut = async () => {
 
   const res = await axios.patch(
     "/attendance/timeout",
-    {
-      session
-    },
+    {},
     {
       headers: {
         "Cache-Control": "no-cache",
@@ -202,4 +224,53 @@ export const getStudentAttendanceRecords =
     );
 
     return res.data;
+};
+
+export const getPendingEarlyAttendance = async () => {
+  const res = await axios.get(
+    "/attendance/pending-early",
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
+  );
+
+  return res.data;
+};
+
+/* ===============================
+COORDINATOR: EARLY ATTENDANCE ACTIONS
+=============================== */
+export const approveEarlyAttendance = async (attendanceId) => {
+
+  const res = await axios.patch(
+    `/attendance/early/${attendanceId}/approve`,
+    {},
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
+  );
+
+  return res.data;
+};
+
+export const rejectEarlyAttendance = async (attendanceId) => {
+
+  const res = await axios.patch(
+    `/attendance/early/${attendanceId}/reject`,
+    {},
+    {
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache"
+      }
+    }
+  );
+
+  return res.data;
 };

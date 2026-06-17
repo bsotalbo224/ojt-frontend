@@ -3,7 +3,7 @@ import {
   Award, Calendar, Building2, User, Info,
   CheckCircle2, ChevronRight, Loader2,
   LogIn, LogOut, Coffee, UtensilsCrossed, Moon, Sunrise,
-  Clock, Zap,
+  Clock, Zap, Paperclip,
 } from 'lucide-react';
 import { getStudentAttendance, timeIn, timeOut, startLunchBreak, endLunchBreak } from '../../api/attendance';
 import { getStudentAssignment } from '../../api/student';
@@ -46,11 +46,11 @@ const analyzeSchedule = (start_time, end_time) => {
   }
 
   const isNightShift = e < s; // end clock-value is "earlier" → crosses midnight
-  const shiftMins    = isNightShift ? (1440 - s + e) : (e - s);
-  const isHalfDay    = shiftMins < 300; // < 5 hours
+  const shiftMins = isNightShift ? (1440 - s + e) : (e - s);
+  const isHalfDay = shiftMins < 300; // < 5 hours
 
   let shiftType = 'Day Shift';
-  if (isHalfDay)     shiftType = 'Half Day';
+  if (isHalfDay) shiftType = 'Half Day';
   else if (isNightShift) shiftType = 'Night Shift';
 
   return { isNightShift, isHalfDay, shiftMins, shiftType };
@@ -60,8 +60,8 @@ const analyzeSchedule = (start_time, end_time) => {
    DYNAMIC WORKFLOW BUILDER
 ───────────────────────────────────────────── */
 const BREAK_LABELS = {
-  day:   { start: 'Lunch Start', end: 'Lunch End',  short: 'Lunch', shortEnd: 'Resume' },
-  night: { start: 'Meal Start',  end: 'Meal End',   short: 'Meal',  shortEnd: 'Resume' },
+  day: { start: 'Lunch Start', end: 'Lunch End', short: 'Lunch', shortEnd: 'Resume' },
+  night: { start: 'Meal Start', end: 'Meal End', short: 'Meal', shortEnd: 'Resume' },
 };
 
 const buildWorkflow = ({ requiresLunch, isNightShift }) => {
@@ -71,8 +71,8 @@ const buildWorkflow = ({ requiresLunch, isNightShift }) => {
   ];
   if (requiresLunch) {
     steps.push(
-      { key: 'lunch_break_start', label: bl.start, Icon: Coffee,         color: '#f59e0b', shortLabel: bl.short },
-      { key: 'lunch_break_end',   label: bl.end,   Icon: UtensilsCrossed, color: '#f97316', shortLabel: bl.shortEnd },
+      { key: 'lunch_break_start', label: bl.start, Icon: Coffee, color: '#f59e0b', shortLabel: bl.short },
+      { key: 'lunch_break_end', label: bl.end, Icon: UtensilsCrossed, color: '#f97316', shortLabel: bl.shortEnd },
     );
   }
   steps.push(
@@ -83,8 +83,8 @@ const buildWorkflow = ({ requiresLunch, isNightShift }) => {
 
 // OT steps are always separate / optional
 const OT_STEPS = [
-  { key: 'ot_time_in',  label: 'Start Overtime', Icon: Moon,    color: '#8b5cf6', shortLabel: 'OT In'  },
-  { key: 'ot_time_out', label: 'End Overtime',   Icon: Sunrise, color: '#6366f1', shortLabel: 'OT Out' },
+  { key: 'ot_time_in', label: 'Start Overtime', Icon: Moon, color: '#8b5cf6', shortLabel: 'OT In' },
+  { key: 'ot_time_out', label: 'End Overtime', Icon: Sunrise, color: '#6366f1', shortLabel: 'OT Out' },
 ];
 
 /* ─────────────────────────────────────────────
@@ -98,7 +98,7 @@ const getNextRequiredAction = (att, workflow) => {
 };
 
 const getNextOtAction = (att) => {
-  if (!att?.ot_time_in)  return { ...OT_STEPS[0], type: 'ot_time_in'  };
+  if (!att?.ot_time_in) return { ...OT_STEPS[0], type: 'ot_time_in' };
   if (!att?.ot_time_out) return { ...OT_STEPS[1], type: 'ot_time_out' };
   return null;
 };
@@ -108,9 +108,9 @@ const getNextOtAction = (att) => {
 ───────────────────────────────────────────── */
 const ShiftBadge = ({ shiftType }) => {
   const map = {
-    'Half Day':  { bg: '#fefce8',                          border: '#fde68a',                          text: '#a16207'                          },
-    'Day Shift': { bg: `rgb(var(--primary-50))`,           border: `rgb(var(--primary-200))`,           text: `rgb(var(--primary-700))`           },
-    'Night Shift': { bg: '#f5f3ff',                        border: '#ddd6fe',                          text: '#6d28d9'                          },
+    'Half Day': { bg: '#fefce8', border: '#fde68a', text: '#a16207' },
+    'Day Shift': { bg: `rgb(var(--primary-50))`, border: `rgb(var(--primary-200))`, text: `rgb(var(--primary-700))` },
+    'Night Shift': { bg: '#f5f3ff', border: '#ddd6fe', text: '#6d28d9' },
   };
   const s = map[shiftType] ?? map['Day Shift'];
   return (
@@ -131,16 +131,16 @@ const ProgressStepper = ({ attendance, workflow }) => {
     <div className="flex items-center mb-5">
       {workflow.map((step, i) => {
         const isComplete = !!attendance?.[step.key];
-        const isCurrent  = !isComplete && workflow.slice(0, i).every(s => !!attendance?.[s.key]);
+        const isCurrent = !isComplete && workflow.slice(0, i).every(s => !!attendance?.[s.key]);
         return (
           <div key={step.key} className="flex items-center flex-1 min-w-0">
             <div className="flex flex-col items-center shrink-0">
               <div
                 className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all duration-300"
                 style={{
-                  background:  isComplete ? step.color : isCurrent ? `rgb(var(--primary-600))` : '#e5e7eb',
-                  color:       isComplete || isCurrent ? 'white' : '#9ca3af',
-                  boxShadow:   isCurrent ? `0 0 0 3px rgb(var(--primary-200))` : 'none',
+                  background: isComplete ? step.color : isCurrent ? `rgb(var(--primary-600))` : '#e5e7eb',
+                  color: isComplete || isCurrent ? 'white' : '#9ca3af',
+                  boxShadow: isCurrent ? `0 0 0 3px rgb(var(--primary-200))` : 'none',
                 }}
               >
                 {isComplete ? <CheckCircle2 className="w-3.5 h-3.5" /> : i + 1}
@@ -170,12 +170,12 @@ const ProgressStepper = ({ attendance, workflow }) => {
 ───────────────────────────────────────────── */
 const WorkflowStepCard = ({ step, value, isActive }) => {
   const { label, Icon, color } = step;
-  const isComplete  = !!value;
-  const cardBg      = isComplete ? '#f0fdf4'     : isActive ? '#fafafa'        : '#f9fafb';
-  const cardBorder  = isComplete ? '#bbf7d0'     : isActive ? `${color}40`     : '#e5e7eb';
-  const iconBg      = isComplete ? '#dcfce7'     : isActive ? `${color}15`     : '#f3f4f6';
-  const iconBorder  = isComplete ? '#bbf7d0'     : isActive ? `${color}40`     : '#e5e7eb';
-  const iconColor   = isComplete ? '#22c55e'     : isActive ? color            : '#9ca3af';
+  const isComplete = !!value;
+  const cardBg = isComplete ? '#f0fdf4' : isActive ? '#fafafa' : '#f9fafb';
+  const cardBorder = isComplete ? '#bbf7d0' : isActive ? `${color}40` : '#e5e7eb';
+  const iconBg = isComplete ? '#dcfce7' : isActive ? `${color}15` : '#f3f4f6';
+  const iconBorder = isComplete ? '#bbf7d0' : isActive ? `${color}40` : '#e5e7eb';
+  const iconColor = isComplete ? '#22c55e' : isActive ? color : '#9ca3af';
 
   return (
     <div
@@ -217,7 +217,7 @@ const OtCard = ({ step, value }) => {
       className="rounded-xl p-3 flex items-center gap-2.5 transition-all duration-300"
       style={{
         background: isComplete ? '#f5f3ff' : '#fafafa',
-        border:     `1px solid ${isComplete ? '#ddd6fe' : '#e5e7eb'}`,
+        border: `1px solid ${isComplete ? '#ddd6fe' : '#e5e7eb'}`,
       }}
     >
       <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -239,14 +239,20 @@ const OtCard = ({ step, value }) => {
    MAIN DASHBOARD
 ───────────────────────────────────────────── */
 const StudentDashboard = () => {
-  const [attendance,       setAttendance]       = useState(null);
+  const [attendance, setAttendance] = useState(null);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
-  const [attendanceError,  setAttendanceError]  = useState(null);
-  const [actionLoading,    setActionLoading]    = useState(false);
-  const [otLoading,        setOtLoading]        = useState(false);
-  const [assignment,       setAssignment]       = useState(null);
+  const [attendanceError, setAttendanceError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [otLoading, setOtLoading] = useState(false);
+  const [assignment, setAssignment] = useState(null);
   const [assignmentLoaded, setAssignmentLoaded] = useState(false);
-  const [otExpanded,       setOtExpanded]       = useState(false);
+  const [otExpanded, setOtExpanded] = useState(false);
+
+  // Early attendance state
+  const [showEarlyModal, setShowEarlyModal] = useState(false);
+  const [earlyReason, setEarlyReason] = useState('');
+  const [earlyAttachment, setEarlyAttachment] = useState(null);
+  const [pendingCoords, setPendingCoords] = useState(null);
 
   /* ── Fetch ── */
   const fetchAttendance = async () => {
@@ -262,25 +268,18 @@ const StudentDashboard = () => {
     }
   };
 
-const fetchAssignment = async () => {
-  try {
-
-    const res = await getStudentAssignment();
-
-    if (res?.success) {
-      setAssignment(res.data || null);
+  const fetchAssignment = async () => {
+    try {
+      const res = await getStudentAssignment();
+      if (res?.success) {
+        setAssignment(res.data || null);
+      }
+    } catch (err) {
+      console.error("Assignment load failed", err);
+    } finally {
+      setAssignmentLoaded(true);
     }
-
-  } catch (err) {
-
-    console.error("Assignment load failed", err);
-
-  } finally {
-
-    setAssignmentLoaded(true);
-
-  }
-};
+  };
 
   // Load assignment first so schedule is ready before workflow computes.
   useEffect(() => {
@@ -291,34 +290,23 @@ const fetchAssignment = async () => {
     init();
   }, []);
 
-  /* ── Schedule analysis ──────────────────────────────────────────────────
-     FIX: depend on the primitive snake_case strings from the API response,
-     not on the assignment object reference.  This guarantees the memo
-     re-runs whenever start_time / end_time actually change and avoids
-     stale schedule values when assignment loads asynchronously.
-  ──────────────────────────────────────────────────────────────────────── */
+  /* ── Schedule analysis ── */
   const startTime = assignment?.start_time ?? null;
-  const endTime   = assignment?.end_time   ?? null;
+  const endTime = assignment?.end_time ?? null;
 
   const schedule = useMemo(
     () => analyzeSchedule(startTime, endTime),
-    [startTime, endTime],           // re-run only when the raw strings change
+    [startTime, endTime],
   );
 
-  /* ── Dynamic workflow ───────────────────────────────────────────────────
-     FIX: depend on the primitive booleans extracted from schedule, not on
-     the schedule object reference (which is a new object every render).
-     This prevents the workflow from flipping between [] and the real array
-     on unrelated re-renders and ensures stepper / cards / button all
-     reflect the correct shift type immediately after assignment loads.
-  ──────────────────────────────────────────────────────────────────────── */
+  /* ── Dynamic workflow ── */
   const { isHalfDay, isNightShift, shiftType } = schedule;
 
   const workflow = useMemo(() => {
     if (!assignmentLoaded) return [];
     return buildWorkflow({
-      requiresLunch: !isHalfDay,   // Half Day  → skip lunch steps
-      isNightShift,                 // Night Shift → use "Meal" labels
+      requiresLunch: !isHalfDay,
+      isNightShift,
     });
   }, [assignmentLoaded, isHalfDay, isNightShift]);
 
@@ -344,6 +332,69 @@ const fetchAssignment = async () => {
     }
   };
 
+  /* ── Dedicated Time In handler (supports early attendance) ── */
+  const handleTimeIn = async (
+    latitude,
+    longitude,
+    reason = null,
+    attachment = null
+  ) => {
+    const snapshot = attendance;
+    setActionLoading(true);
+    applyOptimistic('time_in');
+    try {
+      await timeIn(latitude, longitude, reason, attachment);
+      await fetchAttendance();
+      setAttendanceError(null);
+      return true;
+    } catch (err) {
+      revert(snapshot);
+      if (
+        err.message === 'Reason is required for early attendance.' ||
+        err.message === 'Attachment is required for early attendance.'
+      ) {
+        setPendingCoords({ latitude, longitude });
+        setShowEarlyModal(true);
+        setAttendanceError(null);
+      } else {
+        setAttendanceError(err.message || 'Action failed — please try again.');
+      }
+      return false;
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  /* ── Early reason submit handler ── */
+  const submitEarlyReason = async () => {
+    if (actionLoading) return;
+
+    if (!earlyReason.trim()) {
+      setAttendanceError('Reason is required.');
+      return;
+    }
+    if (!earlyAttachment) {
+      setAttendanceError('Attachment is required.');
+      return;
+    }
+    if (!pendingCoords) return;
+
+    const success = await handleTimeIn(
+      pendingCoords.latitude,
+      pendingCoords.longitude,
+      earlyReason,
+      earlyAttachment
+    );
+
+    if (!success) return;
+
+    // Only reached on success
+    setShowEarlyModal(false);
+    setEarlyReason('');
+    setEarlyAttachment(null);
+    setPendingCoords(null);
+  };
+
   /* ── Primary action ── */
   const handleNextAction = () => {
     if (actionLoading) return;
@@ -354,8 +405,9 @@ const fetchAssignment = async () => {
     if (type === 'time_in') {
       setActionLoading(true);
       navigator.geolocation.getCurrentPosition(
-        ({ coords: { latitude, longitude } }) =>
-          runAction('time_in', () => timeIn(latitude, longitude), setActionLoading),
+        ({ coords: { latitude, longitude } }) => {
+          handleTimeIn(latitude, longitude);
+        },
         () => {
           setAttendanceError('Location permission required for attendance logging. Please enable GPS/location services.');
           setActionLoading(false);
@@ -364,7 +416,7 @@ const fetchAssignment = async () => {
     } else if (type === 'lunch_break_start') {
       runAction('lunch_break_start', () => startLunchBreak(), setActionLoading);
     } else if (type === 'lunch_break_end') {
-      runAction('lunch_break_end',   () => endLunchBreak(),   setActionLoading);
+      runAction('lunch_break_end', () => endLunchBreak(), setActionLoading);
     } else if (type === 'time_out') {
       runAction('time_out', () => timeOut(), setActionLoading);
     }
@@ -378,25 +430,24 @@ const fetchAssignment = async () => {
     const { type } = action;
 
     if (type === 'ot_time_in') {
-      setOtLoading(true);
       navigator.geolocation.getCurrentPosition(
         ({ coords: { latitude, longitude } }) =>
-          runAction('ot_time_in', () => timeIn(latitude, longitude, 'ot'), setOtLoading),
+          runAction('ot_time_in', () => timeIn(latitude, longitude), setOtLoading),
         () => {
           setAttendanceError('Location permission required for attendance logging. Please enable GPS/location services.');
           setOtLoading(false);
         }
       );
     } else if (type === 'ot_time_out') {
-      runAction('ot_time_out', () => timeOut('ot'), setOtLoading);
+      runAction('ot_time_out', () => timeOut(), setOtLoading);
     }
   };
 
-  const nextAction    = workflow.length > 0 ? getNextRequiredAction(attendance, workflow) : null;
-  const nextOtAction  = getNextOtAction(attendance);
-  const requiredDone  = !nextAction;
-  const otDone        = !nextOtAction;
-  const hasOtStarted  = !!attendance?.ot_time_in;
+  const nextAction = workflow.length > 0 ? getNextRequiredAction(attendance, workflow) : null;
+  const nextOtAction = getNextOtAction(attendance);
+  const requiredDone = !nextAction;
+  const otDone = !nextOtAction;
+  const hasOtStarted = !!attendance?.ot_time_in;
 
   // Auto-expand OT section when OT has already been started
   const showOtExpanded = otExpanded || hasOtStarted;
@@ -435,7 +486,6 @@ const fetchAssignment = async () => {
               <Calendar className="w-5 h-5" style={{ color: `rgb(var(--primary-700))` }} />
               <h2 className="text-lg font-bold text-gray-900">Today's Attendance</h2>
             </div>
-            {/* FIX: badge now reads shiftType derived from the correct snake_case fields */}
             {startTime && <ShiftBadge shiftType={shiftType} />}
           </div>
 
@@ -447,7 +497,7 @@ const fetchAssignment = async () => {
             </div>
           ) : (
             <div className="space-y-5">
-              {/* Dynamic progress stepper — reflects correct shift workflow */}
+              {/* Dynamic progress stepper */}
               {workflow.length > 0 && (
                 <ProgressStepper
                   attendance={attendance}
@@ -455,7 +505,7 @@ const fetchAssignment = async () => {
                 />
               )}
 
-              {/* Dynamic workflow step cards — correct steps per shift type */}
+              {/* Dynamic workflow step cards */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                 {workflow.length > 0 && workflow.map((step) => (
                   <WorkflowStepCard
@@ -474,9 +524,9 @@ const fetchAssignment = async () => {
                   disabled={actionLoading}
                   className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm text-white transition-all duration-200 active:scale-[0.98]"
                   style={{
-                    background:  actionLoading ? '#9ca3af' : `linear-gradient(135deg, ${nextAction.color}, ${nextAction.color}cc)`,
-                    boxShadow:   actionLoading ? 'none'    : `0 4px 14px ${nextAction.color}45`,
-                    cursor:      actionLoading ? 'not-allowed' : 'pointer',
+                    background: actionLoading ? '#9ca3af' : `linear-gradient(135deg, ${nextAction.color}, ${nextAction.color}cc)`,
+                    boxShadow: actionLoading ? 'none' : `0 4px 14px ${nextAction.color}45`,
+                    cursor: actionLoading ? 'not-allowed' : 'pointer',
                   }}
                 >
                   {actionLoading ? (
@@ -529,9 +579,9 @@ const fetchAssignment = async () => {
                           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 active:scale-[0.98]"
                           style={{
                             background: otLoading ? '#e9d5ff' : '#7c3aed',
-                            color:      'white',
-                            opacity:    otLoading ? 0.7 : 1,
-                            cursor:     otLoading ? 'not-allowed' : 'pointer',
+                            color: 'white',
+                            opacity: otLoading ? 0.7 : 1,
+                            cursor: otLoading ? 'not-allowed' : 'pointer',
                           }}
                         >
                           {otLoading ? (
@@ -580,7 +630,7 @@ const fetchAssignment = async () => {
                 <p className="text-sm font-semibold text-gray-900">{assignment?.course || '—'}</p>
               </div>
 
-              {/* Work Schedule — reads from snake_case API fields */}
+              {/* Work Schedule */}
               {(startTime || endTime) && (
                 <div>
                   <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide block mb-1">Work Schedule</label>
@@ -633,6 +683,118 @@ const fetchAssignment = async () => {
 
         </div>
       </div>
+
+      {/* EARLY ATTENDANCE MODAL */}
+      {showEarlyModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0, 0, 0, 0.5)' }}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6"
+            style={{ border: '1px solid rgb(var(--primary-200))' }}
+          >
+            {/* Modal header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div
+                className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: 'rgb(var(--primary-50))', border: '1px solid rgb(var(--primary-200))' }}
+              >
+                <Sunrise className="w-5 h-5" style={{ color: 'rgb(var(--primary-700))' }} />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Early Attendance Detected</h3>
+                <p className="text-xs text-gray-500 mt-0.5">A reason and attachment are required to proceed</p>
+              </div>
+            </div>
+
+            {/* Message */}
+            <p className="text-sm text-gray-600 mb-4 leading-relaxed">
+              You are logging attendance earlier than your assigned schedule.
+              Please provide a reason and attach a supporting document.
+            </p>
+
+            {/* Reason textarea */}
+            <textarea
+              value={earlyReason}
+              onChange={(e) => setEarlyReason(e.target.value)}
+              placeholder="Enter reason..."
+              rows={3}
+              className="w-full text-sm text-gray-800 placeholder-gray-400 rounded-xl px-4 py-3 resize-none focus:outline-none transition-all duration-200"
+              style={{
+                border: '1px solid #e5e7eb',
+                background: '#f9fafb',
+                boxShadow: 'inset 0 1px 2px rgba(0,0,0,0.04)',
+              }}
+              onFocus={(e) => { e.target.style.borderColor = 'rgb(var(--primary-400))'; e.target.style.background = '#fff'; }}
+              onBlur={(e) => { e.target.style.borderColor = '#e5e7eb'; e.target.style.background = '#f9fafb'; }}
+            />
+
+            {/* File upload */}
+            <div className="mt-3">
+              <label
+                className="flex items-center gap-2 w-full cursor-pointer rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200"
+                style={{
+                  border: '1px dashed #d1d5db',
+                  background: '#f9fafb',
+                  color: '#6b7280',
+                }}
+              >
+                <Paperclip className="w-4 h-4 shrink-0" style={{ color: 'rgb(var(--primary-600))' }} />
+                <span className="truncate">
+                  {earlyAttachment ? earlyAttachment.name : 'Attach supporting document…'}
+                </span>
+                <input
+                  type="file"
+                  accept=".png,.jpg,.jpeg,.webp,.pdf,.doc,.docx,.xls,.xlsx"
+                  className="sr-only"
+                  onChange={(e) => setEarlyAttachment(e.target.files?.[0] || null)}
+                />
+              </label>
+              {earlyAttachment && (
+                <p className="mt-1.5 text-xs text-gray-500 flex items-center gap-1.5 px-1">
+                  <CheckCircle2 className="w-3 h-3 text-green-500 shrink-0" />
+                  <span className="truncate">Selected: {earlyAttachment.name}</span>
+                </p>
+              )}
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setShowEarlyModal(false);
+                  setEarlyReason('');
+                  setEarlyAttachment(null);
+                  setPendingCoords(null);
+                  setAttendanceError(null);
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-700 transition-all duration-200 active:scale-[0.98]"
+                style={{ background: '#f3f4f6', border: '1px solid #e5e7eb' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitEarlyReason}
+                disabled={actionLoading}
+                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-all duration-200 active:scale-[0.98]"
+                style={{
+                  background: actionLoading ? '#9ca3af' : `linear-gradient(135deg, rgb(var(--primary-600)), rgb(var(--primary-700)))`,
+                  boxShadow: actionLoading ? 'none' : `0 4px 12px rgb(var(--primary-600) / 0.35)`,
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {actionLoading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Processing…
+                  </span>
+                ) : 'Submit'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
