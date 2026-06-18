@@ -875,29 +875,16 @@ const AttendanceTable = ({ records, onRowClick }) => {
 // Displays pending early-attendance requests for the coordinator's department,
 // including an optional attachment link, and exposes approve/reject actions.
 
-const EarlyAttendancePanel = ({ requests, loading, actionLoading, onApprove, onReject }) => {
+const EarlyAttendancePanel = ({
+  requests,
+  loading,
+  actionLoading,
+  onApprove,
+  onReject,
+  onViewAttachment
+}) => {
   if (!loading && requests.length === 0) {
-    return (
-      <div
-        className="rounded-2xl px-5 py-4 flex items-center gap-3 shadow-sm"
-        style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0' }}
-      >
-        <div
-          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-          style={{ backgroundColor: '#dcfce7' }}
-        >
-          <CheckCircle className="w-4 h-4" style={{ color: '#16a34a' }} />
-        </div>
-        <div>
-          <p className="text-sm font-semibold leading-tight" style={{ color: '#15803d' }}>
-            Early Attendance Requests
-          </p>
-          <p className="text-xs mt-0.5" style={{ color: '#16a34a' }}>
-            No pending requests — all early attendance requests have been processed.
-          </p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -1053,8 +1040,10 @@ const EarlyAttendancePanel = ({ requests, loading, actionLoading, onApprove, onR
                       {hasAttachment && (
                         <a
                           href={attachmentUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onViewAttachment(attachmentUrl, attachmentName);
+                          }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-colors duration-150"
                           style={{ backgroundColor: '#d97706', color: '#fff' }}
                           onMouseEnter={(e) =>
@@ -1135,6 +1124,32 @@ const CoordinatorAttendance = () => {
   const [earlyActionLoading, setEarlyActionLoading] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [actionError, setActionError] = useState('');
+
+  const [attachmentModal, setAttachmentModal] = useState({
+    open: false,
+    url: null,
+    name: null
+  });
+
+  const openAttachmentModal = (url, name) => {
+    setAttachmentModal({
+      open: true,
+      url,
+      name
+    });
+  };
+
+  const closeAttachmentModal = () => {
+    setAttachmentModal({
+      open: false,
+      url: null,
+      name: null
+    });
+  };
+
+  const isImageFile = (url = "") => {
+    return /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+  };
 
   // Auto-clear success message after 3 s
   useEffect(() => {
@@ -1376,13 +1391,14 @@ const CoordinatorAttendance = () => {
         )}
 
         {/* Early Attendance Requests Panel */}
-        {!error && (
+        {!error && (earlyLoading || pendingEarlyRequests.length > 0) && (
           <EarlyAttendancePanel
             requests={pendingEarlyRequests}
             loading={earlyLoading}
             actionLoading={earlyActionLoading}
             onApprove={handleApproveEarly}
             onReject={handleRejectEarly}
+            onViewAttachment={openAttachmentModal}
           />
         )}
 
@@ -1614,7 +1630,33 @@ const CoordinatorAttendance = () => {
             <p className="text-sm text-red-400">Please refresh the page or try again later.</p>
           </div>
         )}
+         {attachmentModal.open && (
+                <div
+                  className="fixed inset-0 bg-black/70 z-9999 flex items-center justify-center p-4"
+                  onClick={closeAttachmentModal}
+                >
+                  <div
+                    className="bg-white rounded-2xl p-6 max-w-4xl w-full"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button onClick={closeAttachmentModal}>
+                      X
+                    </button>
 
+                    {isImageFile(attachmentModal.url) ? (
+                      <img
+                        src={attachmentModal.url}
+                        alt=""
+                        className="w-full max-h-[80vh] object-contain"
+                      />
+                    ) : (
+                      <a href={attachmentModal.url}>
+                        Open File
+                      </a>
+                    )}
+                  </div>
+                </div>
+              )}
       </div>
     </div>
   );
