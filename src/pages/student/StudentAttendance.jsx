@@ -61,6 +61,31 @@ const cssVar = (name, fallback = '22 163 74') => {
 };
 
 /* ═══════════════════════════════════════════════════════
+   TIME-IN vs SCHEDULE COMPARISON
+   Determines whether a given time_in is "earlier than schedule".
+   - Day / half-day shifts: simple minute comparison.
+   - Night shifts: a time_in is only treated as "early" when it falls
+     in the same evening window as start_time. A small clock value
+     (early-morning hours) when start_time is in the evening means the
+     time_in belongs to the wraparound side of the shift, not an early
+     check-in, so it is NOT flagged as early.
+═══════════════════════════════════════════════════════ */
+const isEarlyTimeIn = (timeInStr, startStr, isNightShift) => {
+  const ti = toMins(timeInStr);
+  const st = toMins(startStr);
+  if (ti == null || st == null) return false;
+
+  if (!isNightShift) return ti < st;
+
+  if (ti >= st) return false; // on/after scheduled start → not early
+  // Night shift: ti < st here. Only treat as early if still in the
+  // same "evening" window as the scheduled start, not the wraparound
+  // early-morning hours on the other side of midnight.
+  if (st >= 720 && ti < 720) return false;
+  return true;
+};
+
+/* ═══════════════════════════════════════════════════════
    EARLY ATTENDANCE LOGIC
    - Show "Pending" only when early_attendance exists AND early_status === "pending"
    - Everything else (approved, rejected, no request) → "—"
@@ -87,6 +112,34 @@ const analyzeRecord = (r) => {
   const shiftMins    = isNightShift ? (1440 - s + e) : (e - s);
   const isHalfDay    = shiftMins < 300;
   return { isNightShift, isHalfDay };
+};
+
+/* ═══════════════════════════════════════════════════════
+   DISPLAY TIME IN
+   Rules:
+   1. No time_in → null
+   2. Approved early attendance (early_attendance && early_status === 'approved')
+      → show the actual (early) time_in
+   3. Otherwise → compare time_in against start_time:
+        - If time_in is earlier than the schedule (rejected / pending /
+          no request, or just early minutes with no request at all)
+          → show start_time instead (early minutes don't count)
+        - Else → show the actual time_in
+   Supports day, half-day, and night shifts via analyzeRecord/isEarlyTimeIn.
+═══════════════════════════════════════════════════════ */
+const getDisplayTimeIn = (record) => {
+  if (!record?.time_in) return null;
+
+  if (record.early_attendance && record.early_status === 'approved') {
+    return record.time_in;
+  }
+
+  if (!record.start_time) return record.time_in;
+
+  const { isNightShift } = analyzeRecord(record);
+  return isEarlyTimeIn(record.time_in, record.start_time, isNightShift)
+    ? record.start_time
+    : record.time_in;
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -207,7 +260,9 @@ const MobileWorkflowCard = ({ record }) => {
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #e5e7eb' }}>
       {steps.map((step, i) => {
-        const val    = record[step.key];
+        // Time In uses the schedule-aware display value; every other
+        // step still reads its raw value directly from the record.
+        const val    = step.key === 'time_in' ? getDisplayTimeIn(record) : record[step.key];
         const isDone = !!val;
         const isOt   = step.key.startsWith('ot');
 
@@ -321,7 +376,9 @@ const exportDTR = async (history, totalDays, totalHours) => {
     const { isNightShift, isHalfDay } = analyzeRecord(r);
     const breakLabel  = isNightShift ? 'Meal' : 'Lunch';
     const total       = computeTotalHours(r);
-    const timeInStr   = formatTime(r.time_in) ?? '—';
+    // Time In: schedule-aware display value (early minutes without an
+    // approved request collapse back to start_time)
+    const timeInStr   = formatTime(getDisplayTimeIn(r)) ?? '—';
     // Schedule always from official start_time / end_time
     const scheduleStr = r.start_time && r.end_time
       ? `${formatTime(r.start_time)} → ${formatTime(r.end_time)}`
@@ -533,13 +590,15 @@ export default function StudentAttendance() {
                               <div className="mt-0.5"><ShiftBadge isNightShift={isNightShift} isHalfDay={isHalfDay} /></div>
                             </td>
 
-                            {/* Time In — actual clock-in time */}
+                            {/* Time In — schedule-aware effective time-in.
+                                Approved early attendance shows the real early time;
+                                rejected / pending / unrequested early minutes fall back to start_time. */}
                             <td className="px-5 py-4">
                               {r.time_in ? (
                                 <span className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5 whitespace-nowrap"
                                   style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#374151' }}>
                                   <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-500" />
-                                  {formatTime(r.time_in)}
+                                  {formatTime(getDisplayTimeIn(r))}
                                 </span>
                               ) : (
                                 <span className="text-gray-300 text-sm">—</span>
@@ -648,6 +707,7 @@ export default function StudentAttendance() {
                         {/*
                           MobileWorkflowCard always renders the schedule row (start_time → end_time).
                           early_status only affects the optional "Pending" badge inside — never hides the row.
+                          The Time In step inside it uses the same schedule-aware display value.
                         */}
                         <MobileWorkflowCard record={r} />
                       </div>
