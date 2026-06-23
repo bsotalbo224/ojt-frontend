@@ -255,6 +255,38 @@ const TimeOutCell = ({ record }) => {
 };
 
 /* ═══════════════════════════════════════════════════════
+   COMPACT DESKTOP TABLE BADGES
+   Lightweight, single-line badges for the slimmed-down desktop table.
+   Kept visually distinct (green / red / purple) but much smaller than
+   the original RangeCell/ScheduleCell/TimeOutCell components above,
+   which are still used by the mobile workflow card and are left as-is.
+═══════════════════════════════════════════════════════ */
+const CompactTimeBadge = ({ value, color, bg, border }) => {
+  if (!value) return <span className="text-gray-300 text-xs">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium rounded-md px-2 py-1 whitespace-nowrap"
+      style={{ background: bg, border: `1px solid ${border}`, color: '#374151' }}>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: color }} />
+      {formatTime(value)}
+    </span>
+  );
+};
+
+const CompactOtBadge = ({ otIn, otOut }) => {
+  if (!otIn && !otOut) return <span className="text-gray-300 text-xs">—</span>;
+  const s = formatTime(otIn);
+  const e = formatTime(otOut);
+  const label = s && e ? `${s} → ${e}` : (s || e || '—');
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium rounded-md px-2 py-1 whitespace-nowrap"
+      style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#374151' }}>
+      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-violet-500" />
+      {label}
+    </span>
+  );
+};
+
+/* ═══════════════════════════════════════════════════════
    MOBILE WORKFLOW CARD (dynamic)
 ═══════════════════════════════════════════════════════ */
 const MobileWorkflowCard = ({ record }) => {
@@ -321,12 +353,25 @@ const ShiftBadge = ({ isNightShift, isHalfDay }) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   PDF EXPORT — Adaptive Smart Layout (A4 portrait)
+   PDF EXPORT — Two-Column Masonry Layout (A4 portrait)
 
-   Mode A (Compact)      : month rows <= 8   → stacked full-width blocks
-   Mode B (Side-by-Side) : 9 <= rows <= 15   → two half-width blocks/page
-   Mode C (Split)        : rows > 15         → split into <=15-row chunks,
-                            each chunk forced into Side-by-Side pairing
+   Every month block (or, for months that exceed maxRowsPerBlock,
+   every <=15-row chunk of one) renders at the SAME half-page width,
+   but blocks are placed independently with true masonry packing:
+   each block goes into whichever of the two columns (left/right) is
+   currently shorter, so it stacks directly under whatever's already
+   there — not paired permanently with a same-index neighbor.
+
+     LEFT           RIGHT
+     Dec 2025       Jan 2026
+     Feb 2026       Mar 2026 (Part 1 of 2)
+     Apr 2026       Mar 2026 (Part 2 of 2)
+     ...
+
+   A tiny 1-row December block no longer leaves dead space under
+   itself just because it happened to be paired with a tall January
+   block — February fills that space instead. A new page only starts
+   once a block would overflow the column it's about to enter.
 ═══════════════════════════════════════════════════════ */
 
 // ---- Layout constants (mm, A4 portrait) ----
@@ -335,40 +380,33 @@ const PDF_PAGE_W     = 210;
 const PDF_PAGE_H     = 297;
 const PDF_CONTENT_W  = PDF_PAGE_W - PDF_MARGIN * 2;
 const PDF_USABLE_H   = PDF_PAGE_H - PDF_MARGIN * 2;
-const PDF_PAIR_GAP   = 6;
-const PDF_HALF_W     = (PDF_CONTENT_W - PDF_PAIR_GAP) / 2;
-const PDF_STACK_GAP  = 4;
-const PDF_ROW_H            = 4.2;
-const PDF_TABLE_HEAD_H     = 5;
-const PDF_BLOCK_BOTTOM_PAD = 2;
+const PDF_PAIR_GAP   = 6;                                   // horizontal gap between the left and right columns
+const PDF_HALF_W     = (PDF_CONTENT_W - PDF_PAIR_GAP) / 2;   // every block always renders at this width now
+const PDF_ROW_GAP_Y  = 4;                                    // vertical gap between two blocks stacked in the same column
+const PDF_ROW_H            = 3.6;
+const PDF_TABLE_HEAD_H     = 4;
+const PDF_BLOCK_BOTTOM_PAD = 1.3;
 // Header text block (school/title/student/company/month) before the table
 // starts. Must stay in sync with the literal cy increments inside
 // renderDTRBlock() — if you change one, change the other.
-const PDF_HEADER_TEXT_H    = 28.4; // 4 + 4 + 4.5 + 3.5 + 3.4 + 3.4 + 3.6 + 2
-const PDF_HEADER_SECTION_H = PDF_HEADER_TEXT_H + PDF_TABLE_HEAD_H; // 33.4
+const PDF_HEADER_TEXT_H    = 22.3; // 3 + 3 + 3.6 + 2.6 + 2.8 + 2.8 + 3.0 + 1.5
+const PDF_HEADER_SECTION_H = PDF_HEADER_TEXT_H + PDF_TABLE_HEAD_H; // 26.3
 
+// Final, fixed column set — exactly 5 columns, no more.
 const PDF_COLUMNS = [
-  { key: 'date',     w: 14 },
+  { key: 'date',     w: 12 },
   { key: 'timeIn',   w: 10 },
-  { key: 'lunchOut', w: 9  },
-  { key: 'lunchIn',  w: 9  },
-  { key: 'timeOut',  w: 13 },
-  { key: 'otIn',     w: 8  },
-  { key: 'otOut',    w: 8  },
-  { key: 'hours',    w: 13 },
-  { key: 'schedule', w: 16 },
+  { key: 'timeOut',  w: 10 },
+  { key: 'ot',       w: 18 },
+  { key: 'hours',    w: 8  },
 ];
 
 const PDF_COLUMN_LABELS = {
-  date:     { full: 'Date',      compact: 'Date'   },
-  timeIn:   { full: 'Time In',   compact: 'In'      },
-  lunchOut: { full: 'Lunch Out', compact: 'L. Out'  },
-  lunchIn:  { full: 'Lunch In',  compact: 'L. In'   },
-  timeOut:  { full: 'Time Out',  compact: 'Out'     },
-  otIn:     { full: 'OT In',     compact: 'OT In'   },
-  otOut:    { full: 'OT Out',    compact: 'OT Out'  },
-  hours:    { full: 'Hours',     compact: 'Hrs'     },
-  schedule: { full: 'Schedule',  compact: 'Sched.'  },
+  date:    'Date',
+  timeIn:  'In',
+  timeOut: 'Out',
+  ot:      'OT',
+  hours:   'Hrs',
 };
 
 // Compact "6:30a / 5:00p" time format — keeps the narrow side-by-side
@@ -383,6 +421,13 @@ const formatTimeShort = (t) => {
     .replace('AM', 'a')
     .replace('PM', 'p');
 };
+
+// "5:30p - 6:00p" when both OT bounds exist, otherwise an em-dash.
+// Collapsing OT In/Out into a single column halves the column count
+// without losing any information — half an OT pair on its own isn't
+// meaningful anyway.
+const formatOtRange = (otIn, otOut) =>
+  (otIn && otOut) ? `${formatTimeShort(otIn)} - ${formatTimeShort(otOut)}` : '—';
 
 // "Mon 5" — the month is already shown in the block header, so the date
 // cell itself only needs the weekday + day number.
@@ -415,14 +460,14 @@ const groupAttendanceByMonth = (history) => {
   return Array.from(map.values());
 };
 
-/* ---- splitLargeMonths: cap every block at maxRows; oversized months
-        become forced-pair parts (always rendered side-by-side, even if
-        the last leftover part is small) ---- */
+/* ---- splitLargeMonths: cap every block at maxRows so a single oversized
+        month becomes several <=maxRows chunks that can each pair
+        side-by-side with any other block in the grid ---- */
 const splitLargeMonths = (monthGroups, maxRows = 15) => {
   const blocks = [];
   monthGroups.forEach(({ label, records }) => {
     if (records.length <= maxRows) {
-      blocks.push({ label, records, rowCount: records.length, forcedPair: false });
+      blocks.push({ label, records, rowCount: records.length });
       return;
     }
     const totalParts = Math.ceil(records.length / maxRows);
@@ -432,18 +477,10 @@ const splitLargeMonths = (monthGroups, maxRows = 15) => {
         label: `${label} (Part ${i + 1} of ${totalParts})`,
         records: chunk,
         rowCount: chunk.length,
-        forcedPair: true,
       });
     }
   });
   return blocks;
-};
-
-/* ---- chooseLayoutMode: Mode A vs Mode B threshold for a single block ---- */
-const chooseLayoutMode = (rowCount) => {
-  if (rowCount <= 8) return 'small';
-  if (rowCount <= 15) return 'medium';
-  return 'large'; // unreachable post-split, kept as a safety net
 };
 
 /* ---- calculateBlockHeight: must mirror renderDTRBlock's cy increments
@@ -451,80 +488,72 @@ const chooseLayoutMode = (rowCount) => {
 const calculateBlockHeight = (rowCount) =>
   PDF_HEADER_SECTION_H + rowCount * PDF_ROW_H + PDF_BLOCK_BOTTOM_PAD;
 
-/* ---- getBlockColumns: scales the 9 fixed-weight columns to whatever
-        width a given block (full-width or half-width) gets ---- */
-const getBlockColumns = (x, width, isHalf) => {
+/* ---- getBlockColumns: scales the 5 fixed-weight columns to the
+        half-page width every block now renders at ---- */
+const getBlockColumns = (x, width) => {
   const totalWeight = PDF_COLUMNS.reduce((sum, c) => sum + c.w, 0);
   let curX = x;
   return PDF_COLUMNS.map((c) => {
     const colW  = (c.w / totalWeight) * width;
-    const label = isHalf ? PDF_COLUMN_LABELS[c.key].compact : PDF_COLUMN_LABELS[c.key].full;
-    const col   = { key: c.key, label, x: curX, colW };
+    const col   = { key: c.key, label: PDF_COLUMN_LABELS[c.key], x: curX, colW };
     curX += colW;
     return col;
   });
 };
 
-/* ---- renderDTRBlock: draws one compact-header + table block at (x, y)
-        and returns the y position right below it ---- */
-const renderDTRBlock = (doc, block, x, y, width, ctx, isHalf) => {
+/* ---- renderDTRBlock: draws one compact-header + 5-column table block
+        at (x, y) and returns the y position right below it ---- */
+const renderDTRBlock = (doc, block, x, y, width, ctx) => {
   const { c600, c50, c100, schoolName, studentName, companyName } = ctx;
   let cy = y;
 
-  doc.setDrawColor(...c600); doc.setLineWidth(0.6);
-  doc.line(x, cy, x + width, cy); cy += 4;
-
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(60, 60, 60);
-  doc.text(schoolName, x, cy); cy += 4;
-
-  doc.setFontSize(11.5); doc.setTextColor(...c600);
-  doc.text('DAILY TIME RECORD', x, cy); cy += 4.5;
-
-  doc.setDrawColor(...c100); doc.setLineWidth(0.3);
-  doc.line(x, cy, x + width, cy); cy += 3.5;
-
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(50, 50, 50);
-  doc.text(`Name: ${studentName}`, x, cy); cy += 3.4;
-  doc.text(`Company: ${companyName}`, x, cy); cy += 3.4;
-  doc.setFont('helvetica', 'bold');
-  doc.text(`Month: ${block.label}`, x, cy); cy += 3.6;
-
   doc.setDrawColor(...c600); doc.setLineWidth(0.5);
-  doc.line(x, cy, x + width, cy); cy += 2;
+  doc.line(x, cy, x + width, cy); cy += 3;
 
-  const cols     = getBlockColumns(x, width, isHalf);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(6.5); doc.setTextColor(60, 60, 60);
+  doc.text(schoolName, x, cy); cy += 3;
+
+  doc.setFontSize(9.5); doc.setTextColor(...c600);
+  doc.text('DAILY TIME RECORD', x, cy); cy += 3.6;
+
+  doc.setDrawColor(...c100); doc.setLineWidth(0.25);
+  doc.line(x, cy, x + width, cy); cy += 2.6;
+
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(6); doc.setTextColor(50, 50, 50);
+  doc.text(`Name: ${studentName}`, x, cy); cy += 2.8;
+  doc.text(`Company: ${companyName}`, x, cy); cy += 2.8;
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Month: ${block.label}`, x, cy); cy += 3.0;
+
+  doc.setDrawColor(...c600); doc.setLineWidth(0.4);
+  doc.line(x, cy, x + width, cy); cy += 1.5;
+
+  const cols     = getBlockColumns(x, width);
   const tableTop = cy;
 
   doc.setFillColor(...c600);
   doc.rect(x, cy, width, PDF_TABLE_HEAD_H, 'F');
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(isHalf ? 6.5 : 6.8); doc.setTextColor(255, 255, 255);
-  cols.forEach((col) => doc.text(col.label, col.x + 1, cy + 3.6));
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(6.2); doc.setTextColor(255, 255, 255);
+  cols.forEach((col) => doc.text(col.label, col.x + 1, cy + 2.9));
   cy += PDF_TABLE_HEAD_H;
 
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(isHalf ? 6 : 6.3);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(5.8);
   block.records.forEach((r, idx) => {
     if (idx % 2 === 0) { doc.setFillColor(...c50); doc.rect(x, cy, width, PDF_ROW_H, 'F'); }
 
-    const { isHalfDay } = analyzeRecord(r);
     const effectiveTimeIn = getDisplayTimeIn(r);
     const total = computeTotalHours(r);
 
     const values = {
-      date:     formatDayCell(r.date),
-      timeIn:   formatTimeShort(effectiveTimeIn),
-      lunchOut: isHalfDay ? '—' : formatTimeShort(r.lunch_break_start),
-      lunchIn:  isHalfDay ? '—' : formatTimeShort(r.lunch_break_end),
-      timeOut:  formatTimeShort(r.time_out),
-      otIn:     formatTimeShort(r.ot_time_in),
-      otOut:    formatTimeShort(r.ot_time_out),
-      hours:    total > 0 ? `${total}h` : '—',
-      schedule: (r.start_time && r.end_time)
-        ? `${formatTimeShort(r.start_time)}-${formatTimeShort(r.end_time)}`
-        : '—',
+      date:    formatDayCell(r.date),
+      timeIn:  formatTimeShort(effectiveTimeIn),
+      timeOut: formatTimeShort(r.time_out),
+      ot:      formatOtRange(r.ot_time_in, r.ot_time_out),
+      hours:   total > 0 ? `${total}h` : '—',
     };
 
     doc.setTextColor(30, 30, 30);
-    cols.forEach((col) => doc.text(values[col.key], col.x + 1, cy + PDF_ROW_H - 1.3));
+    cols.forEach((col) => doc.text(values[col.key], col.x + 1, cy + PDF_ROW_H - 1.1));
 
     cy += PDF_ROW_H;
   });
@@ -542,51 +571,59 @@ const renderDTRBlock = (doc, block, x, y, width, ctx, isHalf) => {
   return cy;
 };
 
-/* ---- buildExportPages: turns the block list into a page plan —
-        compact stacks for small months, side-by-side pairs for
-        medium/split ones. Switches "channel" cleanly between the two
-        so a page is never a confusing mix of both. ---- */
+/* ---- buildExportPages: TRUE two-column masonry packing.
+        Each block is placed independently — not permanently paired with
+        a neighbor — into whichever of the two column cursors (leftY /
+        rightY) is currently shorter. That's what lets a tiny 1-row
+        December block sit directly above a short February block in the
+        SAME column, while a taller January block fills the other column
+        on its own timeline, instead of every block being forced to share
+        a row height with whatever block happens to be next in the list.
+        A block only triggers a new page when it would overflow the
+        usable page height in the column it's about to go into; both
+        column cursors reset to 0 for the new page. ---- */
 const buildExportPages = (blocks) => {
   const pages = [];
-  let pendingLeft = null;
-  let compactPage = null;
+  let currentPage = null;
+  let leftY = 0;
+  let rightY = 0;
 
-  const flushCompactPage = () => {
-    if (compactPage && compactPage.blocks.length) pages.push({ type: 'compact', blocks: compactPage.blocks });
-    compactPage = null;
+  const startNewPage = () => {
+    currentPage = { blocks: [] };
+    pages.push(currentPage);
+    leftY = 0;
+    rightY = 0;
   };
-  const flushPendingAlone = () => {
-    if (pendingLeft) { pages.push({ type: 'pair', left: pendingLeft, right: null }); pendingLeft = null; }
-  };
+
+  startNewPage();
 
   blocks.forEach((block) => {
-    const mode = block.forcedPair ? 'medium' : chooseLayoutMode(block.rowCount);
+    const height = calculateBlockHeight(block.rowCount);
 
-    if (mode === 'medium' || mode === 'large') {
-      flushCompactPage();
-      if (pendingLeft) {
-        pages.push({ type: 'pair', left: pendingLeft, right: block });
-        pendingLeft = null;
-      } else {
-        pendingLeft = block;
-      }
-    } else {
-      flushPendingAlone();
-      if (!compactPage) compactPage = { blocks: [], usedHeight: 0 };
-      const h = calculateBlockHeight(block.rowCount) + PDF_STACK_GAP;
-      if (compactPage.blocks.length > 0 && compactPage.usedHeight + h > PDF_USABLE_H) {
-        flushCompactPage();
-        compactPage = { blocks: [], usedHeight: 0 };
-      }
-      compactPage.blocks.push(block);
-      compactPage.usedHeight += h;
+    // Pick the shorter column (ties go left, for a stable left-to-right flow).
+    let useLeft = leftY <= rightY;
+    let colY    = useLeft ? leftY : rightY;
+
+    // If placing it in its column would overflow the current page, start a
+    // fresh page (both columns reset to 0) before placing it.
+    if (colY + height > PDF_USABLE_H && (leftY > 0 || rightY > 0)) {
+      startNewPage();
+      useLeft = leftY <= rightY;
+      colY    = useLeft ? leftY : rightY;
     }
+
+    const x = useLeft ? PDF_MARGIN : PDF_MARGIN + PDF_HALF_W + PDF_PAIR_GAP;
+    const y = PDF_MARGIN + colY;
+
+    currentPage.blocks.push({ block, x, y, width: PDF_HALF_W, height });
+
+    // Advance just this column's cursor — the other column is untouched,
+    // which is the whole point: short blocks don't inherit a tall
+    // neighbor's height.
+    if (useLeft) leftY = colY + height + PDF_ROW_GAP_Y;
+    else         rightY = colY + height + PDF_ROW_GAP_Y;
   });
 
-  flushCompactPage();
-  flushPendingAlone();
-
-  if (pages.length === 0) pages.push({ type: 'compact', blocks: [] });
   return pages;
 };
 
@@ -616,17 +653,9 @@ const exportDTR = async (history, totalDays, totalHours) => {
   pages.forEach((page, idx) => {
     if (idx > 0) doc.addPage();
 
-    if (page.type === 'compact') {
-      let y = PDF_MARGIN;
-      page.blocks.forEach((block) => {
-        y = renderDTRBlock(doc, block, PDF_MARGIN, y, PDF_CONTENT_W, ctx, false) + PDF_STACK_GAP;
-      });
-    } else {
-      renderDTRBlock(doc, page.left, PDF_MARGIN, PDF_MARGIN, PDF_HALF_W, ctx, true);
-      if (page.right) {
-        renderDTRBlock(doc, page.right, PDF_MARGIN + PDF_HALF_W + PDF_PAIR_GAP, PDF_MARGIN, PDF_HALF_W, ctx, true);
-      }
-    }
+    page.blocks.forEach(({ block, x, y, width }) => {
+      renderDTRBlock(doc, block, x, y, width, ctx);
+    });
   });
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(...c600);
@@ -770,8 +799,6 @@ export default function StudentAttendance() {
     setSummaryLoading(true);
     try {
       const data = await getStudentAttendanceHistoryExport();
-      console.log("SUMMARY DATA:", data);
-      console.log("SUMMARY HISTORY:", data.history);
       if (!data.success) { console.error('Summary fetch error:', data); return; }
       const fullHistory = data.history;
       const hours = fullHistory.reduce((sum, r) => sum + computeTotalHours(r), 0);
@@ -913,16 +940,22 @@ export default function StudentAttendance() {
                 </div>
               )}
 
-              {/* Desktop Table */}
+              {/* Desktop Table — compact attendance-sheet style.
+                  Columns: Date | Time In | Time Out | OT | Hours.
+                  Schedule and Break columns removed; rows are tighter
+                  (px-3 / py-2.5) and use small single-line badges instead
+                  of the larger card-style cells. All underlying logic
+                  (effective time-in, shift detection, hours calc) is
+                  unchanged — only how it's displayed here changes. */}
               {attendanceHistory.length > 0 && (
                 <div className="hidden sm:block overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr style={{ background: `linear-gradient(to right, rgb(var(--primary-50)), rgb(var(--primary-100) / 0.6))` }}>
-                        {['Date', 'Time In', 'Time Out', 'Schedule', 'Break', 'Overtime', 'Total Hours'].map((label) => (
-                          <th key={label} className="px-5 py-4 text-left text-sm font-semibold text-gray-700 whitespace-nowrap">
-                            {label === 'Total Hours'
-                              ? <div className="flex items-center gap-1.5"><Timer className="w-3.5 h-3.5 text-gray-500" />{label}</div>
+                        {['Date', 'In', 'Out', 'OT', 'Hours'].map((label) => (
+                          <th key={label} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 whitespace-nowrap">
+                            {label === 'Hours'
+                              ? <div className="flex items-center gap-1"><Timer className="w-3 h-3 text-gray-500" />{label}</div>
                               : label}
                           </th>
                         ))}
@@ -933,78 +966,42 @@ export default function StudentAttendance() {
                         const total                        = computeTotalHours(r);
                         // analyzeRecord always uses start_time / end_time — unaffected by early_status
                         const { isNightShift, isHalfDay } = analyzeRecord(r);
-                        const breakLabel                   = isNightShift ? 'Meal' : 'Lunch';
                         const effectiveTimeIn               = getDisplayTimeIn(r);
-                        const autoDeduct                   = !isHalfDay && !r.lunch_break_start && r.time_in && r.time_out && msToHrs(msDiff(effectiveTimeIn, r.time_out) ?? 0) >= 5;
 
                         return (
                           <tr key={getRecordKey(r)} className="dtr-row">
-                            {/* Date + shift badge */}
-                            <td className="px-5 py-4 whitespace-nowrap">
-                              <p className="text-sm font-semibold text-gray-800">{formatDateLong(r.date)}</p>
+                            {/* Date + shift badge below it */}
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <p className="text-xs font-semibold text-gray-800">{formatDateLong(r.date)}</p>
                               <div className="mt-0.5"><ShiftBadge isNightShift={isNightShift} isHalfDay={isHalfDay} /></div>
                             </td>
 
                             {/* Time In — schedule-aware effective time-in.
                                 Approved early attendance shows the real early time;
                                 rejected / pending / unrequested early minutes fall back to start_time. */}
-                            <td className="px-5 py-4">
-                              {r.time_in ? (
-                                <span className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5 whitespace-nowrap"
-                                  style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#374151' }}>
-                                  <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-500" />
-                                  {formatTime(getDisplayTimeIn(r))}
-                                </span>
-                              ) : (
-                                <span className="text-gray-300 text-sm">—</span>
-                              )}
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <CompactTimeBadge value={effectiveTimeIn} color="#10b981" bg="#f0fdf4" border="#bbf7d0" />
                             </td>
 
                             {/* Time Out */}
-                            <td className="px-5 py-4">
-                              <TimeOutCell record={r} />
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <CompactTimeBadge value={r.time_out} color="#ef4444" bg="#fef2f2" border="#fecaca" />
                             </td>
 
-                            {/* Schedule — ALWAYS from start_time → end_time.
-                                Never hidden or altered by early_attendance / early_status. */}
-                            <td className="px-5 py-4">
-                              <ScheduleCell record={r} />
+                            {/* Overtime — "OT Start → OT End", or — if none */}
+                            <td className="px-3 py-2.5 whitespace-nowrap">
+                              <CompactOtBadge otIn={r.ot_time_in} otOut={r.ot_time_out} />
                             </td>
 
-                            {/* Break (dynamic label, hidden for half-day) */}
-                            <td className="px-5 py-4">
-                              {isHalfDay ? (
-                                <span className="text-xs text-gray-400 italic">N/A</span>
-                              ) : r.lunch_break_start ? (
-                                <div>
-                                  <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-0.5">{breakLabel}</p>
-                                  <RangeCell start={r.lunch_break_start} end={r.lunch_break_end} color="#f59e0b" />
-                                </div>
-                              ) : autoDeduct ? (
-                                <span className="inline-flex items-center gap-1.5 text-xs font-medium rounded-lg px-2.5 py-1.5"
-                                  style={{ background: '#fafafa', border: '1px solid #e5e7eb', color: '#9ca3af' }}>
-                                  <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-gray-300" />
-                                  Auto-deducted 1 hr
-                                </span>
-                              ) : (
-                                <span className="text-gray-300 text-sm">—</span>
-                              )}
-                            </td>
-
-                            {/* Overtime */}
-                            <td className="px-5 py-4">
-                              <RangeCell start={r.ot_time_in} end={r.ot_time_out} color="#8b5cf6" />
-                            </td>
-
-                            {/* Total Hours */}
-                            <td className="px-5 py-4">
+                            {/* Total Hours — compact pill */}
+                            <td className="px-3 py-2.5 whitespace-nowrap">
                               {total > 0 ? (
-                                <span className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-full"
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-1 rounded-full"
                                   style={{ backgroundColor: `rgb(var(--primary-100))`, color: `rgb(var(--primary-700))` }}>
                                   <Timer className="w-3 h-3" />{total} hrs
                                 </span>
                               ) : (
-                                <span className="text-sm text-gray-400">—</span>
+                                <span className="text-xs text-gray-400">—</span>
                               )}
                             </td>
                           </tr>
