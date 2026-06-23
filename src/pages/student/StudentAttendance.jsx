@@ -770,6 +770,8 @@ export default function StudentAttendance() {
     setSummaryLoading(true);
     try {
       const data = await getStudentAttendanceHistoryExport();
+      console.log("SUMMARY DATA:", data);
+      console.log("SUMMARY HISTORY:", data.history);
       if (!data.success) { console.error('Summary fetch error:', data); return; }
       const fullHistory = data.history;
       const hours = fullHistory.reduce((sum, r) => sum + computeTotalHours(r), 0);
