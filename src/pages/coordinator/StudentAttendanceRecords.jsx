@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft, Calendar, MapPin, AlertTriangle, Eye, Filter,
-  CheckCircle, Clock, X, Navigation,
+  CheckCircle, Clock, X, Navigation, XCircle, Paperclip, ExternalLink,
   ChevronDown, TrendingUp, LogIn, LogOut, Coffee, UtensilsCrossed, Moon, Sunrise,
 } from 'lucide-react';
 import {
@@ -129,6 +129,32 @@ const WORKFLOW_CONFIG = {
   },
 };
 
+// ─── Early attendance status config ───────────────────────────────────────────
+
+const EARLY_STATUS_STYLES = {
+  approved: {
+    label: 'Approved',
+    badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    cardBorderClass: 'border-emerald-100',
+    cardBgClass: 'bg-emerald-50/40',
+    icon: CheckCircle,
+  },
+  pending: {
+    label: 'Pending',
+    badgeClass: 'bg-amber-50 text-amber-700 border-amber-200',
+    cardBorderClass: 'border-amber-100',
+    cardBgClass: 'bg-amber-50/40',
+    icon: Clock,
+  },
+  rejected: {
+    label: 'Rejected',
+    badgeClass: 'bg-red-50 text-red-700 border-red-200',
+    cardBorderClass: 'border-red-100',
+    cardBgClass: 'bg-red-50/40',
+    icon: XCircle,
+  },
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const resolveFullName = (r) => {
@@ -201,6 +227,46 @@ const timeToMins = (t) => {
 };
 
 /**
+ * Early attendance helpers.
+ *
+ * Expected record fields (set by the early-attendance workflow):
+ *  - early_attendance              : truthy flag marking this record as an early time-in
+ *  - early_status                  : 'pending' | 'approved' | 'rejected'
+ *  - early_reason                  : free-text reason supplied by the student
+ *  - early_attachment_url / attachment_url : optional proof attachment
+ */
+const hasEarlyAttendance = (record) =>
+  Boolean(record?.early_attendance) || Boolean(record?.early_status) || Boolean(record?.early_reason);
+
+/**
+ * True only when the early time-in should NOT be counted toward hours —
+ * i.e. it's pending/rejected AND the actual time-in was genuinely earlier
+ * than the scheduled start. Approved early attendance always counts the
+ * actual time, so it never needs an override.
+ */
+const isEarlyOverrideApplicable = (record) => {
+  if (!hasEarlyAttendance(record)) return false;
+  if (record.early_status === 'approved') return false;
+  const actualMins = timeToMins(record.time_in);
+  const scheduleMins = timeToMins(record.start_time);
+  if (actualMins === null || scheduleMins === null) return false;
+  return actualMins < scheduleMins;
+};
+
+/**
+ * The time-in that should actually be used for hour calculations:
+ *  - no early attendance, or approved early attendance → raw time_in
+ *  - rejected/pending AND actually early → scheduled start_time instead
+ */
+const getEffectiveTimeIn = (record) =>
+  isEarlyOverrideApplicable(record) ? record.start_time : record.time_in;
+
+const isImageAttachment = (url) => {
+  if (!url || typeof url !== 'string') return false;
+  return /\.(jpe?g|png|gif|webp|bmp|svg)(\?.*)?$/i.test(url.trim());
+};
+
+/**
  * Determine the shift type from schedule start_time / end_time.
  *
  * Rules:
@@ -231,15 +297,19 @@ const analyzeShift = (record) => {
 };
 
 /**
- * Total hours computation — now schedule-aware.
+ * Total hours computation — schedule-aware AND early-attendance-aware.
  *
  * Half Day  → no lunch deduction, no auto-deduct
  * Night Shift → deduct meal break if present; no auto-deduct
  * Day Shift / unknown → deduct lunch if present; auto-deduct 1h if >= 5h work and no lunch
+ *
+ * Work minutes are computed from getEffectiveTimeIn(), not the raw time_in,
+ * so rejected/pending early attendance is counted from the scheduled start
+ * instead of the actual (earlier) tap-in time.
  */
 const computeTotalHours = (r) => {
   const shiftType = analyzeShift(r);
-  const workMins = computeSessionMinutes(r.time_in, r.time_out);
+  const workMins = computeSessionMinutes(getEffectiveTimeIn(r), r.time_out);
   const lunchMins = computeSessionMinutes(r.lunch_break_start, r.lunch_break_end);
   const otMins = computeSessionMinutes(r.ot_time_in, r.ot_time_out);
 
@@ -303,6 +373,52 @@ const ShiftBadge = ({ shiftType }) => {
     >
       {iconMap[shiftType]}
       {config.label}
+    </span>
+  );
+};
+
+// ─── EarlyTimeInTooltip ────────────────────────────────────────────────────────
+
+/**
+ * Wraps the Work Hours cell for records whose displayed time-in has been
+ * overridden because of rejected/pending early attendance. The cell still
+ * shows the counted (scheduled) time — this tooltip is purely informational
+ * on hover and never changes the underlying hours math.
+ */
+const EarlyTimeInTooltip = ({ record, children }) => {
+  const isPending = record.early_status === 'pending';
+  const actualTime = formatTime(record.time_in) ?? '—';
+  const countedTime = formatTime(getEffectiveTimeIn(record)) ?? '—';
+  const statusLabel = isPending ? 'Pending' : 'Rejected';
+  const accent = isPending
+    ? { border: 'border-amber-200', dot: 'bg-amber-400', text: 'text-amber-700' }
+    : { border: 'border-red-200', dot: 'bg-red-400', text: 'text-red-700' };
+
+  return (
+    <span className="relative inline-flex group/earlytip">
+      <span className="inline-flex items-center gap-1.5 cursor-help">
+        {children}
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${accent.dot}`} />
+      </span>
+      <span
+        className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-50
+          opacity-0 invisible group-hover/earlytip:opacity-100 group-hover/earlytip:visible
+          translate-y-1 group-hover/earlytip:translate-y-0 transition-all duration-150 ease-out"
+      >
+        <span className={`block rounded-lg bg-white shadow-lg border ${accent.border} px-3 py-2 whitespace-nowrap text-left`}>
+          <span className="flex items-center gap-1.5 mb-1">
+            <span className={`w-1.5 h-1.5 rounded-full ${accent.dot}`} />
+            <span className={`text-[11px] font-bold ${accent.text}`}>Early Attendance · {statusLabel}</span>
+          </span>
+          <span className="block text-[11px] text-gray-600">
+            Actual Time-In: <span className="text-gray-800 font-semibold">{actualTime}</span>
+          </span>
+          <span className="block text-[11px] text-gray-600">
+            {isPending ? 'Temporarily Counted As' : 'Counted Time-In'}: <span className="text-gray-800 font-semibold">{countedTime}</span>
+          </span>
+        </span>
+        <span className={`absolute left-1/2 -translate-x-1/2 top-full -mt-1.5 w-3 h-3 bg-white border-r border-b ${accent.border} rotate-45`} />
+      </span>
     </span>
   );
 };
@@ -492,6 +608,87 @@ const MapPlaceholder = ({ latitude, longitude }) => {
   );
 };
 
+// ─── EarlyAttendanceCard ────────────────────────────────────────────────────────
+
+/**
+ * Full audit detail for early attendance, shown in the modal. Surfaces the
+ * actual tap-in time, the counted time used in hour math, the coordinator's
+ * decision, the student's reason, and any supporting attachment.
+ */
+const EarlyAttendanceCard = ({ record }) => {
+  if (!hasEarlyAttendance(record)) return null;
+
+  const status = EARLY_STATUS_STYLES[record.early_status] ?? EARLY_STATUS_STYLES.pending;
+  const Icon = status.icon;
+  const actualTime = formatTime(record.time_in) ?? '—';
+  const countedTime = formatTime(getEffectiveTimeIn(record)) ?? '—';
+  const overrideApplies = isEarlyOverrideApplicable(record);
+  const attachmentUrl = record.early_attachment_url || record.attachment_url || record.early_attachment || null;
+  const countedLabel = record.early_status === 'pending' ? 'Temporarily Counted As' : 'Counted Time-In';
+
+  return (
+    <section>
+      <div className="flex items-center gap-2 mb-3">
+        <Sunrise className="w-4 h-4" style={{ color: `rgb(var(--primary-500))` }} />
+        <h3 className="text-sm font-bold uppercase tracking-wider" style={{ color: `rgb(var(--primary-800))` }}>Early Attendance</h3>
+      </div>
+      <div className={`rounded-xl p-4 space-y-3 border ${status.cardBorderClass} ${status.cardBgClass}`}>
+        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${status.badgeClass}`}>
+          <Icon className="w-3 h-3" />Status: {status.label}
+        </span>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white rounded-lg px-3 py-2" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: `rgb(var(--primary-400))` }}>Actual Time-In</p>
+            <p className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>{actualTime}</p>
+          </div>
+          <div className="bg-white rounded-lg px-3 py-2" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: `rgb(var(--primary-400))` }}>{countedLabel}</p>
+            <p className="text-sm font-semibold" style={{ color: `rgb(var(--primary-800))` }}>{countedTime}</p>
+          </div>
+        </div>
+
+        {record.early_status !== 'approved' && !overrideApplies && (
+          <p className="text-[11px] italic" style={{ color: `rgb(var(--primary-400))` }}>
+            Actual time-in wasn't earlier than the scheduled start, so no override was needed.
+          </p>
+        )}
+
+        {record.early_reason && (
+          <div className="bg-white rounded-lg px-3 py-2" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-1" style={{ color: `rgb(var(--primary-400))` }}>Reason</p>
+            <p className="text-sm" style={{ color: `rgb(var(--primary-700))` }}>{record.early_reason}</p>
+          </div>
+        )}
+
+        {attachmentUrl && (
+          <div className="bg-white rounded-lg px-3 py-2" style={{ border: `1px solid rgb(var(--primary-100))` }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: `rgb(var(--primary-400))` }}>Attachment</p>
+            {isImageAttachment(attachmentUrl) ? (
+              <a href={attachmentUrl} target="_blank" rel="noopener noreferrer" className="block group w-fit">
+                <img
+                  src={attachmentUrl}
+                  alt="Early attendance attachment"
+                  className="max-h-40 rounded-lg group-hover:opacity-90 transition-opacity"
+                  style={{ border: `1px solid rgb(var(--primary-100))` }}
+                />
+              </a>
+            ) : (
+              <a
+                href={attachmentUrl} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold"
+                style={{ color: `rgb(var(--primary-600))` }}
+              >
+                <Paperclip className="w-3.5 h-3.5" />View Attachment<ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+};
+
 // ─── DetailsModal ─────────────────────────────────────────────────────────────
 
 const DetailsModal = ({ record, onClose }) => {
@@ -589,7 +786,7 @@ const DetailsModal = ({ record, onClose }) => {
                 </div>
               </div>
 
-              <WorkflowDetail label="Work Schedule" workflowKey="work" timeIn={record.time_in} timeOut={record.time_out} />
+              <WorkflowDetail label="Work Schedule" workflowKey="work" timeIn={getEffectiveTimeIn(record)} timeOut={record.time_out} />
               {showBreak && (
                 <WorkflowDetail
                   label={breakLabel}
@@ -611,6 +808,9 @@ const DetailsModal = ({ record, onClose }) => {
               )}
             </div>
           </section>
+
+          {/* Early Attendance Audit */}
+          <EarlyAttendanceCard record={record} />
 
           {/* Location Data */}
           <section>
@@ -707,7 +907,7 @@ const EmptyTableState = ({ hasFilter }) => (
           {hasFilter ? 'No matching records' : 'No attendance records yet'}
         </p>
         <p className="text-sm max-w-xs" style={{ color: `rgb(var(--primary-500))` }}>
-          {hasFilter ? 'Try adjusting your search or filter.' : 'Work attendance records will appear once the student starts logging.'}
+          {hasFilter ? 'Try adjusting your filters.' : 'Work attendance records will appear once the student starts logging.'}
         </p>
       </div>
     </td>
@@ -759,10 +959,10 @@ const StudentAttendance = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [updatingIds, setUpdatingIds] = useState(new Set());
+  const [updateError, setUpdateError] = useState(null);
 
   // Track highlight animation phase: 'active' | 'settle' | null
   const [highlightPhase, setHighlightPhase] = useState(null);
@@ -830,8 +1030,16 @@ const StudentAttendance = () => {
     return () => highlightTimers.current.forEach(clearTimeout);
   }, [highlightAttendanceId, loading, allRecords]);
 
+  // Auto-clear the status-update error banner after a few seconds
+  useEffect(() => {
+    if (!updateError) return;
+    const t = setTimeout(() => setUpdateError(null), 5000);
+    return () => clearTimeout(t);
+  }, [updateError]);
+
   const handleStatusChange = useCallback(async (attendanceId, newStatus) => {
     setUpdatingIds((prev) => new Set(prev).add(attendanceId));
+    setUpdateError(null);
     try {
       await updateAttendanceLocationStatus(
         attendanceId,
@@ -842,6 +1050,7 @@ const StudentAttendance = () => {
       );
     } catch (err) {
       console.error('Status update failed:', err);
+      setUpdateError('Failed to update location status. Please try again.');
     } finally {
       setUpdatingIds((prev) => { const n = new Set(prev); n.delete(attendanceId); return n; });
     }
@@ -861,9 +1070,7 @@ const StudentAttendance = () => {
   }), [allRecords]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
     return allRecords.filter((r) => {
-      const matchesSearch = !q || formatDate(r.attendance_date).toLowerCase().includes(q);
       const matchesDate = !dateFilter || r.attendance_date?.startsWith(dateFilter);
       const matchesStatus =
         statusFilter === 'all' ||
@@ -875,12 +1082,12 @@ const StudentAttendance = () => {
       const isHighlightTarget = highlightAttendanceId != null &&
         String(r.attendance_id) === String(highlightAttendanceId);
 
-      return isHighlightTarget || (matchesSearch && matchesDate && matchesStatus);
+      return isHighlightTarget || (matchesDate && matchesStatus);
     });
-  }, [allRecords, search, dateFilter, statusFilter, highlightAttendanceId]);
+  }, [allRecords, dateFilter, statusFilter, highlightAttendanceId]);
 
-  const hasFilter = search.trim() !== '' || dateFilter !== '' || statusFilter !== 'all';
-  const clearFilters = useCallback(() => { setSearch(''); setDateFilter(''); setStatusFilter('all'); }, []);
+  const hasFilter = dateFilter !== '' || statusFilter !== 'all';
+  const clearFilters = useCallback(() => { setDateFilter(''); setStatusFilter('all'); }, []);
 
   // Table column headers
   const TABLE_HEADERS = [
@@ -1008,6 +1215,25 @@ const StudentAttendance = () => {
                 </div>
               </div>
 
+              {updateError && (
+                <div
+                  role="alert"
+                  className="mt-3 flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-medium"
+                >
+                  <span className="flex items-center gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    {updateError}
+                  </span>
+                  <button
+                    onClick={() => setUpdateError(null)}
+                    aria-label="Dismiss error"
+                    className="shrink-0 text-red-400 hover:text-red-600 transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               {hasFilter && !loading && (
                 <p className="text-xs mt-2.5 flex items-center gap-1.5" aria-live="polite" style={{ color: `rgb(var(--primary-500))` }}>
                   <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: `rgb(var(--primary-400))` }} />
@@ -1065,6 +1291,7 @@ const StudentAttendance = () => {
                       const config = LOCATION_CONFIG[rec.location_status] ?? LOCATION_CONFIG.verified;
                       const isUpdating = updatingIds.has(rec.attendance_id);
                       const shiftType = analyzeShift(rec);
+                      const earlyOverride = isEarlyOverrideApplicable(rec);
 
                       const showLunchCol = shiftType !== SHIFT_TYPES.HALF_DAY;
                       const lunchKey = shiftType === SHIFT_TYPES.NIGHT_SHIFT ? 'meal' : 'lunch';
@@ -1118,7 +1345,13 @@ const StudentAttendance = () => {
 
                           {/* Work Hours */}
                           <td className="py-4 px-4 whitespace-nowrap">
-                            <WorkflowStatus timeIn={rec.time_in} timeOut={rec.time_out} workflowKey="work" />
+                            {earlyOverride ? (
+                              <EarlyTimeInTooltip record={rec}>
+                                <WorkflowStatus timeIn={getEffectiveTimeIn(rec)} timeOut={rec.time_out} workflowKey="work" />
+                              </EarlyTimeInTooltip>
+                            ) : (
+                              <WorkflowStatus timeIn={getEffectiveTimeIn(rec)} timeOut={rec.time_out} workflowKey="work" />
+                            )}
                           </td>
 
                           {/* Lunch / Meal Break */}

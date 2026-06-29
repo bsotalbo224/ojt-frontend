@@ -105,11 +105,14 @@ const analyzeSchedule = (record) => {
   return 'day';
 };
 
+// Fix 2: Distinguish missing time-in from missing time-out.
+// Records with no time_in are treated as missing_timein.
+// This should be rare and usually indicates incomplete or corrupted attendance data.
 const computeAttendanceStatus = (record) => {
   if (record.location_status === 'flagged') return 'flagged';
   const hasIn = record.time_in && !isMissingTimeOut(record.time_in);
   const hasOut = record.time_out && !isMissingTimeOut(record.time_out);
-  if (!hasIn) return 'missing_timeout';
+  if (!hasIn) return 'missing_timein';
   if (hasIn && !hasOut) {
     const recDate = normalizeDate(record.attendance_date);
     const today = todayString();
@@ -139,6 +142,11 @@ const groupByStudent = (records) => {
   return Object.values(map);
 };
 
+// Fix 2 (image detection): supports query-string URLs (e.g. signed Cloudinary/S3 URLs)
+const isImageFile = (url = '') => {
+  return /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(url);
+};
+
 // ─── Custom Calendar Popover ──────────────────────────────────────────────────
 
 const CalendarPopover = ({ selectedDate, onSelect, onClear }) => {
@@ -149,10 +157,10 @@ const CalendarPopover = ({ selectedDate, onSelect, onClear }) => {
 
   const displayLabel = selectedDate
     ? new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
     : 'All dates';
 
   useEffect(() => {
@@ -345,7 +353,12 @@ const StudentCard = ({ student, onClick }) => {
   const { records, full_name } = student;
   const verified = records.filter((r) => r.location_status === 'verified').length;
   const flagged = records.filter((r) => r.location_status === 'flagged').length;
-  const missingOut = records.filter((r) => isMissingTimeOut(r.time_out)).length;
+  // Exclude flagged records from missing time-out count (they belong in Flagged only)
+  const missingOut = records.filter(
+    (r) =>
+      r.location_status !== 'flagged' &&
+      isMissingTimeOut(r.time_out)
+  ).length;
 
   return (
     <div
@@ -559,6 +572,12 @@ const STATUS_CFG = {
     icon: CheckCircle,
     className: 'bg-sky-50 text-sky-700 border border-sky-200',
   },
+  // Fix 2: separate badge for missing time-in vs missing time-out
+  missing_timein: {
+    label: 'Missing Time-In',
+    icon: AlertTriangle,
+    className: 'bg-red-50 text-red-700 border border-red-200',
+  },
   missing_timeout: {
     label: 'Missing Time-Out',
     icon: XCircle,
@@ -601,7 +620,9 @@ const AttendanceTable = ({ records, onRowClick }) => {
   const loadMore = useCallback(() => {
     if (loadingMore || visibleCount >= records.length) return;
     setLoadingMore(true);
-    // Simulate a brief async tick so skeleton rows show
+    // 300 ms delay is intentional: it lets skeleton rows render and gives the
+    // browser a paint frame before appending more DOM nodes, preventing jank
+    // during rapid scroll on large record sets.
     setTimeout(() => {
       setVisibleCount((c) => Math.min(c + ROWS_PER_PAGE, records.length));
       setLoadingMore(false);
@@ -695,7 +716,10 @@ const AttendanceTable = ({ records, onRowClick }) => {
 
                   return (
                     <tr
-                      key={`${record.student_id}-${record.attendance_date}-${idx}`}
+                      // Fix 1: stable key based on attendance_id; falls back to
+                      // composite string only when attendance_id is absent so
+                      // filtering and lazy rendering never reuse wrong rows.
+                      key={record.attendance_id ?? `${record.student_id}-${record.attendance_date}-${idx}`}
                       className="transition-colors cursor-pointer"
                       style={{ borderBottom: `1px solid rgb(var(--primary-50))` }}
                       onMouseEnter={(e) =>
@@ -732,10 +756,10 @@ const AttendanceTable = ({ records, onRowClick }) => {
                         >
                           {record.attendance_date
                             ? new Date(record.attendance_date).toLocaleDateString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })
+                                month: 'short',
+                                day: 'numeric',
+                                year: 'numeric',
+                              })
                             : '—'}
                         </span>
                       </td>
@@ -872,8 +896,6 @@ const AttendanceTable = ({ records, onRowClick }) => {
 };
 
 // ─── Early Attendance Panel ───────────────────────────────────────────────────
-// Displays pending early-attendance requests for the coordinator's department,
-// including an optional attachment link, and exposes approve/reject actions.
 
 const EarlyAttendancePanel = ({
   requests,
@@ -881,7 +903,7 @@ const EarlyAttendancePanel = ({
   actionLoading,
   onApprove,
   onReject,
-  onViewAttachment
+  onViewAttachment,
 }) => {
   if (!loading && requests.length === 0) {
     return null;
@@ -926,7 +948,6 @@ const EarlyAttendancePanel = ({
       {/* Panel Body */}
       <div className="p-5 space-y-4">
         {loading ? (
-          /* Skeleton */
           <div className="animate-pulse space-y-3">
             <div className="h-4 rounded w-48" style={{ backgroundColor: '#fef3c7' }} />
             <div className="h-4 rounded w-64" style={{ backgroundColor: '#fef3c7' }} />
@@ -934,9 +955,6 @@ const EarlyAttendancePanel = ({
           </div>
         ) : (
           requests.map((request) => {
-            // Defensive id fallback: prefer attendance_id, fall back to id if the
-            // backend shape ever changes, and finally null so downstream checks
-            // (and the disabled-button guard below) never operate on `undefined`.
             const attendanceId = request.attendance_id ?? request.id ?? null;
 
             const approving =
@@ -949,16 +967,19 @@ const EarlyAttendancePanel = ({
 
             const timeIn = formatTime(request.time_in);
             const scheduleStart = formatTime(request.start_time);
-
-            // Safe fallback rendering for reason text
             const reasonText = request.early_reason?.trim() || 'No reason provided';
-
-            // ── Attachment handling ──
-            // Backend may return early_attachment_url / early_attachment_name as
-            // null/undefined if the student didn't upload a file. Treat both as optional.
             const attachmentUrl = request.early_attachment_url || null;
             const attachmentName = request.early_attachment_name?.trim() || 'Attachment';
             const hasAttachment = !!attachmentUrl;
+
+            // Minutes-early badge: how far ahead of the scheduled start the
+            // student timed in. Only meaningful when both values are present
+            // and the time-in genuinely precedes the scheduled start.
+            const timeInMins = parseTimeToMinutes(request.time_in);
+            const scheduleMins = parseTimeToMinutes(request.start_time);
+            const minutesEarly =
+              timeInMins !== null && scheduleMins !== null ? scheduleMins - timeInMins : null;
+            const showMinutesEarly = minutesEarly !== null && minutesEarly > 0;
 
             return (
               <div
@@ -983,17 +1004,28 @@ const EarlyAttendancePanel = ({
                   {/* Middle: Request Details */}
                   <div className="flex-1 space-y-2">
                     <div className="flex flex-wrap gap-4">
-                      {/* Time In */}
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: '#b45309' }}>
                           Time In
                         </p>
-                        <p className="text-sm font-bold" style={{ color: '#92400e' }}>
-                          {timeIn ?? '—'}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-bold" style={{ color: '#92400e' }}>
+                            {timeIn ?? '—'}
+                          </p>
+                          {showMinutesEarly && (
+                            <span
+                              className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+                              style={{
+                                backgroundColor: '#fde68a',
+                                color: '#92400e',
+                                border: '1px solid #fbbf24',
+                              }}
+                            >
+                              {minutesEarly} {minutesEarly === 1 ? 'min' : 'mins'} early
+                            </span>
+                          )}
+                        </div>
                       </div>
-
-                      {/* Scheduled Start */}
                       <div>
                         <p className="text-[10px] font-semibold uppercase tracking-wide mb-0.5" style={{ color: '#b45309' }}>
                           Schedule
@@ -1018,8 +1050,6 @@ const EarlyAttendancePanel = ({
                     </div>
 
                     {/* Attachment Section */}
-                    {/* Shows a clickable "View Attachment" link when a URL exists,
-                        otherwise falls back to a plain "No attachment" label. */}
                     <div
                       className="rounded-lg px-3 py-2 flex items-center justify-between gap-2"
                       style={{ backgroundColor: '#fef9c3', border: '1px solid #fde68a' }}
@@ -1046,24 +1076,18 @@ const EarlyAttendancePanel = ({
                           }}
                           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-colors duration-150"
                           style={{ backgroundColor: '#d97706', color: '#fff' }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.backgroundColor = '#b45309')
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.backgroundColor = '#d97706')
-                          }
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#b45309')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#d97706')}
                         >
                           <Paperclip className="w-3.5 h-3.5 shrink-0" />
                           View Attachment
                         </a>
                       )}
-
                     </div>
                   </div>
 
                   {/* Right: Action Buttons */}
                   <div className="flex lg:flex-col gap-2 shrink-0">
-                    {/* Approve action: calls onApprove -> handleApproveEarly -> approveEarlyAttendance(attendanceId) */}
                     <button
                       onClick={() => onApprove(attendanceId)}
                       disabled={isProcessing || !attendanceId}
@@ -1080,7 +1104,6 @@ const EarlyAttendancePanel = ({
                       {approving ? 'Approving…' : 'Approve'}
                     </button>
 
-                    {/* Reject action: calls onReject -> handleRejectEarly -> rejectEarlyAttendance(attendanceId) */}
                     <button
                       onClick={() => onReject(attendanceId)}
                       disabled={isProcessing || !attendanceId}
@@ -1128,27 +1151,15 @@ const CoordinatorAttendance = () => {
   const [attachmentModal, setAttachmentModal] = useState({
     open: false,
     url: null,
-    name: null
+    name: null,
   });
 
   const openAttachmentModal = (url, name) => {
-    setAttachmentModal({
-      open: true,
-      url,
-      name
-    });
+    setAttachmentModal({ open: true, url, name });
   };
 
   const closeAttachmentModal = () => {
-    setAttachmentModal({
-      open: false,
-      url: null,
-      name: null
-    });
-  };
-
-  const isImageFile = (url = "") => {
-    return /\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+    setAttachmentModal({ open: false, url: null, name: null });
   };
 
   // Auto-clear success message after 3 s
@@ -1165,7 +1176,7 @@ const CoordinatorAttendance = () => {
     return () => clearTimeout(timer);
   }, [actionError]);
 
-  // ─── Reusable attendance loader ───────────────────────────────────────────
+  // ─── Attendance loader ────────────────────────────────────────────────────
 
   const loadAttendance = useCallback(async () => {
     setLoading(true);
@@ -1182,9 +1193,6 @@ const CoordinatorAttendance = () => {
   }, []);
 
   // ─── Early attendance loader ──────────────────────────────────────────────
-  // Reads the pending early-attendance requests. The API response shape can be
-  // either `{ data: [...] }` (axios-style) or a raw array, so both are handled
-  // defensively here to avoid crashes if the backend response format changes.
 
   const fetchPendingEarlyRequests = useCallback(async () => {
     setEarlyLoading(true);
@@ -1216,27 +1224,18 @@ const CoordinatorAttendance = () => {
       loadAttendance();
       fetchPendingEarlyRequests();
     };
-
     window.addEventListener('academicYearChanged', handleAcademicYearChanged);
-
-    return () => {
-      window.removeEventListener('academicYearChanged', handleAcademicYearChanged);
-    };
+    return () => window.removeEventListener('academicYearChanged', handleAcademicYearChanged);
   }, [loadAttendance, fetchPendingEarlyRequests]);
 
-  // ─── Approve handler ──────────────────────────────────────────────────────
-  // Calls approveEarlyAttendance(attendanceId), then refreshes both the main
-  // attendance table and the pending-requests list so the UI stays in sync.
+  // ─── Approve / Reject handlers ────────────────────────────────────────────
 
   const handleApproveEarly = async (attendanceId) => {
     if (!attendanceId) return;
     setEarlyActionLoading({ attendanceId, action: 'approve' });
     try {
       await approveEarlyAttendance(attendanceId);
-      await Promise.all([
-        loadAttendance(),
-        fetchPendingEarlyRequests(),
-      ]);
+      await Promise.all([loadAttendance(), fetchPendingEarlyRequests()]);
       setSuccessMessage('Early attendance approved successfully.');
     } catch (err) {
       console.error('Approve failed', err);
@@ -1246,19 +1245,12 @@ const CoordinatorAttendance = () => {
     }
   };
 
-  // ─── Reject handler ───────────────────────────────────────────────────────
-  // Calls rejectEarlyAttendance(attendanceId), then refreshes both the main
-  // attendance table and the pending-requests list so the UI stays in sync.
-
   const handleRejectEarly = async (attendanceId) => {
     if (!attendanceId) return;
     setEarlyActionLoading({ attendanceId, action: 'reject' });
     try {
       await rejectEarlyAttendance(attendanceId);
-      await Promise.all([
-        loadAttendance(),
-        fetchPendingEarlyRequests(),
-      ]);
+      await Promise.all([loadAttendance(), fetchPendingEarlyRequests()]);
       setSuccessMessage('Early attendance rejected successfully.');
     } catch (err) {
       console.error('Reject failed', err);
@@ -1268,26 +1260,29 @@ const CoordinatorAttendance = () => {
     }
   };
 
-  // Filter records by date (if selected) OR show all
+  // ─── Derived state ────────────────────────────────────────────────────────
+
   const filteredRecords = useMemo(() => {
     if (!selectedDate) return records;
     return records.filter((r) => normalizeDate(r.attendance_date) === selectedDate);
   }, [records, selectedDate]);
 
-  // Group filtered records by student (for card mode)
   const students = useMemo(() => groupByStudent(filteredRecords), [filteredRecords]);
 
-  // Stats from filtered records
   const stats = useMemo(
     () => ({
       totalStudents: students.length,
       flagged: filteredRecords.filter((r) => r.location_status === 'flagged').length,
-      missingOut: filteredRecords.filter((r) => isMissingTimeOut(r.time_out)).length,
+      // Exclude flagged records — they already count in Flagged, not Missing Time-Out
+      missingOut: filteredRecords.filter(
+        (r) =>
+          r.location_status !== 'flagged' &&
+          isMissingTimeOut(r.time_out)
+      ).length,
     }),
     [students, filteredRecords]
   );
 
-  // Search filter on students (card mode)
   const filteredStudents = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return students;
@@ -1298,7 +1293,6 @@ const CoordinatorAttendance = () => {
     });
   }, [students, searchQuery]);
 
-  // Table records: date-filtered + search-filtered
   const tableRecords = useMemo(() => {
     if (!searchQuery.trim()) return filteredRecords;
     const q = searchQuery.trim().toLowerCase();
@@ -1311,8 +1305,6 @@ const CoordinatorAttendance = () => {
 
   const hasFilter = searchQuery.trim() !== '' || !!selectedDate;
   const isToday = !!selectedDate && selectedDate === todayString();
-
-  // Dual-mode: date selected → table; no date → cards
   const showTable = !!selectedDate;
   const showCards = !selectedDate;
 
@@ -1354,7 +1346,7 @@ const CoordinatorAttendance = () => {
           </div>
         </div>
 
-        {/* Success feedback toast */}
+        {/* Success toast */}
         {successMessage && (
           <div
             className="rounded-2xl px-5 py-3.5 flex items-center gap-3 shadow-sm"
@@ -1372,7 +1364,7 @@ const CoordinatorAttendance = () => {
           </div>
         )}
 
-        {/* Action error toast */}
+        {/* Error toast */}
         {actionError && (
           <div
             className="rounded-2xl px-5 py-3.5 flex items-center gap-3 shadow-sm"
@@ -1437,21 +1429,20 @@ const CoordinatorAttendance = () => {
               <h2 className="text-lg font-bold" style={{ color: `rgb(var(--primary-800))` }}>
                 Student Records
               </h2>
-              {/* Mode indicator */}
               <span
                 className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all"
                 style={
                   showTable
                     ? {
-                      backgroundColor: `rgb(var(--primary-100))`,
-                      color: `rgb(var(--primary-700))`,
-                      border: `1px solid rgb(var(--primary-200))`,
-                    }
+                        backgroundColor: `rgb(var(--primary-100))`,
+                        color: `rgb(var(--primary-700))`,
+                        border: `1px solid rgb(var(--primary-200))`,
+                      }
                     : {
-                      backgroundColor: `rgb(var(--primary-50))`,
-                      color: `rgb(var(--primary-500))`,
-                      border: `1px solid rgb(var(--primary-100))`,
-                    }
+                        backgroundColor: `rgb(var(--primary-50))`,
+                        color: `rgb(var(--primary-500))`,
+                        border: `1px solid rgb(var(--primary-100))`,
+                      }
                 }
               >
                 {showTable ? (
@@ -1469,14 +1460,12 @@ const CoordinatorAttendance = () => {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              {/* Custom Calendar Popover */}
               <CalendarPopover
                 selectedDate={selectedDate}
                 onSelect={setSelectedDate}
                 onClear={() => setSelectedDate('')}
               />
 
-              {/* Today quick-filter */}
               {isToday ? (
                 <span
                   className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg"
@@ -1506,7 +1495,6 @@ const CoordinatorAttendance = () => {
                 </button>
               )}
 
-              {/* Search */}
               <div className="relative">
                 <Search
                   className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
@@ -1630,33 +1618,58 @@ const CoordinatorAttendance = () => {
             <p className="text-sm text-red-400">Please refresh the page or try again later.</p>
           </div>
         )}
-         {attachmentModal.open && (
-                <div
-                  className="fixed inset-0 bg-black/70 z-9999 flex items-center justify-center p-4"
-                  onClick={closeAttachmentModal}
-                >
-                  <div
-                    className="bg-white rounded-2xl p-6 max-w-4xl w-full"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button onClick={closeAttachmentModal}>
-                      X
-                    </button>
 
-                    {isImageFile(attachmentModal.url) ? (
-                      <img
-                        src={attachmentModal.url}
-                        alt=""
-                        className="w-full max-h-[80vh] object-contain"
-                      />
-                    ) : (
-                      <a href={attachmentModal.url}>
-                        Open File
-                      </a>
-                    )}
-                  </div>
+        {/* Attachment Preview Modal */}
+        {attachmentModal.open && (
+          <div
+            className="fixed inset-0 bg-black/70 z-9999 flex items-center justify-center p-4"
+            onClick={closeAttachmentModal}
+          >
+            <div
+              className="bg-white rounded-2xl p-6 max-w-4xl w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <p className="text-sm font-semibold text-gray-700 truncate pr-4">
+                  {attachmentModal.name}
+                </p>
+                <button
+                  onClick={closeAttachmentModal}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors shrink-0"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+
+              {isImageFile(attachmentModal.url) ? (
+                <img
+                  src={attachmentModal.url}
+                  alt={attachmentModal.name}
+                  className="w-full max-h-[80vh] object-contain rounded-lg"
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-4 py-8">
+                  <Paperclip className="w-10 h-10 text-gray-300" />
+                  <p className="text-sm text-gray-500">This file cannot be previewed.</p>
+                  <a
+                    href={attachmentModal.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+                    style={{ backgroundColor: '#d97706' }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#b45309')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#d97706')}
+                  >
+                    <Paperclip className="w-4 h-4" />
+                    Open File
+                  </a>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

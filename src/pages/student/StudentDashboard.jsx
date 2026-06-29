@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   Award, Calendar, Building2, User, Info,
   CheckCircle2, ChevronRight, Loader2,
@@ -248,11 +248,41 @@ const StudentDashboard = () => {
   const [assignmentLoaded, setAssignmentLoaded] = useState(false);
   const [otExpanded, setOtExpanded] = useState(false);
 
+  // FIX #1 — temporary success message
+  const [successMessage, setSuccessMessage] = useState('');
+  // FIX #3 — ref to track/clear the auto-hide timeout (prevents leaks)
+  const successTimeoutRef = useRef(null);
+
   // Early attendance state
   const [showEarlyModal, setShowEarlyModal] = useState(false);
   const [earlyReason, setEarlyReason] = useState('');
   const [earlyAttachment, setEarlyAttachment] = useState(null);
   const [pendingCoords, setPendingCoords] = useState(null);
+  // FIX #2 — dedicated error state for the early attendance modal
+  const [earlyError, setEarlyError] = useState('');
+
+  /* ── FIX #1 + #3: helper to show a success message that auto-hides ── */
+  const showSuccessMessage = (message) => {
+    if (successTimeoutRef.current) {
+      clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = null;
+    }
+    setSuccessMessage(message);
+    successTimeoutRef.current = setTimeout(() => {
+      setSuccessMessage('');
+      successTimeoutRef.current = null;
+    }, 2000);
+  };
+
+  // FIX #3 — cleanup any pending timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+        successTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   /* ── Fetch ── */
   const fetchAttendance = async () => {
@@ -324,6 +354,8 @@ const StudentDashboard = () => {
       const data = await apiFn();
       if (data?.success === false) { revert(snapshot); setAttendanceError(data.message); return; }
       await fetchAttendance();
+      // FIX #1 — show temporary success message after a successful action
+      showSuccessMessage('Attendance successfully recorded.');
     } catch {
       revert(snapshot);
       setAttendanceError('Action failed — please try again.');
@@ -346,6 +378,8 @@ const StudentDashboard = () => {
       await timeIn(latitude, longitude, reason, attachment);
       await fetchAttendance();
       setAttendanceError(null);
+      // FIX #1 — show temporary success message after a successful Time In
+      showSuccessMessage('Attendance successfully recorded.');
       return true;
     } catch (err) {
       revert(snapshot);
@@ -369,15 +403,18 @@ const StudentDashboard = () => {
   const submitEarlyReason = async () => {
     if (actionLoading) return;
 
+    // FIX #2 — validation errors now go into earlyError (rendered inside modal)
     if (!earlyReason.trim()) {
-      setAttendanceError('Reason is required.');
+      setEarlyError('Reason is required.');
       return;
     }
     if (!earlyAttachment) {
-      setAttendanceError('Attachment is required.');
+      setEarlyError('Attachment is required.');
       return;
     }
     if (!pendingCoords) return;
+
+    setEarlyError('');
 
     const success = await handleTimeIn(
       pendingCoords.latitude,
@@ -393,6 +430,17 @@ const StudentDashboard = () => {
     setEarlyReason('');
     setEarlyAttachment(null);
     setPendingCoords(null);
+    setEarlyError('');
+  };
+
+  /* ── Close/cancel modal helper (also clears modal error) ── */
+  const closeEarlyModal = () => {
+    setShowEarlyModal(false);
+    setEarlyReason('');
+    setEarlyAttachment(null);
+    setPendingCoords(null);
+    setAttendanceError(null);
+    setEarlyError('');
   };
 
   /* ── Primary action ── */
@@ -403,6 +451,11 @@ const StudentDashboard = () => {
     const { type } = action;
 
     if (type === 'time_in') {
+      // FIX #4 — guard geolocation support before calling it
+      if (!navigator.geolocation) {
+        setAttendanceError('Geolocation is not supported by this browser.');
+        return;
+      }
       setActionLoading(true);
       navigator.geolocation.getCurrentPosition(
         ({ coords: { latitude, longitude } }) => {
@@ -430,6 +483,13 @@ const StudentDashboard = () => {
     const { type } = action;
 
     if (type === 'ot_time_in') {
+      // FIX #4 — guard geolocation support before calling it
+      if (!navigator.geolocation) {
+        setAttendanceError('Geolocation is not supported by this browser.');
+        return;
+      }
+      // FIX #2 — start loading before geolocation resolves to prevent spam clicks
+      setOtLoading(true);
       navigator.geolocation.getCurrentPosition(
         ({ coords: { latitude, longitude } }) =>
           runAction('ot_time_in', () => timeIn(latitude, longitude), setOtLoading),
@@ -518,7 +578,7 @@ const StudentDashboard = () => {
               </div>
 
               {/* Primary action button */}
-              {!requiredDone ? (
+              {!requiredDone && (
                 <button
                   onClick={handleNextAction}
                   disabled={actionLoading}
@@ -535,11 +595,14 @@ const StudentDashboard = () => {
                     <><nextAction.Icon className="w-4 h-4" /><span>{nextAction.label}</span><ChevronRight className="w-4 h-4 opacity-70" /></>
                   )}
                 </button>
-              ) : (
-                <div className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm"
+              )}
+
+              {/* FIX #1 — success banner is independent of requiredDone, so it shows after EVERY successful action (Time In, Lunch Start/End, Time Out, OT Start/End), not just when the full workflow is complete. Auto-hides after 2s via showSuccessMessage(). */}
+              {successMessage && (
+                <div className="w-full flex items-center justify-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm transition-opacity duration-300"
                   style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#16a34a' }}>
                   <CheckCircle2 className="w-5 h-5" />
-                  <span>Attendance successfully recorded.</span>
+                  <span>{successMessage}</span>
                 </div>
               )}
 
@@ -759,16 +822,17 @@ const StudentDashboard = () => {
               )}
             </div>
 
+            {/* FIX #2 — modal-scoped validation error, rendered inside the modal */}
+            {earlyError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2 mt-3">
+                <p className="text-sm text-red-700 font-medium">{earlyError}</p>
+              </div>
+            )}
+
             {/* Buttons */}
             <div className="flex gap-3 mt-4">
               <button
-                onClick={() => {
-                  setShowEarlyModal(false);
-                  setEarlyReason('');
-                  setEarlyAttachment(null);
-                  setPendingCoords(null);
-                  setAttendanceError(null);
-                }}
+                onClick={closeEarlyModal}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-700 transition-all duration-200 active:scale-[0.98]"
                 style={{ background: '#f3f4f6', border: '1px solid #e5e7eb' }}
               >
