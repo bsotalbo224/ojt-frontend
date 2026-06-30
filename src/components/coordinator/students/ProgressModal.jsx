@@ -10,7 +10,7 @@ import {
   getAttendanceStatus,
   getEarlyAttendanceInfo,
 } from '../../../utils/attendanceUtils';
-import WorkflowCell from './WorkflowCell';
+import WorkflowCell from './WorkFlowCell';
 import ScheduleBadge from './ScheduleBadge';
 
 // ─── EarlyAttendanceBadges ────────────────────────────────────────────────────
