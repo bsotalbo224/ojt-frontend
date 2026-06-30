@@ -47,6 +47,11 @@ const AcademicYearSelector = () => {
       }
     } catch (err) {
       console.error("Failed to load academic years:", err);
+      console.error("ACTIVATE ERROR:", err);
+      console.error("STATUS:", err.response?.status);
+      console.error("DATA:", err.response?.data);
+      setOpen(false);
+      return;
     }
   }, []);
 
