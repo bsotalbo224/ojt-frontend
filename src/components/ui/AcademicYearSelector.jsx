@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { ChevronDown, GraduationCap, Check, Settings2 } from "lucide-react";
-import { getAcademicYears, getActiveAcademicYear, activateAcademicYear } from "../../api/academicYears";
+import { getAcademicYears, getActiveAcademicYear } from "../../api/academicYears";
 import { useAuth } from "../../context/AuthContext";
 import AcademicYearManagementModal from "../admin/AcademicYearManagementModal";
 import {
@@ -47,11 +47,6 @@ const AcademicYearSelector = () => {
       }
     } catch (err) {
       console.error("Failed to load academic years:", err);
-      console.error("ACTIVATE ERROR:", err);
-      console.error("STATUS:", err.response?.status);
-      console.error("DATA:", err.response?.data);
-      setOpen(false);
-      return;
     }
   }, []);
 
@@ -84,18 +79,12 @@ const AcademicYearSelector = () => {
   }, []);
 
 
-  const handleSelect = async (year) => {
-    if (year.academic_year_id === activeYear?.academic_year_id) {
-      setOpen(false);
-      return;
-    }
+  const handleSelect = (year) => {
+    const sameViewed =
+      String(year.academic_year_id) ===
+      String(activeYear?.academic_year_id);
 
-    try {
-      if (isAdmin) {
-        await activateAcademicYear(year.academic_year_id);
-      }
-    } catch (err) {
-      console.error("Failed to activate academic year:", err);
+    if (sameViewed) {
       setOpen(false);
       return;
     }
@@ -105,7 +94,7 @@ const AcademicYearSelector = () => {
 
     window.dispatchEvent(
       new CustomEvent("academicYearChanged", {
-        detail: year
+        detail: year,
       })
     );
 
