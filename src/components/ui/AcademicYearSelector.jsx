@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { ChevronDown, GraduationCap, Check, Settings2 } from "lucide-react";
-import { getAcademicYears, getActiveAcademicYear } from "../../api/academicYears";
+import { getAcademicYears, getActiveAcademicYear, activateAcademicYear } from "../../api/academicYears";
 import { useAuth } from "../../context/AuthContext";
 import AcademicYearManagementModal from "../admin/AcademicYearManagementModal";
 import {
@@ -79,8 +79,18 @@ const AcademicYearSelector = () => {
   }, []);
 
 
-  const handleSelect = (year) => {
+  const handleSelect = async (year) => {
     if (year.academic_year_id === activeYear?.academic_year_id) {
+      setOpen(false);
+      return;
+    }
+
+    try {
+      if (isAdmin) {
+        await activateAcademicYear(year.academic_year_id);
+      }
+    } catch (err) {
+      console.error("Failed to activate academic year:", err);
       setOpen(false);
       return;
     }
