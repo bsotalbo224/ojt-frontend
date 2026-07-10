@@ -1,10 +1,10 @@
 import { useMemo } from "react";
 import Avatar from "../ui/Avatar";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL;
-
-const buildName = (c) =>
-  [c?.f_name, c?.l_name].filter(Boolean).join(" ") || "Unknown";
+const buildName = (c) => {
+  if (c?.is_group) return c?.name || "Unnamed Group";
+  return [c?.f_name, c?.l_name].filter(Boolean).join(" ") || "Unknown";
+};
 
 const formatTime = (iso) => {
   if (!iso) return "";
@@ -21,9 +21,8 @@ const formatTime = (iso) => {
 
 export default function ConversationList({
   conversations,
-  selectedUser,
-  onSelectUser,
-  currentUserId,
+  selectedConversation,
+  onSelectConversation,
   searchQuery = "",
   onSearchChange,
 }) {
@@ -99,15 +98,18 @@ export default function ConversationList({
             </p>
           </li>
         ) : (
-          filtered.map((user) => {
-            const isSelected = selectedUser?.user_id === user.user_id;
-            const hasUnread  = (user.unread_count ?? 0) > 0;
-            const fullName   = `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();
+          filtered.map((conversation) => {
+            const isSelected = selectedConversation?.conversation_id === conversation.conversation_id;
+            const hasUnread  = (conversation.unread_count ?? 0) > 0;
+            const isGroup    = !!conversation.is_group;
+            const fullName   = isGroup
+              ? conversation.name
+              : `${conversation.f_name ?? ""} ${conversation.l_name ?? ""}`.trim();
 
             return (
-              <li key={user.user_id} className="border-b border-gray-50 last:border-0">
+              <li key={conversation.conversation_id} className="border-b border-gray-50 last:border-0">
                 <button
-                  onClick={() => onSelectUser?.(user)}
+                  onClick={() => onSelectConversation?.(conversation)}
                   className={`w-full flex items-center gap-3 px-3 py-3 text-left border-l-2 transition-all duration-150 ${
                     !isSelected ? "border-transparent hover:bg-gray-50 active:bg-gray-100" : ""
                   }`}
@@ -124,7 +126,18 @@ export default function ConversationList({
                         outlineOffset: '1px',
                       } : {}}
                     >
-                      <Avatar name={fullName} src={user.photo} size="md" />
+                      {isGroup ? (
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-gray-100 text-gray-500"
+                          aria-label={fullName}
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 0 0-3-3.87M9 20H4v-2a4 4 0 0 1 3-3.87m5-2.13a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm6 1a4 4 0 1 0 0-8" />
+                          </svg>
+                        </div>
+                      ) : (
+                        <Avatar name={fullName} src={conversation.photo} size="md" />
+                      )}
                     </div>
                     {hasUnread && (
                       <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-400 rounded-full border-2 border-white" />
@@ -136,21 +149,25 @@ export default function ConversationList({
                       <span className={`text-xs truncate leading-snug ${
                         hasUnread ? "font-bold text-gray-900" : isSelected ? "font-semibold text-gray-800" : "font-medium text-gray-700"
                       }`}>
-                        {user.name}
+                        {conversation.name}
                       </span>
                       <span className={`text-[10px] shrink-0 tabular-nums ${hasUnread ? "text-amber-500 font-semibold" : "text-gray-400"}`}>
-                        {formatTime(user.last_message_time)}
+                        {formatTime(conversation.last_message_time)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between gap-2">
                       <p className={`text-[11px] truncate leading-snug ${hasUnread ? "text-gray-700 font-medium" : "text-gray-400 font-normal"}`}>
-                        {user.last_message || (
-                          <span className="italic text-gray-300">{user.role ? user.role : "No messages yet"}</span>
+                        {conversation.last_message || (
+                          <span className="italic text-gray-300">
+                            {isGroup
+                              ? (conversation.member_count ? `${conversation.member_count} members` : "No messages yet")
+                              : (conversation.role ? conversation.role : "No messages yet")}
+                          </span>
                         )}
                       </p>
                       {hasUnread && (
                         <span className="shrink-0 min-w-4.5 h-4.5 px-1 rounded-full bg-amber-400 text-white text-[9px] font-bold flex items-center justify-center leading-none">
-                          {user.unread_count > 99 ? "99+" : user.unread_count}
+                          {conversation.unread_count > 99 ? "99+" : conversation.unread_count}
                         </span>
                       )}
                     </div>
