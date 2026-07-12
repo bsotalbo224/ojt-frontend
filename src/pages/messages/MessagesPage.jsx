@@ -22,8 +22,6 @@ const findCoordinator = (contacts) =>
   safeArray(contacts).find((c) => String(c.role ?? "").toLowerCase() === "coordinator") || null;
 
 export default function MessagesPage() {
-  alert("MessagesPage Loaded");
-  console.log("MESSAGE PAGE VERSION 2");
   const { user: currentUser, loading: authLoading } = useAuth();
 
   const [conversations, setConversations] = useState([]);
