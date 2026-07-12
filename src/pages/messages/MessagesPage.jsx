@@ -8,6 +8,19 @@ import ChatWindow from "../../components/messages/ChatWindow";
 
 const safeArray = (value) => (Array.isArray(value) ? value : []);
 
+// Selection
+const isSameContact = (a, b) => {
+  if (!a || !b) return false;
+  if (a.conversation_id != null) {
+    return String(a.conversation_id) === String(b.conversation_id);
+  }
+  return b.conversation_id == null && a.user_id != null && String(a.user_id) === String(b.user_id);
+};
+
+// Coordinator lookup
+const findCoordinator = (contacts) =>
+  safeArray(contacts).find((c) => String(c.role ?? "").toLowerCase() === "coordinator") || null;
+
 export default function MessagesPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
 
@@ -28,14 +41,15 @@ export default function MessagesPage() {
 
   const location = useLocation();
 
-  const params               = new URLSearchParams(location.search);
-  const targetConversationId = params.get("conversation") || params.get("user");
+  const params                  = new URLSearchParams(location.search);
+  const targetConversationParam = params.get("conversation");
+  const targetUserParam         = params.get("user");
 
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
   }, [selectedConversation]);
 
-  // ─── Socket: connect & join user room on auth ─────────────────────────────
+  // Socket
   useEffect(() => {
     if (!currentUser?.user_id) return;
     if (!socket.connected) socket.connect();
@@ -47,7 +61,7 @@ export default function MessagesPage() {
     };
   }, [currentUser?.user_id]);
 
-  // ─── Socket: receive_message handler (conversation-scoped) ───────────────
+  // Receive
   useEffect(() => {
     const handleReceiveMessage = (incomingMsg) => {
       const activeConversation = selectedConversationRef.current;
@@ -56,12 +70,10 @@ export default function MessagesPage() {
       setMessages((prev) => {
         const arr = safeArray(prev);
 
-        // Already reconciled (duplicate emit, or arrived twice)
         if (incomingMsg.message_id && arr.some((m) => m.message_id === incomingMsg.message_id)) {
           return arr;
         }
 
-        // Reconcile our own optimistic message instead of appending a duplicate
         if (isOwnMessage) {
           const pendingIdx = arr.findIndex(
             (m) =>
@@ -79,6 +91,7 @@ export default function MessagesPage() {
 
         const belongsToChat =
           activeConversation &&
+          activeConversation.conversation_id != null &&
           String(incomingMsg.conversation_id) === String(activeConversation.conversation_id);
         return belongsToChat ? [...arr, incomingMsg] : arr;
       });
@@ -110,7 +123,7 @@ export default function MessagesPage() {
     return () => socket.off("receive_message", handleReceiveMessage);
   }, [currentUser?.user_id]);
 
-  // ─── Emit message_seen for unread messages in active conversation ─────────
+  // Read receipts
   useEffect(() => {
     if (!socket || !selectedConversation || !currentUser) return;
     safeArray(messages).forEach((msg) => {
@@ -124,13 +137,14 @@ export default function MessagesPage() {
     });
   }, [messages, selectedConversation, currentUser]);
 
-  // ─── Fetch conversation list ────────────────────────────────────────────────
-  const fetchConversations = useCallback(async () => {
+  // Contacts
+  const fetchContacts = useCallback(async () => {
     try {
-      const res = await api.get("/messages/conversations");
+      const res = await api.get("/messages/contacts");
 
-      const data =
-        res?.data?.conversations && Array.isArray(res.data.conversations)
+      const data = Array.isArray(res?.data?.contacts)
+        ? res.data.contacts
+        : Array.isArray(res?.data?.conversations)
           ? res.data.conversations
           : Array.isArray(res?.data)
             ? res.data
@@ -139,7 +153,7 @@ export default function MessagesPage() {
       setConversations(data);
       return data;
     } catch (err) {
-      console.error("Failed to load conversations:", err);
+      console.error("Failed to load contacts:", err);
       setConversations([]);
       return [];
     } finally {
@@ -147,11 +161,9 @@ export default function MessagesPage() {
     }
   }, []);
 
-  useEffect(() => { fetchConversations(); }, [fetchConversations]);
+  useEffect(() => { fetchContacts(); }, [fetchContacts]);
 
-  // ─── Fetch messages for a conversation ─────────────────────────────────────
-  // Accepts an optional requestId so a slow/out-of-order response from a
-  // conversation the user has since navigated away from can't clobber newer state.
+  // Messages
   const fetchMessages = useCallback(async (conversationId, requestId) => {
     const isCurrent = () => requestId === undefined || requestId === latestRequestIdRef.current;
 
@@ -168,7 +180,7 @@ export default function MessagesPage() {
     }
   }, []);
 
-  // ─── Mark as read ────────────────────────────────────────────────────────────
+  // Read
   const markRead = useCallback(async (conversationId) => {
     try {
       await api.put(`/messages/conversations/${conversationId}/read`);
@@ -182,22 +194,46 @@ export default function MessagesPage() {
     }
   }, []);
 
-  // ─── Select conversation ─────────────────────────────────────────────────────
+  // Lazy create
+  const ensureConversation = useCallback(async (contact) => {
+    if (contact.conversation_id) return contact;
+
+    try {
+      const res   = await api.post("/messages/private", { user_id: contact.user_id });
+      const newId = res?.data?.conversation_id;
+      if (!newId) return contact;
+
+      const updated = { ...contact, conversation_id: newId };
+
+      setConversations((prev) =>
+        safeArray(prev).map((c) =>
+          c.conversation_id == null && String(c.user_id) === String(contact.user_id)
+            ? { ...c, conversation_id: newId }
+            : c
+        )
+      );
+
+      socket.emit("join_conversation", newId);
+
+      return updated;
+    } catch (err) {
+      console.error("Failed to create conversation:", err);
+      return contact;
+    }
+  }, []);
+
+  // Selection
   const handleSelectConversation = useCallback(async (conversation) => {
     const previous = selectedConversationRef.current;
 
-    // Re-selecting the already-open conversation (e.g. clicking it again on
-    // mobile) — just ensure the chat pane is visible, skip redundant work.
-    if (previous && String(previous.conversation_id) === String(conversation.conversation_id)) {
+    if (isSameContact(previous, conversation)) {
       setShowChat(true);
       return;
     }
 
     if (pollingRef.current) clearInterval(pollingRef.current);
 
-    const requestId = ++latestRequestIdRef.current;
-
-    if (previous) {
+    if (previous?.conversation_id != null) {
       socket.emit("leave_conversation", previous.conversation_id);
     }
 
@@ -205,23 +241,25 @@ export default function MessagesPage() {
     setMessages([]);
     setShowChat(true);
 
+    if (conversation.conversation_id == null) return;
+
+    const requestId = ++latestRequestIdRef.current;
+
     socket.emit("join_conversation", conversation.conversation_id);
 
     await fetchMessages(conversation.conversation_id, requestId);
 
-    // If the user navigated to a different conversation while this fetch was
-    // in flight, don't mark the now-stale conversation as read.
     if (requestId !== latestRequestIdRef.current) return;
 
     await markRead(conversation.conversation_id);
   }, [fetchMessages, markRead]);
 
-  // ─── Mobile back button ─────────────────────────────────────────────────────
+  // Back
   const handleBack = useCallback(() => {
     if (pollingRef.current) clearInterval(pollingRef.current);
 
     const current = selectedConversationRef.current;
-    if (current) {
+    if (current?.conversation_id != null) {
       socket.emit("leave_conversation", current.conversation_id);
     }
 
@@ -229,21 +267,31 @@ export default function MessagesPage() {
     setShowChat(false);
   }, []);
 
-  // ─── Auto-select conversation from notification link (?conversation=<id>) ──
+  // Deep links
   useEffect(() => {
     if (autoOpenRef.current) return;
-    if (!targetConversationId || conversations.length === 0) return;
-    const target = conversations.find(
-      (c) => String(c.conversation_id) === String(targetConversationId)
-    );
+    if (!targetConversationParam && !targetUserParam) return;
+    if (conversations.length === 0) return;
+
+    let target = null;
+    if (targetConversationParam) {
+      target = conversations.find(
+        (c) => String(c.conversation_id) === String(targetConversationParam)
+      );
+    } else if (targetUserParam) {
+      target = conversations.find(
+        (c) => String(c.user_id) === String(targetUserParam)
+      );
+    }
+
     if (target) {
       autoOpenRef.current = true;
       handleSelectConversation(target);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetConversationId, conversations]);
+  }, [targetConversationParam, targetUserParam, conversations]);
 
-  // ─── Auto-select coordinator + send context message ─────────────────────────
+  // Context
   useEffect(() => {
     const contextParams = new URLSearchParams(location.search);
     const logId        = contextParams.get("log");
@@ -253,7 +301,8 @@ export default function MessagesPage() {
     if (conversations.length === 0) return;
     if (contextSentRef.current) return;
 
-    const coordinator = conversations[0];
+    const coordinator = findCoordinator(conversations);
+    if (!coordinator) return;
 
     const sendContextAndOpen = async () => {
       contextSentRef.current = true;
@@ -261,9 +310,12 @@ export default function MessagesPage() {
       const systemMessage = logId
         ? `Student opened a discussion regarding Daily Log (${date || logId}).`
         : `Student opened a discussion regarding Narrative Entry (${date || narrativeId}).`;
+
+      const activeCoordinator = await ensureConversation(coordinator);
+
       try {
         await api.post("/messages/messages", {
-          conversation_id: coordinator.conversation_id,
+          conversation_id: activeCoordinator.conversation_id,
           message:         systemMessage,
           message_type:    "system",
           ...(logId       ? { related_log_id:       Number(logId)       } : {}),
@@ -272,49 +324,49 @@ export default function MessagesPage() {
       } catch (err) {
         console.error("Failed to send consultation context message:", err);
       }
-      await handleSelectConversation(coordinator);
+      await handleSelectConversation(activeCoordinator);
     };
 
     sendContextAndOpen();
-  }, [location.search, conversations, handleSelectConversation]);
+  }, [location.search, conversations, handleSelectConversation, ensureConversation]);
 
-  // ─── Academic Year change handler ────────────────────────────────────────────
+  // Academic Year
   useEffect(() => {
     const handleAcademicYearChanged = async () => {
-      // Stop any active polling while we refresh
       if (pollingRef.current) clearInterval(pollingRef.current);
 
       setConversationsLoading(true);
 
-      // Reload conversation list and get the fresh data back
-      const freshConversations = await fetchConversations();
+      const freshContacts = await fetchContacts();
 
       const currentSelected = selectedConversationRef.current;
 
       if (!currentSelected) {
-        // No active conversation — just clear messages to be clean
         setMessages([]);
         return;
       }
 
-      // Check if the selected conversation still exists in the new Academic Year
-      const stillExists = freshConversations.some(
-        (c) => String(c.conversation_id) === String(currentSelected.conversation_id)
-      );
+      const matched = freshContacts.find((c) => isSameContact(currentSelected, c));
 
-      if (stillExists) {
-        // Re-fetch messages for the still-valid conversation
-        const requestId = ++latestRequestIdRef.current;
-        await fetchMessages(currentSelected.conversation_id, requestId);
-        if (requestId !== latestRequestIdRef.current) return;
-        await markRead(currentSelected.conversation_id);
-      } else {
-        // Selected conversation is no longer part of this Academic Year — close the chat
-        if (pollingRef.current) clearInterval(pollingRef.current);
-        socket.emit("leave_conversation", currentSelected.conversation_id);
+      if (!matched) {
+        if (currentSelected.conversation_id != null) {
+          socket.emit("leave_conversation", currentSelected.conversation_id);
+        }
         setSelectedConversation(null);
         setMessages([]);
         setShowChat(false);
+        return;
+      }
+
+      if (matched.conversation_id != null) {
+        setSelectedConversation(matched);
+        const requestId = ++latestRequestIdRef.current;
+        await fetchMessages(matched.conversation_id, requestId);
+        if (requestId !== latestRequestIdRef.current) return;
+        await markRead(matched.conversation_id);
+      } else {
+        setSelectedConversation(matched);
+        setMessages([]);
       }
     };
 
@@ -322,17 +374,25 @@ export default function MessagesPage() {
     return () => {
       window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
     };
-  }, [fetchConversations, fetchMessages, markRead]);
+  }, [fetchContacts, fetchMessages, markRead]);
 
-  // ─── Send message ─────────────────────────────────────────────────────────────
+  // Send
   const handleSend = useCallback(async (message) => {
     if (!selectedConversation || !message?.trim()) return;
+
+    let activeConversation = selectedConversation;
+
+    if (activeConversation.conversation_id == null) {
+      activeConversation = await ensureConversation(activeConversation);
+      if (activeConversation.conversation_id == null) return;
+      setSelectedConversation(activeConversation);
+    }
 
     const tempId     = `temp-${Date.now()}`;
     const optimistic = {
       tempId,
       message_id:      null,
-      conversation_id: selectedConversation.conversation_id,
+      conversation_id: activeConversation.conversation_id,
       sender_id:       currentUser?.user_id,
       message,
       created_at:      new Date().toISOString(),
@@ -344,7 +404,7 @@ export default function MessagesPage() {
     setMessages((prev) => [...safeArray(prev), optimistic]);
     setConversations((prev) =>
       safeArray(prev).map((c) =>
-        String(c.conversation_id) === String(selectedConversation.conversation_id)
+        String(c.conversation_id) === String(activeConversation.conversation_id)
           ? { ...c, last_message: message, last_message_time: optimistic.sent_at }
           : c
       )
@@ -352,16 +412,11 @@ export default function MessagesPage() {
 
     try {
       const res  = await api.post("/messages/messages", {
-        conversation_id: selectedConversation.conversation_id,
+        conversation_id: activeConversation.conversation_id,
         message,
       });
       const sent = res?.data?.data;
 
-      // The backend broadcasts "receive_message" to conversation participants
-      // (including the sender) right after persisting — reconciliation of this
-      // optimistic entry happens there. We only patch local state here as a
-      // fallback in case the socket event is delayed or missed, without
-      // re-emitting anything ourselves (that would create a duplicate event).
       if (sent) {
         setMessages((prev) =>
           safeArray(prev).map((m) =>
@@ -373,16 +428,12 @@ export default function MessagesPage() {
       console.error("Failed to send message:", err);
       setMessages((prev) => safeArray(prev).filter((m) => m.tempId !== tempId));
     }
-  }, [selectedConversation, currentUser]);
+  }, [selectedConversation, currentUser, ensureConversation]);
 
-  // ─── Poll for new messages every 5s (fallback) ──────────────────────────────
+  // Polling
   useEffect(() => {
-    if (!selectedConversation) return;
+    if (!selectedConversation || selectedConversation.conversation_id == null) return;
     const poll = async () => {
-      // Skip while the tab isn't visible — Socket.IO still delivers real-time
-      // updates in the background, and the next poll picks up any gap once
-      // the tab is visible again. Pure network-usage optimization, no
-      // change to reconciliation behavior.
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       try {
         const res      = await api.get(`/messages/conversations/${selectedConversation.conversation_id}/messages`);
@@ -392,32 +443,27 @@ export default function MessagesPage() {
           const nextIds = incoming.map((m) => m.message_id).join(",");
           return prevIds === nextIds ? prev : incoming;
         });
-      } catch { /* silent — socket will carry the load */ }
+      } catch { /* silent */ }
     };
     pollingRef.current = setInterval(poll, 5000);
     return () => clearInterval(pollingRef.current);
   }, [selectedConversation]);
 
-  // ─── Cleanup polling + conversation room membership on unmount ─────────────
+  // Cleanup
   useEffect(() => {
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
-      if (selectedConversationRef.current) {
+      if (selectedConversationRef.current?.conversation_id != null) {
         socket.emit("leave_conversation", selectedConversationRef.current.conversation_id);
       }
     };
   }, []);
 
-  // Online status only applies to private (1:1) conversations, where the
-  // conversation record carries the other participant's user_id. Group
-  // conversations have no single counterpart to key off, so we default to
-  // false rather than matching against an arbitrary/undefined id.
   const isSelectedConversationOnline = useMemo(() => {
     if (!selectedConversation || selectedConversation.is_group) return false;
     return onlineUsers.includes(selectedConversation.user_id);
   }, [selectedConversation, onlineUsers]);
 
-  // ─── Auth guards ──────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -428,13 +474,12 @@ export default function MessagesPage() {
 
   if (!currentUser) return null;
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
+  // Render
   return (
     <div
       className="flex h-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100"
       style={{ minHeight: "calc(100vh - 120px)", fontFamily: "inherit" }}
     >
-      {/* Left: Conversation list */}
       <div className={`w-full md:w-64 lg:w-72 shrink-0 flex flex-col h-full ${showChat ? "hidden md:flex" : "flex"}`}>
         {conversationsLoading ? (
           <div className="flex-1 flex items-center justify-center bg-white">
@@ -461,7 +506,6 @@ export default function MessagesPage() {
         )}
       </div>
 
-      {/* Right: Chat window */}
       <div className={`flex-1 flex flex-col h-full min-w-0 ${showChat ? "flex" : "hidden md:flex"}`}>
         <ChatWindow
           selectedConversation={selectedConversation}

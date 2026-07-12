@@ -16,9 +16,7 @@ import MessageInput from "./MessageInput";
 import ReactionIcon from "../ui/ReactionIcon";
 import { REACTION_CODES, getReactionMeta } from "../../constants/reactions";
 
-
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Helpers
 
 const getFullName = (user = {}) => {
   if (user.f_name || user.l_name) return `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();
@@ -152,7 +150,7 @@ function extractOptimisticText(args) {
   return "";
 }
 
-// ─── Group avatar (mirrors ConversationList's group avatar style) ────────────
+// Group avatar
 const GroupAvatar = memo(function GroupAvatar({ label }) {
   return (
     <div
@@ -167,7 +165,7 @@ const GroupAvatar = memo(function GroupAvatar({ label }) {
   );
 });
 
-// ─── TypingDots ───────────────────────────────────────────────────────────────
+// Typing dots
 const TypingDots = memo(function TypingDots() {
   return (
     <span className="inline-flex items-end gap-0.75 h-3 ml-0.5">
@@ -182,7 +180,7 @@ const TypingDots = memo(function TypingDots() {
   );
 });
 
-// ─── TypingIndicator ──────────────────────────────────────────────────────────
+// Typing indicator
 const TypingIndicator = memo(function TypingIndicator({ name }) {
   return (
     <div className="flex items-center gap-2 px-4 py-1.5" role="status" aria-live="polite">
@@ -194,7 +192,7 @@ const TypingIndicator = memo(function TypingIndicator({ name }) {
   );
 });
 
-// ─── SystemMessageCard ────────────────────────────────────────────────────────
+// System message card
 const SystemMessageCard = memo(function SystemMessageCard({ item }) {
   const isLog = !!item.related_log_id;
   const isNarrative = !!item.related_narrative_id;
@@ -242,7 +240,7 @@ const SystemMessageCard = memo(function SystemMessageCard({ item }) {
   );
 });
 
-// ─── AttachmentBlock ──────────────────────────────────────────────────────────
+// Attachment block
 const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
   if (!item.attachment_url) return null;
 
@@ -285,7 +283,7 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
   );
 });
 
-// ─── ReactionBar ──────────────────────────────────────────────────────────────
+// Reaction bar
 const ReactionBar = memo(function ReactionBar({ reactions, isSent, onReact, messageId }) {
   if (!reactions || !reactions.total) return null;
 
@@ -314,7 +312,7 @@ const ReactionBar = memo(function ReactionBar({ reactions, isSent, onReact, mess
   );
 });
 
-// ─── ReactionPicker ───────────────────────────────────────────────────────────
+// Reaction picker
 const ReactionPicker = memo(function ReactionPicker({ onPick }) {
   return (
     <div
@@ -338,7 +336,7 @@ const ReactionPicker = memo(function ReactionPicker({ onPick }) {
   );
 });
 
-// ─── MessageBubble ────────────────────────────────────────────────────────────
+// Message bubble
 const MessageBubble = memo(function MessageBubble({
   item,
   isSent,
@@ -433,7 +431,7 @@ const MessageBubble = memo(function MessageBubble({
   );
 });
 
-// ─── ChatWindow ───────────────────────────────────────────────────────────────
+// ChatWindow
 export default function ChatWindow({
   selectedConversation,
   messages,
@@ -452,12 +450,20 @@ export default function ChatWindow({
   const isMountedRef = useRef(true);
   const skipNextScrollRef = useRef(false);
 
-  // Only re-resolves (and touches localStorage) when the prop itself changes,
-  // instead of on every render.
   const userId = useMemo(() => resolveCurrentUserId(currentUserId), [currentUserId]);
 
   const conversationId = selectedConversation?.conversation_id ?? null;
   const isGroupChat = !!selectedConversation?.is_group;
+
+  // Stable per-chat identity that survives the null -> real conversation_id
+  // transition of lazy conversation creation, so a switch to a genuinely
+  // different contact is the only thing that resets local chat state.
+  const identityKey = useMemo(() => {
+    if (!selectedConversation) return null;
+    return isGroupChat
+      ? `group-${selectedConversation.conversation_id}`
+      : `user-${selectedConversation.user_id}`;
+  }, [selectedConversation, isGroupChat]);
 
   const [localMessages, setMessages] = useState(() =>
     Array.isArray(messages) ? messages : []
@@ -470,16 +476,16 @@ export default function ChatWindow({
     return () => { isMountedRef.current = false; };
   }, []);
 
-  // Merge server-provided messages with any local-only optimistic entries
+  // Merge messages
   useEffect(() => {
     const safe = Array.isArray(messages) ? messages : [];
     setMessages((prev) => {
       const carryOver = prev.filter(
-        (m) => m.tempId && (m.pending || m.failed) && m.conversation_id === conversationId
+        (m) => m.tempId && (m.pending || m.failed) && m.contactKey === identityKey
       );
       return [...safe, ...carryOver];
     });
-  }, [messages, conversationId]);
+  }, [messages, identityKey]);
 
   const scrollToBottom = useCallback((force = false) => {
     const el = scrollRef.current;
@@ -488,9 +494,7 @@ export default function ChatWindow({
     if (force || distanceFromBottom < 100) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  // Conversation switch: jump to bottom immediately and reset per-conversation state.
-  // Marks the next message-driven scroll effect to skip, avoiding a redundant
-  // second scroll when `messages` also updates as part of the same switch.
+  // Conversation switch
   useEffect(() => {
     skipNextScrollRef.current = true;
     scrollToBottom(true);
@@ -498,10 +502,9 @@ export default function ChatWindow({
     setTypingUsers(() => new Set());
     setReactionPickerId(null);
     seenIdsRef.current = new Set();
-  }, [conversationId, scrollToBottom]);
+  }, [identityKey, scrollToBottom]);
 
-  // New/updated messages: smoothly scroll unless this render is the direct
-  // result of a conversation switch (already handled above).
+  // Scroll on new messages
   useEffect(() => {
     if (skipNextScrollRef.current) {
       skipNextScrollRef.current = false;
@@ -512,7 +515,7 @@ export default function ChatWindow({
 
   useEffect(() => { if (typingUsers.size > 0) scrollToBottom(); }, [typingUsers, scrollToBottom]);
 
-  // Close reaction picker on outside click/tap or Escape
+  // Reaction picker outside click
   useEffect(() => {
     if (reactionPickerId == null) return;
 
@@ -533,14 +536,7 @@ export default function ChatWindow({
     };
   }, [reactionPickerId]);
 
-  // Conversation room join/leave
-  useEffect(() => {
-    if (!socket || !conversationId) return;
-    socket.emit("join_conversation", conversationId);
-    return () => { socket.emit("leave_conversation", conversationId); };
-  }, [socket, conversationId]);
-
-  // Incoming messages (deduped + reconciled against optimistic sends)
+  // Incoming messages
   useEffect(() => {
     if (!socket || !conversationId) return;
     const onReceive = (msg) => {
@@ -549,7 +545,7 @@ export default function ChatWindow({
         if (prev.some((m) => m.message_id === msg.message_id)) return prev;
         if (msg.sender_id === userId) {
           const tempIndex = prev.findIndex(
-            (m) => m.tempId && m.pending && !m.message_id && m.conversation_id === conversationId
+            (m) => m.tempId && m.pending && !m.message_id && m.contactKey === identityKey
           );
           if (tempIndex !== -1) {
             const next = [...prev];
@@ -562,7 +558,7 @@ export default function ChatWindow({
     };
     socket.on("receive_message", onReceive);
     return () => { socket.off("receive_message", onReceive); };
-  }, [socket, conversationId, userId]);
+  }, [socket, conversationId, userId, identityKey]);
 
   // Typing indicators
   useEffect(() => {
@@ -590,7 +586,7 @@ export default function ChatWindow({
     };
   }, [socket, conversationId, userId]);
 
-  // Delivery / seen receipts relayed to sender
+  // Delivery & seen receipts
   useEffect(() => {
     if (!socket) return;
     const onDelivered = ({ messageId } = {}) => setMessages((p) => p.map((m) => m.message_id === messageId ? { ...m, delivered: true } : m));
@@ -603,7 +599,7 @@ export default function ChatWindow({
     };
   }, [socket]);
 
-  // Emit message_seen once per unread incoming message
+  // Seen receipts
   useEffect(() => {
     if (!socket || !conversationId) return;
     localMessages.forEach((msg) => {
@@ -644,6 +640,7 @@ export default function ChatWindow({
     setReactionPickerId(null);
   }, [onReact]);
 
+  // Send
   const handleSend = useCallback(async (...args) => {
     const text = extractOptimisticText(args);
     let tempId = null;
@@ -656,6 +653,7 @@ export default function ChatWindow({
           tempId,
           message_id: null,
           conversation_id: conversationId,
+          contactKey: identityKey,
           sender_id: userId,
           message: text,
           message_type: "text",
@@ -693,9 +691,9 @@ export default function ChatWindow({
       }
       throw err;
     }
-  }, [onSend, conversationId, userId]);
+  }, [onSend, conversationId, identityKey, userId]);
 
-  // ── Empty state (no conversation selected) ──
+  // Empty state
   if (!selectedConversation) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4 p-8 text-center">

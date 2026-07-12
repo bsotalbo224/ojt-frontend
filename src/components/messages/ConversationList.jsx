@@ -19,6 +19,22 @@ const formatTime = (iso) => {
   } catch { return ""; }
 };
 
+// Selection comparison
+const isSameSelection = (a, b) => {
+  if (!a || !b) return false;
+  if (a.conversation_id != null) {
+    return b.conversation_id === a.conversation_id;
+  }
+  return b.conversation_id == null && a.user_id != null && b.user_id === a.user_id;
+};
+
+// Stable unique key
+const getItemKey = (c) => {
+  if (c?.conversation_id != null) return `conv-${c.conversation_id}`;
+  if (c?.user_id != null) return `user-${c.user_id}`;
+  return `unknown-${c?.name ?? "item"}`;
+};
+
 export default function ConversationList({
   conversations,
   selectedConversation,
@@ -35,6 +51,9 @@ export default function ConversationList({
       last_message: c?.last_message ?? "",
       last_message_time: c?.last_message_time ?? null,
       unread_count: c?.unread_count ?? 0,
+      conversation_id: c?.conversation_id ?? null,
+      user_id: c?.user_id ?? null,
+      photo: c?.photo ?? null,
     }));
   }, [conversations]);
 
@@ -99,7 +118,7 @@ export default function ConversationList({
           </li>
         ) : (
           filtered.map((conversation) => {
-            const isSelected = selectedConversation?.conversation_id === conversation.conversation_id;
+            const isSelected = isSameSelection(conversation, selectedConversation);
             const hasUnread  = (conversation.unread_count ?? 0) > 0;
             const isGroup    = !!conversation.is_group;
             const fullName   = isGroup
@@ -107,7 +126,7 @@ export default function ConversationList({
               : `${conversation.f_name ?? ""} ${conversation.l_name ?? ""}`.trim();
 
             return (
-              <li key={conversation.conversation_id} className="border-b border-gray-50 last:border-0">
+              <li key={getItemKey(conversation)} className="border-b border-gray-50 last:border-0">
                 <button
                   onClick={() => onSelectConversation?.(conversation)}
                   className={`w-full flex items-center gap-3 px-3 py-3 text-left border-l-2 transition-all duration-150 ${
