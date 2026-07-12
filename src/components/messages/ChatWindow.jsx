@@ -16,7 +16,10 @@ import MessageInput from "./MessageInput";
 import ReactionIcon from "../ui/ReactionIcon";
 import { REACTION_CODES, getReactionMeta } from "../../constants/reactions";
 
-// Helpers
+const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary-400))]";
+const BADGE_SURFACE = "bg-[rgb(var(--primary-50))] border border-[rgb(var(--primary-100))]";
+const PRIMARY_TEXT = "text-[rgb(var(--primary-700))]";
+const SENT_BUBBLE = "bg-[rgb(var(--primary-700))] text-white";
 
 const getFullName = (user = {}) => {
   if (user.f_name || user.l_name) return `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();
@@ -125,7 +128,7 @@ function renderMessageContent(text, mentions) {
   while ((match = regex.exec(text)) !== null) {
     if (match.index > lastIndex) parts.push(text.slice(lastIndex, match.index));
     parts.push(
-      <span key={`mention-${key++}`} className="font-semibold" style={{ color: `rgb(var(--primary-600))` }}>
+      <span key={`mention-${key++}`} className={`font-semibold ${PRIMARY_TEXT}`}>
         {match[0]}
       </span>
     );
@@ -150,7 +153,6 @@ function extractOptimisticText(args) {
   return "";
 }
 
-// Group avatar
 const GroupAvatar = memo(function GroupAvatar({ label }) {
   return (
     <div
@@ -165,7 +167,6 @@ const GroupAvatar = memo(function GroupAvatar({ label }) {
   );
 });
 
-// Typing dots
 const TypingDots = memo(function TypingDots() {
   return (
     <span className="inline-flex items-end gap-0.75 h-3 ml-0.5">
@@ -180,7 +181,6 @@ const TypingDots = memo(function TypingDots() {
   );
 });
 
-// Typing indicator
 const TypingIndicator = memo(function TypingIndicator({ name }) {
   return (
     <div className="flex items-center gap-2 px-4 py-1.5" role="status" aria-live="polite">
@@ -192,7 +192,6 @@ const TypingIndicator = memo(function TypingIndicator({ name }) {
   );
 });
 
-// System message card
 const SystemMessageCard = memo(function SystemMessageCard({ item }) {
   const isLog = !!item.related_log_id;
   const isNarrative = !!item.related_narrative_id;
@@ -203,26 +202,14 @@ const SystemMessageCard = memo(function SystemMessageCard({ item }) {
 
   return (
     <div className="flex justify-center my-6 px-2">
-      <div
-        className="w-full max-w-xs bg-white rounded-2xl shadow-sm overflow-hidden"
-        style={{ border: `1px solid rgb(var(--primary-100))` }}
-      >
-        <div
-          className="h-1 w-full"
-          style={{ background: `linear-gradient(to right, rgb(var(--primary-500)), rgb(var(--primary-400)))` }}
-        />
+      <div className="w-full max-w-xs bg-white rounded-2xl shadow-sm overflow-hidden border border-[rgb(var(--primary-100))]">
+        <div className="h-1 w-full bg-linear-to-r from-[rgb(var(--primary-500))] to-[rgb(var(--primary-400))]" />
         <div className="px-4 py-3 flex items-start gap-3">
-          <div
-            className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
-            style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
-          >
-            <Icon className="w-4 h-4" style={{ color: `rgb(var(--primary-700))` }} />
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${BADGE_SURFACE}`}>
+            <Icon className={`w-4 h-4 ${PRIMARY_TEXT}`} />
           </div>
           <div className="flex-1 min-w-0">
-            <p
-              className="text-[9px] font-bold uppercase tracking-widest mb-0.5"
-              style={{ color: `rgb(var(--primary-600))` }}
-            >
+            <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5 text-[rgb(var(--primary-600))]">
               Discussion Topic
             </p>
             {label && refId ? (
@@ -240,7 +227,6 @@ const SystemMessageCard = memo(function SystemMessageCard({ item }) {
   );
 });
 
-// Attachment block
 const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
   if (!item.attachment_url) return null;
 
@@ -253,14 +239,17 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
         href={item.attachment_url}
         target="_blank"
         rel="noopener noreferrer"
-        className="block mb-1 rounded-xl overflow-hidden max-w-60"
+        className={`group/img block mb-1.5 rounded-xl overflow-hidden max-w-60 ring-1 ring-black/5 transition-transform duration-200 hover:scale-[1.02] ${FOCUS_RING}`}
       >
-        <img
-          src={item.attachment_url}
-          alt={item.attachment_name || "Attachment image"}
-          className="w-full h-auto object-cover"
-          loading="lazy"
-        />
+        <div className="relative overflow-hidden">
+          <img
+            src={item.attachment_url}
+            alt={item.attachment_name || "Attachment image"}
+            className="w-full h-auto object-cover transition-transform duration-300 group-hover/img:scale-105"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors duration-200" />
+        </div>
       </a>
     );
   }
@@ -270,28 +259,30 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
       href={item.attachment_url}
       target="_blank"
       rel="noopener noreferrer"
-      className={`flex items-center gap-2 px-3 py-2 rounded-xl mb-1 border ${isSent ? "border-white/30 bg-white/10" : "border-gray-200 bg-gray-50"}`}
+      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1.5 border transition-colors duration-150 ${FOCUS_RING} ${
+        isSent ? "border-white/25 bg-white/10 hover:bg-white/15" : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+      }`}
     >
-      <Paperclip className={`w-3.5 h-3.5 shrink-0 ${isSent ? "text-white" : "text-gray-500"}`} />
-      <span className={`text-[11px] font-medium truncate ${isSent ? "text-white" : "text-gray-700"}`}>
-        {item.attachment_name || "Attachment"}
+      <span className={`flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${isSent ? "bg-white/15" : "bg-white"}`}>
+        <Paperclip className={`w-3.5 h-3.5 ${isSent ? "text-white" : "text-gray-500"}`} />
       </span>
-      {sizeLabel && (
-        <span className={`text-[10px] shrink-0 ${isSent ? "text-white/70" : "text-gray-400"}`}>{sizeLabel}</span>
-      )}
+      <span className="min-w-0 flex-1">
+        <span className={`block text-[11px] font-medium wrap-break-words ${isSent ? "text-white" : "text-gray-700"}`}>
+          {item.attachment_name || "Attachment"}
+        </span>
+        {sizeLabel && (
+          <span className={`block text-[10px] mt-0.5 ${isSent ? "text-white/70" : "text-gray-400"}`}>{sizeLabel}</span>
+        )}
+      </span>
     </a>
   );
 });
 
-// Reaction bar
 const ReactionBar = memo(function ReactionBar({ reactions, isSent, onReact, messageId }) {
   if (!reactions || !reactions.total) return null;
 
   return (
-    <div
-      className={`flex flex-wrap gap-1 mt-1 ${isSent ? "justify-end" : "justify-start"}`}
-      aria-label="Message reactions"
-    >
+    <div className={`flex flex-wrap gap-1 mt-1.5 ${isSent ? "justify-end" : "justify-start"}`} aria-label="Message reactions">
       {reactions.reactions.map((r) => {
         const meta = getReactionMeta(r.reaction_code);
         return (
@@ -301,10 +292,12 @@ const ReactionBar = memo(function ReactionBar({ reactions, isSent, onReact, mess
             onClick={() => onReact?.(messageId, r.reaction_code)}
             title={r.users.map((u) => getFullName(u)).join(", ")}
             aria-label={`${meta?.label ?? r.reaction_code} reaction, ${r.count}`}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] shadow-sm hover:border-gray-300 transition-colors"
+            className={`group inline-flex items-center gap-1 pl-1.5 pr-2 py-1 rounded-full bg-white border border-gray-200/80 text-[10.5px] shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md hover:border-gray-300 active:translate-y-0 active:scale-95 ${FOCUS_RING}`}
           >
             <ReactionIcon reactionCode={r.reaction_code} size="xs" decorative />
-            <span className="text-gray-500 font-medium">{r.count}</span>
+            <span className="text-gray-500 font-semibold tabular-nums group-hover:text-gray-700 transition-colors">
+              {r.count}
+            </span>
           </button>
         );
       })}
@@ -312,13 +305,12 @@ const ReactionBar = memo(function ReactionBar({ reactions, isSent, onReact, mess
   );
 });
 
-// Reaction picker
 const ReactionPicker = memo(function ReactionPicker({ onPick }) {
   return (
     <div
       role="menu"
       aria-label="Pick a reaction"
-      className="absolute bottom-full mb-1 z-10 flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-full shadow-md max-w-[80vw] overflow-x-auto"
+      className="absolute bottom-full mb-2.5 z-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-full shadow-xl ring-1 ring-black/5 max-w-[86vw] overflow-x-auto scrollbar-none animate-reaction-pop origin-bottom"
     >
       {REACTION_CODES.map((code) => (
         <button
@@ -327,7 +319,7 @@ const ReactionPicker = memo(function ReactionPicker({ onPick }) {
           role="menuitem"
           onClick={() => onPick(code)}
           aria-label={getReactionMeta(code)?.label ?? code}
-          className="shrink-0 hover:scale-125 transition-transform"
+          className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 ease-out hover:scale-125 hover:-translate-y-1 active:scale-95 ${FOCUS_RING}`}
         >
           <ReactionIcon reactionCode={code} size="sm" decorative />
         </button>
@@ -336,7 +328,6 @@ const ReactionPicker = memo(function ReactionPicker({ onPick }) {
   );
 });
 
-// Message bubble
 const MessageBubble = memo(function MessageBubble({
   item,
   isSent,
@@ -359,23 +350,20 @@ const MessageBubble = memo(function MessageBubble({
     <div className={`flex gap-2 items-end ${isSent ? "flex-row-reverse" : "flex-row"} ${isGroupStart ? "mt-3" : "mt-1"}`}>
       {!isSent && (
         <div className="shrink-0 w-7 self-end mb-1">
-          {isGroupEnd ? (
-            <Avatar name={senderName} src={item.photo} size="sm" />
-          ) : (
-            <div className="w-7 h-7" />
-          )}
+          {isGroupEnd ? <Avatar name={senderName} src={item.photo} size="sm" /> : <div className="w-7 h-7" />}
         </div>
       )}
 
-      <div className={`flex flex-col gap-0.5 max-w-[75%] sm:max-w-[70%] md:max-w-[60%] ${isSent ? "items-end" : "items-start"}`}>
+      <div className={`flex flex-col gap-1 max-w-[78%] sm:max-w-[70%] md:max-w-[58%] ${isSent ? "items-end" : "items-start"}`}>
         {!isSent && isGroupChat && isGroupStart && (
           <span className="text-[10px] font-semibold text-gray-500 px-1">{senderName}</span>
         )}
 
         <div className="relative group/bubble" data-reaction-picker-root>
           <div
-            className={`px-4 py-2.5 text-xs leading-relaxed shadow-sm ${isSent ? sentCorners : `bg-white border border-gray-200 text-gray-800 ${recvCorners}`} ${item.pending ? "opacity-70" : ""}`}
-            style={isSent ? { backgroundColor: `rgb(var(--primary-700))`, color: 'white' } : {}}
+            className={`px-4 py-2.5 text-xs leading-relaxed shadow-sm transition-shadow duration-150 ${
+              isSent ? `${sentCorners} ${SENT_BUBBLE}` : `bg-white border border-gray-200 text-gray-800 ${recvCorners}`
+            } ${item.pending ? "opacity-70" : ""}`}
           >
             <AttachmentBlock item={item} isSent={isSent} />
             {hasText && renderMessageContent(item.message, item.mentions)}
@@ -388,21 +376,21 @@ const MessageBubble = memo(function MessageBubble({
               aria-label="Add reaction"
               aria-haspopup="true"
               aria-expanded={isPickerOpen}
-              className={`absolute top-1/2 -translate-y-1/2 ${isSent ? "-left-7" : "-right-7"} w-6 h-6 rounded-full flex items-center justify-center text-gray-400 opacity-60 md:opacity-0 md:group-hover/bubble:opacity-100 hover:bg-gray-100 transition-opacity`}
+              className={`absolute top-1/2 -translate-y-1/2 ${isSent ? "-left-8" : "-right-8"} w-7 h-7 rounded-full flex items-center justify-center text-gray-400 opacity-0 md:group-hover/bubble:opacity-100 hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 hover:scale-110 active:scale-95 transition-all duration-150 focus-visible:opacity-100 ${FOCUS_RING} ${
+                isPickerOpen ? "opacity-100 bg-gray-100 text-gray-600" : ""
+              }`}
             >
               <SmilePlus className="w-3.5 h-3.5" />
             </button>
           )}
 
-          {isPickerOpen && (
-            <ReactionPicker onPick={(code) => onReact?.(item.message_id, code)} />
-          )}
+          {isPickerOpen && <ReactionPicker onPick={(code) => onReact?.(item.message_id, code)} />}
         </div>
 
         <ReactionBar reactions={item.reactions} isSent={isSent} onReact={onReact} messageId={item.message_id} />
 
         {isGroupEnd && (
-          <div className={`flex items-center gap-1 px-1 ${isSent ? "flex-row-reverse" : "flex-row"}`}>
+          <div className={`flex items-center gap-1.5 px-1 ${isSent ? "flex-row-reverse" : "flex-row"}`}>
             <span className="text-[10px] text-gray-400">{formatTime(ts)}</span>
             {item.failed && <span className="text-[10px] text-red-400">Failed to send</span>}
             {isSent && !item.failed && (
@@ -410,7 +398,7 @@ const MessageBubble = memo(function MessageBubble({
                 {item.pending ? (
                   <Clock className="w-3 h-3 text-gray-300" />
                 ) : item.is_read ? (
-                  <CheckCheck className="w-3 h-3" style={{ color: `rgb(var(--primary-500))` }} />
+                  <CheckCheck className="w-3 h-3 text-[rgb(var(--primary-500))]" />
                 ) : item.delivered ? (
                   <CheckCheck className="w-3 h-3 text-gray-400" />
                 ) : (
@@ -431,7 +419,6 @@ const MessageBubble = memo(function MessageBubble({
   );
 });
 
-// ChatWindow
 export default function ChatWindow({
   selectedConversation,
   messages,
@@ -455,9 +442,6 @@ export default function ChatWindow({
   const conversationId = selectedConversation?.conversation_id ?? null;
   const isGroupChat = !!selectedConversation?.is_group;
 
-  // Stable per-chat identity that survives the null -> real conversation_id
-  // transition of lazy conversation creation, so a switch to a genuinely
-  // different contact is the only thing that resets local chat state.
   const identityKey = useMemo(() => {
     if (!selectedConversation) return null;
     return isGroupChat
@@ -465,9 +449,7 @@ export default function ChatWindow({
       : `user-${selectedConversation.user_id}`;
   }, [selectedConversation, isGroupChat]);
 
-  const [localMessages, setMessages] = useState(() =>
-    Array.isArray(messages) ? messages : []
-  );
+  const [localMessages, setMessages] = useState(() => (Array.isArray(messages) ? messages : []));
   const [typingUsers, setTypingUsers] = useState(() => new Set());
   const [reactionPickerId, setReactionPickerId] = useState(null);
 
@@ -476,7 +458,6 @@ export default function ChatWindow({
     return () => { isMountedRef.current = false; };
   }, []);
 
-  // Merge messages
   useEffect(() => {
     const safe = Array.isArray(messages) ? messages : [];
     setMessages((prev) => {
@@ -494,17 +475,14 @@ export default function ChatWindow({
     if (force || distanceFromBottom < 100) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  // Conversation switch
   useEffect(() => {
     skipNextScrollRef.current = true;
     scrollToBottom(true);
-
     setTypingUsers(() => new Set());
     setReactionPickerId(null);
     seenIdsRef.current = new Set();
   }, [identityKey, scrollToBottom]);
 
-  // Scroll on new messages
   useEffect(() => {
     if (skipNextScrollRef.current) {
       skipNextScrollRef.current = false;
@@ -515,7 +493,6 @@ export default function ChatWindow({
 
   useEffect(() => { if (typingUsers.size > 0) scrollToBottom(); }, [typingUsers, scrollToBottom]);
 
-  // Reaction picker outside click
   useEffect(() => {
     if (reactionPickerId == null) return;
 
@@ -536,7 +513,6 @@ export default function ChatWindow({
     };
   }, [reactionPickerId]);
 
-  // Incoming messages
   useEffect(() => {
     if (!socket || !conversationId) return;
     const onReceive = (msg) => {
@@ -560,7 +536,6 @@ export default function ChatWindow({
     return () => { socket.off("receive_message", onReceive); };
   }, [socket, conversationId, userId, identityKey]);
 
-  // Typing indicators
   useEffect(() => {
     if (!socket || !conversationId) return;
 
@@ -586,7 +561,6 @@ export default function ChatWindow({
     };
   }, [socket, conversationId, userId]);
 
-  // Delivery & seen receipts
   useEffect(() => {
     if (!socket) return;
     const onDelivered = ({ messageId } = {}) => setMessages((p) => p.map((m) => m.message_id === messageId ? { ...m, delivered: true } : m));
@@ -599,7 +573,6 @@ export default function ChatWindow({
     };
   }, [socket]);
 
-  // Seen receipts
   useEffect(() => {
     if (!socket || !conversationId) return;
     localMessages.forEach((msg) => {
@@ -612,7 +585,6 @@ export default function ChatWindow({
     });
   }, [localMessages, socket, userId, conversationId]);
 
-  // Reaction updates
   useEffect(() => {
     if (!socket || !conversationId) return;
     const applyReaction = (payload = {}) => {
@@ -640,7 +612,6 @@ export default function ChatWindow({
     setReactionPickerId(null);
   }, [onReact]);
 
-  // Send
   const handleSend = useCallback(async (...args) => {
     const text = extractOptimisticText(args);
     let tempId = null;
@@ -693,15 +664,11 @@ export default function ChatWindow({
     }
   }, [onSend, conversationId, identityKey, userId]);
 
-  // Empty state
   if (!selectedConversation) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4 p-8 text-center">
-        <div
-          className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm"
-          style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
-        >
-          <BookOpen className="w-7 h-7" style={{ color: `rgb(var(--primary-500))` }} />
+        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
+          <BookOpen className="w-7 h-7 text-[rgb(var(--primary-500))]" />
         </div>
         <div>
           <h3 className="text-sm font-semibold text-gray-700 mb-1">No Consultation Selected</h3>
@@ -709,13 +676,8 @@ export default function ChatWindow({
             Select a student from the list to begin or continue an OJT consultation.
           </p>
         </div>
-        <div
-          className="px-3 py-1.5 rounded-full"
-          style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
-        >
-          <span className="text-[11px] font-medium" style={{ color: `rgb(var(--primary-700))` }}>
-            OJT Monitoring System
-          </span>
+        <div className={`px-3 py-1.5 rounded-full ${BADGE_SURFACE}`}>
+          <span className={`text-[11px] font-medium ${PRIMARY_TEXT}`}>OJT Monitoring System</span>
         </div>
       </div>
     );
@@ -727,8 +689,6 @@ export default function ChatWindow({
 
   return (
     <div className="flex flex-col h-full bg-gray-50">
-
-      {/* Header */}
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100 shadow-sm shrink-0">
         {onBack && (
           <button
@@ -747,10 +707,7 @@ export default function ChatWindow({
             <Avatar name={selectedName} src={selectedConversation.photo} size="md" />
           )}
           {isOnline && !isGroupChat && (
-            <span
-              className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white"
-              style={{ backgroundColor: `rgb(var(--primary-500))` }}
-            />
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white bg-[rgb(var(--primary-500))]" />
           )}
         </div>
 
@@ -758,9 +715,7 @@ export default function ChatWindow({
           <div className="flex items-center gap-1.5">
             <h3 className="text-sm font-bold text-gray-800 truncate">{selectedName}</h3>
             {isOnline && !isGroupChat && (
-              <span className="text-[10px] font-semibold shrink-0" style={{ color: `rgb(var(--primary-600))` }}>
-                Online
-              </span>
+              <span className="text-[10px] font-semibold shrink-0 text-[rgb(var(--primary-600))]">Online</span>
             )}
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
@@ -771,21 +726,13 @@ export default function ChatWindow({
               <span className="text-[10px] text-gray-500 font-medium">{selectedConversation.member_count} members</span>
             )}
             {(selectedConversation.role || isGroupChat) && <span className="text-[10px] text-gray-300">·</span>}
-            <span
-              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
-              style={{
-                backgroundColor: `rgb(var(--primary-50))`,
-                border: `1px solid rgb(var(--primary-100))`,
-                color: `rgb(var(--primary-700))`,
-              }}
-            >
+            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${BADGE_SURFACE} ${PRIMARY_TEXT}`}>
               <BookOpen className="w-2.5 h-2.5" />OJT Consultation
             </span>
           </div>
         </div>
       </div>
 
-      {/* Message list */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 py-4"
@@ -796,20 +743,14 @@ export default function ChatWindow({
         {loading ? (
           <div className="flex items-center justify-center h-full" role="status">
             <div className="flex flex-col items-center gap-2">
-              <div
-                className="w-6 h-6 rounded-full animate-spin"
-                style={{ border: '2px solid #e5e7eb', borderTopColor: `rgb(var(--primary-700))` }}
-              />
+              <div className="w-6 h-6 rounded-full animate-spin border-2 border-gray-200 border-t-[rgb(var(--primary-700))]" />
               <p className="text-xs text-gray-400">Loading consultation…</p>
             </div>
           </div>
         ) : localMessages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-            <div
-              className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm"
-              style={{ backgroundColor: `rgb(var(--primary-50))`, border: `1px solid rgb(var(--primary-100))` }}
-            >
-              <BookOpen className="w-6 h-6" style={{ color: `rgb(var(--primary-500))` }} />
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
+              <BookOpen className="w-6 h-6 text-[rgb(var(--primary-500))]" />
             </div>
             <div>
               <p className="text-sm font-semibold text-gray-700 mb-1">Start a consultation with {selectedName}</p>
