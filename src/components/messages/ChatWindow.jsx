@@ -14,7 +14,7 @@ import {
 import Avatar from "../ui/Avatar";
 import MessageInput from "./MessageInput";
 import ReactionIcon from "../ui/ReactionIcon";
-import { REACTION_CODES, getReactionMeta } from "../../constants/reaction";
+import { REACTION_CODES, getReactionMeta } from "../../constants/reactions";
 
 // Helpers
 
