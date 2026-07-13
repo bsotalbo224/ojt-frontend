@@ -38,6 +38,7 @@ export default function MessagesPage() {
   const contextSentRef          = useRef(false);
   const selectedConversationRef = useRef(null);
   const latestRequestIdRef      = useRef(0);
+  const objectUrlsRef           = useRef(new Set());
 
   const location = useLocation();
 
@@ -48,6 +49,20 @@ export default function MessagesPage() {
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
   }, [selectedConversation]);
+
+  const revokeObjectUrl = useCallback((url) => {
+    if (url && objectUrlsRef.current.has(url)) {
+      URL.revokeObjectURL(url);
+      objectUrlsRef.current.delete(url);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      objectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      objectUrlsRef.current.clear();
+    };
+  }, []);
 
   // Socket
   useEffect(() => {
@@ -84,7 +99,10 @@ export default function MessagesPage() {
           );
           if (pendingIdx !== -1) {
             const updated = [...arr];
-            updated[pendingIdx] = { ...updated[pendingIdx], ...incomingMsg, tempId: undefined };
+            if (updated[pendingIdx].attachment_url) {
+              revokeObjectUrl(updated[pendingIdx].attachment_url);
+            }
+            updated[pendingIdx] = { ...updated[pendingIdx], ...incomingMsg, tempId: undefined, uploading: false };
             return updated;
           }
         }
@@ -121,7 +139,7 @@ export default function MessagesPage() {
 
     socket.on("receive_message", handleReceiveMessage);
     return () => socket.off("receive_message", handleReceiveMessage);
-  }, [currentUser?.user_id]);
+  }, [currentUser?.user_id, revokeObjectUrl]);
 
   // Read receipts
   useEffect(() => {
@@ -377,8 +395,11 @@ export default function MessagesPage() {
   }, [fetchContacts, fetchMessages, markRead]);
 
   // Send
-  const handleSend = useCallback(async (message) => {
-    if (!selectedConversation || !message?.trim()) return;
+  const handleSend = useCallback(async (message, file) => {
+    const hasText = !!message?.trim();
+    const hasFile = !!file;
+
+    if (!selectedConversation || (!hasText && !hasFile)) return;
 
     let activeConversation = selectedConversation;
 
@@ -388,47 +409,74 @@ export default function MessagesPage() {
       setSelectedConversation(activeConversation);
     }
 
-    const tempId     = `temp-${Date.now()}`;
+    const tempId = `temp-${Date.now()}`;
+
+    let tempAttachmentUrl = null;
+    if (hasFile && file.type?.startsWith("image/")) {
+      tempAttachmentUrl = URL.createObjectURL(file);
+      objectUrlsRef.current.add(tempAttachmentUrl);
+    }
+
     const optimistic = {
       tempId,
       message_id:      null,
       conversation_id: activeConversation.conversation_id,
       sender_id:       currentUser?.user_id,
-      message,
+      message:         message || "",
       created_at:      new Date().toISOString(),
       sent_at:         new Date().toISOString(),
       is_read:         false,
       delivered:       false,
+      ...(hasFile
+        ? {
+            attachment_name: file.name,
+            attachment_url:  tempAttachmentUrl,
+            attachment_type: file.type,
+            attachment_size: file.size,
+            uploading:       true,
+          }
+        : {}),
     };
 
     setMessages((prev) => [...safeArray(prev), optimistic]);
     setConversations((prev) =>
       safeArray(prev).map((c) =>
         String(c.conversation_id) === String(activeConversation.conversation_id)
-          ? { ...c, last_message: message, last_message_time: optimistic.sent_at }
+          ? {
+              ...c,
+              last_message:      message || (hasFile ? file.name : ""),
+              last_message_time: optimistic.sent_at,
+            }
           : c
       )
     );
 
     try {
-      const res  = await api.post("/messages/messages", {
-        conversation_id: activeConversation.conversation_id,
-        message,
-      });
+      const formData = new FormData();
+      formData.append("conversation_id", activeConversation.conversation_id);
+      formData.append("message", message || "");
+      if (hasFile) {
+        formData.append("attachment", file);
+      }
+
+      const res  = await api.post("/messages/messages", formData);
       const sent = res?.data?.data;
 
       if (sent) {
         setMessages((prev) =>
-          safeArray(prev).map((m) =>
-            m.tempId === tempId ? { ...m, ...sent, tempId: undefined } : m
-          )
+          safeArray(prev).map((m) => {
+            if (m.tempId !== tempId) return m;
+            revokeObjectUrl(tempAttachmentUrl);
+            return { ...m, ...sent, tempId: undefined, uploading: false };
+          })
         );
       }
     } catch (err) {
       console.error("Failed to send message:", err);
+      revokeObjectUrl(tempAttachmentUrl);
       setMessages((prev) => safeArray(prev).filter((m) => m.tempId !== tempId));
     }
-  }, [selectedConversation, currentUser, ensureConversation]);
+  }, [selectedConversation, currentUser, ensureConversation, revokeObjectUrl]);
 
   // Polling
   useEffect(() => {
