@@ -8,8 +8,15 @@ import {
   BookOpen,
   FileText,
   ScrollText,
-  Paperclip,
   SmilePlus,
+  X,
+  Download,
+  File,
+  FileVideo,
+  FileAudio,
+  FileArchive,
+  FileCode,
+  FileSpreadsheet,
 } from "lucide-react";
 import Avatar from "../ui/Avatar";
 import MessageInput from "./MessageInput";
@@ -20,6 +27,22 @@ const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visibl
 const BADGE_SURFACE = "bg-[rgb(var(--primary-50))] border border-[rgb(var(--primary-100))]";
 const PRIMARY_TEXT = "text-[rgb(var(--primary-700))]";
 const SENT_BUBBLE = "bg-[rgb(var(--primary-700))] text-white";
+
+const MODAL_FOCUSABLE_SELECTOR = 'button, a[href], [tabindex]:not([tabindex="-1"])';
+
+// Reaction picker sizing is derived from the number of reactions so it never
+// hard-codes a width that could overflow small viewports or look sparse
+// with a different reaction set.
+const REACTION_BUTTON_SIZE = 32;
+const REACTION_BUTTON_GAP = 6;
+const REACTION_PICKER_PADDING = 20; // px-2.5 on both sides
+const REACTION_PICKER_VIEWPORT_MARGIN = 10;
+
+function getReactionPickerWidth(count) {
+  return count * REACTION_BUTTON_SIZE + Math.max(0, count - 1) * REACTION_BUTTON_GAP + REACTION_PICKER_PADDING;
+}
+
+/* ----------------------------- Shared helpers ---------------------------- */
 
 const getFullName = (user = {}) => {
   if (user.f_name || user.l_name) return `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();
@@ -153,6 +176,61 @@ function extractOptimisticText(args) {
   return "";
 }
 
+/* --------------------------- Attachment kind map -------------------------- */
+// Resolves a MIME type / filename to a broad attachment "kind" so the file
+// icon reflects the actual content instead of a single generic paperclip.
+
+const EXTENSION_KIND_MAP = {
+  pdf: "pdf",
+  doc: "document", docx: "document", rtf: "document", odt: "document",
+  xls: "spreadsheet", xlsx: "spreadsheet", csv: "spreadsheet", ods: "spreadsheet",
+  ppt: "presentation", pptx: "presentation", odp: "presentation",
+  zip: "archive", rar: "archive", "7z": "archive", tar: "archive", gz: "archive",
+  mp4: "video", mov: "video", avi: "video", mkv: "video", webm: "video",
+  mp3: "audio", wav: "audio", ogg: "audio", m4a: "audio", flac: "audio",
+  js: "code", jsx: "code", ts: "code", tsx: "code", json: "code", html: "code",
+  css: "code", py: "code", java: "code", c: "code", cpp: "code", php: "code",
+  rb: "code", go: "code", rs: "code", sql: "code", sh: "code",
+  txt: "text", md: "text", log: "text",
+};
+
+const ATTACHMENT_ICON_BY_KIND = {
+  pdf: FileText,
+  document: FileText,
+  spreadsheet: FileSpreadsheet,
+  presentation: FileText,
+  archive: FileArchive,
+  video: FileVideo,
+  audio: FileAudio,
+  code: FileCode,
+  text: FileText,
+  generic: File,
+};
+
+function getAttachmentKind(item) {
+  const mime = (item.attachment_type || "").toLowerCase();
+  const name = (item.attachment_name || "").toLowerCase();
+  const ext = name.includes(".") ? name.split(".").pop() : "";
+
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  if (mime === "application/pdf") return "pdf";
+  if (mime.includes("spreadsheet") || mime.includes("excel") || mime === "text/csv") return "spreadsheet";
+  if (mime.includes("presentation") || mime.includes("powerpoint")) return "presentation";
+  if (mime.includes("word") || mime.includes("document")) return "document";
+  if (mime.includes("zip") || mime.includes("compressed") || mime.includes("archive")) return "archive";
+  if (mime.includes("json") || mime.includes("javascript") || mime.includes("html") || mime.includes("css")) return "code";
+  if (mime.startsWith("text/")) return "text";
+
+  return EXTENSION_KIND_MAP[ext] || "generic";
+}
+
+function getAttachmentIcon(item) {
+  return ATTACHMENT_ICON_BY_KIND[getAttachmentKind(item)] || File;
+}
+
+/* -------------------------------------------------------------------------- */
+
 const GroupAvatar = memo(function GroupAvatar({ label }) {
   return (
     <div
@@ -227,7 +305,7 @@ const SystemMessageCard = memo(function SystemMessageCard({ item }) {
   );
 });
 
-const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
+const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageClick }) {
   if (!item.attachment_url) return null;
 
   const isImage = typeof item.attachment_type === "string" && item.attachment_type.startsWith("image/");
@@ -235,11 +313,11 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
 
   if (isImage) {
     return (
-      <a
-        href={item.attachment_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`group/img block mb-1.5 rounded-xl overflow-hidden max-w-60 ring-1 ring-black/5 transition-transform duration-200 hover:scale-[1.02] ${FOCUS_RING}`}
+      <button
+        type="button"
+        onClick={() => onImageClick?.(item)}
+        aria-label={`Open image ${item.attachment_name || "attachment"} in viewer`}
+        className={`group/img block mb-1.5 rounded-xl overflow-hidden max-w-60 ring-1 ring-black/5 transition-all duration-200 hover:scale-[1.02] hover:ring-black/10 focus-visible:scale-[1.02] active:scale-[0.99] cursor-pointer ${FOCUS_RING}`}
       >
         <div className="relative overflow-hidden">
           <img
@@ -248,23 +326,26 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent }) {
             className="w-full h-auto object-cover transition-transform duration-300 group-hover/img:scale-105"
             loading="lazy"
           />
-          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors duration-200" />
+          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 group-focus-visible/img:bg-black/10 transition-colors duration-200" />
         </div>
-      </a>
+      </button>
     );
   }
+
+  const FileIcon = getAttachmentIcon(item);
 
   return (
     <a
       href={item.attachment_url}
       target="_blank"
       rel="noopener noreferrer"
-      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1.5 border transition-colors duration-150 ${FOCUS_RING} ${
-        isSent ? "border-white/25 bg-white/10 hover:bg-white/15" : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+      aria-label={`Open attachment ${item.attachment_name || "file"}${sizeLabel ? `, ${sizeLabel}` : ""}`}
+      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1.5 border transition-all duration-150 active:scale-[0.99] ${FOCUS_RING} ${
+        isSent ? "border-white/25 bg-white/10 hover:bg-white/15 focus-visible:bg-white/15" : "border-gray-200 bg-gray-50 hover:bg-gray-100 focus-visible:bg-gray-100"
       }`}
     >
       <span className={`flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${isSent ? "bg-white/15" : "bg-white"}`}>
-        <Paperclip className={`w-3.5 h-3.5 ${isSent ? "text-white" : "text-gray-500"}`} />
+        <FileIcon className={`w-3.5 h-3.5 ${isSent ? "text-white" : "text-gray-500"}`} />
       </span>
       <span className="min-w-0 flex-1">
         <span className={`block text-[11px] font-medium wrap-break-words ${isSent ? "text-white" : "text-gray-700"}`}>
@@ -305,25 +386,253 @@ const ReactionBar = memo(function ReactionBar({ reactions, isSent, onReact, mess
   );
 });
 
-const ReactionPicker = memo(function ReactionPicker({ onPick }) {
+const ReactionToggleButton = memo(function ReactionToggleButton({ isPickerOpen, onClick, orderFirst }) {
+  return (
+    <button
+      type="button"
+      data-reaction-toggle-btn
+      onClick={onClick}
+      aria-label="Add reaction"
+      aria-haspopup="menu"
+      aria-expanded={isPickerOpen}
+      className={`${orderFirst ? "order-first" : ""} shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-gray-400 opacity-0 md:group-hover/bubble:opacity-100 hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 hover:scale-110 active:scale-95 transition-all duration-150 focus-visible:opacity-100 ${FOCUS_RING} ${
+        isPickerOpen ? "opacity-100 bg-gray-100 text-gray-600" : ""
+      }`}
+    >
+      <SmilePlus className="w-3.5 h-3.5" />
+    </button>
+  );
+});
+
+const ReactionPickerPanel = memo(function ReactionPickerPanel({ top, left, openUpward, onPick, onClose }) {
+  const itemRefs = useRef([]);
+
+  useEffect(() => {
+    itemRefs.current[0]?.focus();
+  }, []);
+
+  const handleKeyDown = useCallback((e) => {
+    const count = REACTION_CODES.length;
+    const currentIndex = itemRefs.current.findIndex((el) => el === document.activeElement);
+
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = currentIndex === -1 ? 0 : (currentIndex + 1) % count;
+      itemRefs.current[next]?.focus();
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = currentIndex === -1 ? 0 : (currentIndex - 1 + count) % count;
+      itemRefs.current[next]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      itemRefs.current[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      itemRefs.current[count - 1]?.focus();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    } else if (e.key === "Tab") {
+      // Keep focus contained within the picker while it's open.
+      e.preventDefault();
+    }
+  }, [onClose]);
+
   return (
     <div
+      data-reaction-picker-panel
       role="menu"
       aria-label="Pick a reaction"
-      className="absolute bottom-full mb-2.5 z-20 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-full shadow-xl ring-1 ring-black/5 max-w-[86vw] overflow-x-auto scrollbar-none animate-reaction-pop origin-bottom"
+      onKeyDown={handleKeyDown}
+      style={{
+        position: "fixed",
+        top,
+        left,
+        transform: `translate(-50%, ${openUpward ? "-100%" : "0"})`,
+      }}
+      className="z-50 flex items-center gap-1.5 px-2.5 py-1.5 bg-white rounded-full shadow-xl ring-1 ring-black/5 max-w-[90vw] overflow-x-auto scrollbar-none animate-reaction-pop"
     >
-      {REACTION_CODES.map((code) => (
+      {REACTION_CODES.map((code, idx) => (
         <button
           key={code}
+          ref={(el) => { itemRefs.current[idx] = el; }}
           type="button"
           role="menuitem"
+          tabIndex={-1}
           onClick={() => onPick(code)}
           aria-label={getReactionMeta(code)?.label ?? code}
-          className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 ease-out hover:scale-125 hover:-translate-y-1 active:scale-95 ${FOCUS_RING}`}
+          className={`shrink-0 flex items-center justify-center w-8 h-8 rounded-full transition-all duration-150 ease-out hover:scale-125 hover:-translate-y-1 active:scale-95 focus-visible:scale-125 focus-visible:-translate-y-1 ${FOCUS_RING}`}
         >
           <ReactionIcon reactionCode={code} size="sm" decorative />
         </button>
       ))}
+    </div>
+  );
+});
+
+const ImageModal = memo(function ImageModal({ item, onClose }) {
+  const dialogRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const previouslyFocusedRef = useRef(null);
+  const [entered, setEntered] = useState(false);
+  const [imgStatus, setImgStatus] = useState("loading");
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const name = item.attachment_name || "Attachment image";
+
+  // Lock background scroll, remember prior focus, animate in, focus the close button.
+  useEffect(() => {
+    previouslyFocusedRef.current = document.activeElement;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const raf = requestAnimationFrame(() => setEntered(true));
+    closeButtonRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      cancelAnimationFrame(raf);
+      const el = previouslyFocusedRef.current;
+      if (el && typeof el.focus === "function") el.focus();
+    };
+  }, []);
+
+  // Escape to close + focus trap while the modal is open.
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        const focusables = dialogRef.current?.querySelectorAll(MODAL_FOCUSABLE_SELECTOR);
+        if (!focusables || focusables.length === 0) return;
+        const list = Array.from(focusables);
+        const first = list[0];
+        const last = list[list.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        } else if (!list.includes(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const handleBackdropClick = useCallback((e) => {
+    if (dialogRef.current && !dialogRef.current.contains(e.target)) onClose();
+  }, [onClose]);
+
+  const handleImgLoad = useCallback(() => setImgStatus("loaded"), []);
+  const handleImgError = useCallback(() => setImgStatus("error"), []);
+
+  // Fetches the image as a blob so the download is forced regardless of the
+  // host's Content-Disposition header, rather than relying on an <a download>
+  // combined with target="_blank" (which browsers largely ignore for
+  // cross-origin URLs). Falls back to opening the file directly if the
+  // fetch fails (e.g. CORS-restricted host).
+  const handleDownload = useCallback(async () => {
+    if (isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const response = await fetch(item.attachment_url);
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = item.attachment_name || "image";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      window.open(item.attachment_url, "_blank", "noopener,noreferrer");
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [item.attachment_url, item.attachment_name, isDownloading]);
+
+  return (
+    <div
+      className={`fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity duration-300 ease-out ${
+        entered ? "opacity-100" : "opacity-0"
+      }`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={name}
+      onMouseDown={handleBackdropClick}
+    >
+      <div
+        ref={dialogRef}
+        className={`relative max-w-[92vw] max-h-[90vh] flex flex-col items-center gap-3 transition-all duration-300 ease-out ${
+          entered ? "opacity-100 scale-100" : "opacity-0 scale-95"
+        }`}
+      >
+        <div className="flex items-center justify-between w-full gap-4 px-1">
+          <span className="text-xs font-medium text-white/90 truncate">{name}</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={isDownloading}
+              aria-label="Download image"
+              aria-busy={isDownloading}
+              className={`w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:bg-white/20 transition-colors duration-150 disabled:opacity-60 disabled:cursor-wait ${FOCUS_RING}`}
+            >
+              {isDownloading ? (
+                <div className="w-3.5 h-3.5 rounded-full animate-spin border-2 border-white/30 border-t-white" aria-hidden="true" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+            </button>
+            <button
+              ref={closeButtonRef}
+              type="button"
+              onClick={onClose}
+              aria-label="Close image viewer"
+              className={`w-8 h-8 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 focus-visible:bg-white/20 transition-colors duration-150 ${FOCUS_RING}`}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="relative flex items-center justify-center min-w-40 min-h-40">
+          {imgStatus === "loading" && (
+            <div className="absolute inset-0 flex items-center justify-center" role="status" aria-live="polite">
+              <span className="sr-only">Loading image…</span>
+              <div className="w-8 h-8 rounded-full animate-spin border-2 border-white/20 border-t-white" aria-hidden="true" />
+            </div>
+          )}
+
+          {imgStatus === "error" ? (
+            <div className="flex flex-col items-center gap-2 px-10 py-12 text-white/80" role="alert">
+              <AlertCircle className="w-8 h-8" />
+              <p className="text-xs">This image couldn't be loaded.</p>
+            </div>
+          ) : (
+            <img
+              src={item.attachment_url}
+              alt={name}
+              onLoad={handleImgLoad}
+              onError={handleImgError}
+              className={`max-w-full max-h-[80vh] w-auto h-auto rounded-lg object-contain shadow-2xl transition-all duration-300 ease-out ${
+                imgStatus === "loaded" ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]"
+              }`}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 });
@@ -337,6 +646,7 @@ const MessageBubble = memo(function MessageBubble({
   onReact,
   isPickerOpen,
   onTogglePicker,
+  onImageClick,
 }) {
   const ts = resolveTimestamp(item);
 
@@ -346,8 +656,16 @@ const MessageBubble = memo(function MessageBubble({
   const senderName = getFullName(item);
   const hasText = typeof item.message === "string" && item.message.trim() !== "";
 
+  const handleToggleClick = useCallback((e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    onTogglePicker(item.message_id, rect, e.currentTarget);
+  }, [onTogglePicker, item.message_id]);
+
   return (
-    <div className={`flex gap-2 items-end ${isSent ? "flex-row-reverse" : "flex-row"} ${isGroupStart ? "mt-3" : "mt-1"}`}>
+    <div
+      data-reaction-picker-root
+      className={`flex gap-2 items-end ${isSent ? "flex-row-reverse" : "flex-row"} ${isGroupStart ? "mt-3" : "mt-1"}`}
+    >
       {!isSent && (
         <div className="shrink-0 w-7 self-end mb-1">
           {isGroupEnd ? <Avatar name={senderName} src={item.photo} size="sm" /> : <div className="w-7 h-7" />}
@@ -359,32 +677,23 @@ const MessageBubble = memo(function MessageBubble({
           <span className="text-[10px] font-semibold text-gray-500 px-1">{senderName}</span>
         )}
 
-        <div className="relative group/bubble" data-reaction-picker-root>
+        <div className="relative group/bubble flex items-center gap-1">
+          {isSent && item.message_id != null && (
+            <ReactionToggleButton isPickerOpen={isPickerOpen} onClick={handleToggleClick} orderFirst />
+          )}
+
           <div
             className={`px-4 py-2.5 text-xs leading-relaxed shadow-sm transition-shadow duration-150 ${
               isSent ? `${sentCorners} ${SENT_BUBBLE}` : `bg-white border border-gray-200 text-gray-800 ${recvCorners}`
             } ${item.pending ? "opacity-70" : ""}`}
           >
-            <AttachmentBlock item={item} isSent={isSent} />
+            <AttachmentBlock item={item} isSent={isSent} onImageClick={onImageClick} />
             {hasText && renderMessageContent(item.message, item.mentions)}
           </div>
 
-          {item.message_id != null && (
-            <button
-              type="button"
-              onClick={() => onTogglePicker(item.message_id)}
-              aria-label="Add reaction"
-              aria-haspopup="true"
-              aria-expanded={isPickerOpen}
-              className={`absolute top-1/2 -translate-y-1/2 ${isSent ? "-left-8" : "-right-8"} w-7 h-7 rounded-full flex items-center justify-center text-gray-400 opacity-0 md:group-hover/bubble:opacity-100 hover:opacity-100 hover:bg-gray-100 hover:text-gray-600 hover:scale-110 active:scale-95 transition-all duration-150 focus-visible:opacity-100 ${FOCUS_RING} ${
-                isPickerOpen ? "opacity-100 bg-gray-100 text-gray-600" : ""
-              }`}
-            >
-              <SmilePlus className="w-3.5 h-3.5" />
-            </button>
+          {!isSent && item.message_id != null && (
+            <ReactionToggleButton isPickerOpen={isPickerOpen} onClick={handleToggleClick} />
           )}
-
-          {isPickerOpen && <ReactionPicker onPick={(code) => onReact?.(item.message_id, code)} />}
         </div>
 
         <ReactionBar reactions={item.reactions} isSent={isSent} onReact={onReact} messageId={item.message_id} />
@@ -451,7 +760,8 @@ export default function ChatWindow({
 
   const [localMessages, setMessages] = useState(() => (Array.isArray(messages) ? messages : []));
   const [typingUsers, setTypingUsers] = useState(() => new Set());
-  const [reactionPickerId, setReactionPickerId] = useState(null);
+  const [reactionPicker, setReactionPicker] = useState(null);
+  const [imageModalItem, setImageModalItem] = useState(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -475,11 +785,21 @@ export default function ChatWindow({
     if (force || distanceFromBottom < 100) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
 
+  // Closes the reaction picker and restores focus to whichever trigger button opened it.
+  const closePicker = useCallback(() => {
+    setReactionPicker((prev) => {
+      if (prev?.triggerEl && typeof prev.triggerEl.focus === "function") {
+        prev.triggerEl.focus();
+      }
+      return null;
+    });
+  }, []);
+
   useEffect(() => {
     skipNextScrollRef.current = true;
     scrollToBottom(true);
     setTypingUsers(() => new Set());
-    setReactionPickerId(null);
+    setReactionPicker(null);
     seenIdsRef.current = new Set();
   }, [identityKey, scrollToBottom]);
 
@@ -494,24 +814,31 @@ export default function ChatWindow({
   useEffect(() => { if (typingUsers.size > 0) scrollToBottom(); }, [typingUsers, scrollToBottom]);
 
   useEffect(() => {
-    if (reactionPickerId == null) return;
+    if (reactionPicker == null) return;
 
     const handleOutside = (e) => {
-      if (!e.target.closest?.("[data-reaction-picker-root]")) setReactionPickerId(null);
+      if (!e.target.closest?.("[data-reaction-picker-panel], [data-reaction-toggle-btn]")) {
+        closePicker();
+      }
     };
     const handleKeyDown = (e) => {
-      if (e.key === "Escape") setReactionPickerId(null);
+      if (e.key === "Escape") closePicker();
     };
+    const handleReflow = () => closePicker();
 
     document.addEventListener("mousedown", handleOutside);
     document.addEventListener("touchstart", handleOutside);
     document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("resize", handleReflow);
+    scrollRef.current?.addEventListener("scroll", handleReflow);
     return () => {
       document.removeEventListener("mousedown", handleOutside);
       document.removeEventListener("touchstart", handleOutside);
       document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("resize", handleReflow);
+      scrollRef.current?.removeEventListener("scroll", handleReflow);
     };
-  }, [reactionPickerId]);
+  }, [reactionPicker, closePicker]);
 
   useEffect(() => {
     if (!socket || !conversationId) return;
@@ -603,14 +930,45 @@ export default function ChatWindow({
   const grouped = useMemo(() => groupMessagesByDate(localMessages), [localMessages]);
   const groupingMap = useMemo(() => buildGroupingMap(localMessages), [localMessages]);
 
-  const handleTogglePicker = useCallback((messageId) => {
-    setReactionPickerId((prev) => (prev === messageId ? null : messageId));
+  const handleTogglePicker = useCallback((messageId, rect, triggerEl) => {
+    setReactionPicker((prev) => {
+      if (prev && prev.messageId === messageId) {
+        if (prev.triggerEl && typeof prev.triggerEl.focus === "function") prev.triggerEl.focus();
+        return null;
+      }
+      if (!rect) return null;
+
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const halfPicker = getReactionPickerWidth(REACTION_CODES.length) / 2;
+
+      let left = rect.left + rect.width / 2;
+      left = Math.min(
+        Math.max(left, halfPicker + REACTION_PICKER_VIEWPORT_MARGIN),
+        viewportWidth - halfPicker - REACTION_PICKER_VIEWPORT_MARGIN
+      );
+
+      const spaceAbove = rect.top;
+      const spaceBelow = viewportHeight - rect.bottom;
+      const openUpward = spaceAbove >= 64 || spaceAbove > spaceBelow;
+      const top = openUpward ? rect.top - 8 : rect.bottom + 8;
+
+      return { messageId, top, left, openUpward, triggerEl };
+    });
   }, []);
 
   const handleReact = useCallback((messageId, reactionCode) => {
     onReact?.(messageId, reactionCode);
-    setReactionPickerId(null);
-  }, [onReact]);
+    closePicker();
+  }, [onReact, closePicker]);
+
+  const handleImageClick = useCallback((item) => {
+    setImageModalItem(item);
+  }, []);
+
+  const handleCloseImageModal = useCallback(() => {
+    setImageModalItem(null);
+  }, []);
 
   const handleSend = useCallback(async (...args) => {
     const text = extractOptimisticText(args);
@@ -791,8 +1149,9 @@ export default function ChatWindow({
                   isGroupEnd={isGroupEnd}
                   isGroupChat={isGroupChat}
                   onReact={handleReact}
-                  isPickerOpen={reactionPickerId === item.message_id}
+                  isPickerOpen={reactionPicker?.messageId === item.message_id}
                   onTogglePicker={handleTogglePicker}
+                  onImageClick={handleImageClick}
                 />
               );
             })}
@@ -811,6 +1170,19 @@ export default function ChatWindow({
         socket={socket}
         conversationId={conversationId}
       />
+
+      {reactionPicker && (
+        <ReactionPickerPanel
+          key={reactionPicker.messageId}
+          top={reactionPicker.top}
+          left={reactionPicker.left}
+          openUpward={reactionPicker.openUpward}
+          onPick={(code) => handleReact(reactionPicker.messageId, code)}
+          onClose={closePicker}
+        />
+      )}
+
+      {imageModalItem && <ImageModal item={imageModalItem} onClose={handleCloseImageModal} />}
     </div>
   );
 }
