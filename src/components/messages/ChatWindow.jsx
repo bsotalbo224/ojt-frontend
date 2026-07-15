@@ -11,6 +11,9 @@ import {
   SmilePlus,
   X,
   Download,
+  Upload,
+  ChevronLeft,
+  ChevronRight,
   File,
   FileVideo,
   FileAudio,
@@ -38,6 +41,10 @@ const REACTION_BUTTON_GAP = 6;
 const REACTION_PICKER_PADDING = 20; // px-2.5 on both sides
 const REACTION_PICKER_VIEWPORT_MARGIN = 10;
 
+const IMAGE_ZOOM_MIN = 1;
+const IMAGE_ZOOM_MAX = 4;
+const IMAGE_ZOOM_STEP = 0.25;
+
 function getReactionPickerWidth(count) {
   return count * REACTION_BUTTON_SIZE + Math.max(0, count - 1) * REACTION_BUTTON_GAP + REACTION_PICKER_PADDING;
 }
@@ -50,6 +57,7 @@ const getFullName = (user = {}) => {
 };
 
 const resolveTimestamp = (item) => item?.created_at || item?.sent_at || null;
+const resolveMessageKey = (item) => item?.message_id ?? item?.tempId ?? null;
 
 function formatTime(ts) {
   if (!ts) return "";
@@ -123,6 +131,10 @@ function formatFileSize(bytes) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function isImageAttachmentItem(item) {
+  return !!item?.attachment_url && typeof item.attachment_type === "string" && item.attachment_type.startsWith("image/");
+}
+
 function renderMessageContent(text, mentions) {
   if (!text) return null;
   if (!Array.isArray(mentions) || mentions.length === 0) return text;
@@ -174,6 +186,45 @@ function extractOptimisticText(args) {
     if (typeof first.text === "string") return first.text.trim();
   }
   return "";
+}
+
+// Looks for a File instance in the arguments passed to onSend (either inside
+// a FormData payload or a plain object with a `file`/`attachment` property)
+// so an attachment-only send can render an immediate local preview instead
+// of waiting for the upload round-trip.
+function extractOptimisticAttachment(args) {
+  const first = args[0];
+  let file = null;
+
+  if (typeof File === "undefined") return null;
+
+  if (typeof FormData !== "undefined" && first instanceof FormData) {
+    for (const value of first.values()) {
+      if (value instanceof File) {
+        file = value;
+        break;
+      }
+    }
+  } else if (first && typeof first === "object") {
+    if (first.file instanceof File) file = first.file;
+    else if (first.attachment instanceof File) file = first.attachment;
+  }
+
+  if (!file) return null;
+
+  let url;
+  try {
+    url = URL.createObjectURL(file);
+  } catch {
+    return null;
+  }
+
+  return {
+    url,
+    name: file.name,
+    type: file.type,
+    size: file.size,
+  };
 }
 
 /* --------------------------- Attachment kind map -------------------------- */
@@ -305,11 +356,51 @@ const SystemMessageCard = memo(function SystemMessageCard({ item }) {
   );
 });
 
+// Thin progress bar shown along the bottom edge of a pending attachment. It
+// reflects `attachment_progress` on the message item — either a real value
+// reported by the caller or the simulated ramp maintained in ChatWindow —
+// and disappears automatically once the message resolves (pending clears).
+const UploadProgressBar = memo(function UploadProgressBar({ progress, rounded }) {
+  const pct = Math.min(100, Math.max(0, progress));
+  return (
+    <div
+      role="progressbar"
+      aria-label="Upload progress"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={pct}
+      className={`absolute inset-x-0 bottom-0 h-1 bg-black/15 overflow-hidden ${rounded ? "rounded-b-xl" : ""}`}
+    >
+      <div
+        className="h-full bg-white/90 transition-[width] duration-300 ease-out"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+});
+
+// Thumbnail sizing reserves a fixed-ratio box while the image loads (via a
+// pulsing skeleton) so surrounding bubbles/messages don't jump once the
+// image resolves. The real <img> fades in over the skeleton and, once
+// loaded, the box lets go of the placeholder ratio so the final thumbnail
+// isn't cropped to it.
 const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageClick }) {
+  const [thumbLoaded, setThumbLoaded] = useState(false);
+  const [thumbError, setThumbError] = useState(false);
+
+  // If the attachment URL changes (e.g. optimistic blob URL swapped for the
+  // real uploaded URL), reset load state so the skeleton/fade replay for
+  // the new source instead of showing a stale image or blank frame.
+  useEffect(() => {
+    setThumbLoaded(false);
+    setThumbError(false);
+  }, [item.attachment_url]);
+
   if (!item.attachment_url) return null;
 
-  const isImage = typeof item.attachment_type === "string" && item.attachment_type.startsWith("image/");
+  const isImage = isImageAttachmentItem(item);
   const sizeLabel = formatFileSize(item.attachment_size);
+  const showProgress = item.pending && typeof item.attachment_progress === "number" && item.attachment_progress < 100;
 
   if (isImage) {
     return (
@@ -317,16 +408,37 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageCli
         type="button"
         onClick={() => onImageClick?.(item)}
         aria-label={`Open image ${item.attachment_name || "attachment"} in viewer`}
-        className={`group/img block mb-1.5 rounded-xl overflow-hidden max-w-60 ring-1 ring-black/5 transition-all duration-200 hover:scale-[1.02] hover:ring-black/10 focus-visible:scale-[1.02] active:scale-[0.99] cursor-pointer ${FOCUS_RING}`}
+        className={`group/img block mb-1.5 rounded-xl overflow-hidden w-60 max-w-full ring-1 ring-black/5 transition-all duration-200 hover:scale-[1.02] hover:ring-black/10 focus-visible:scale-[1.02] active:scale-[0.99] cursor-pointer ${FOCUS_RING}`}
       >
-        <div className="relative overflow-hidden">
-          <img
-            src={item.attachment_url}
-            alt={item.attachment_name || "Attachment image"}
-            className="w-full h-auto object-cover transition-transform duration-300 group-hover/img:scale-105"
-            loading="lazy"
-          />
+        <div
+          className="relative overflow-hidden bg-gray-100"
+          style={!thumbLoaded ? { aspectRatio: "4 / 3" } : undefined}
+        >
+          {!thumbLoaded && !thumbError && (
+            <div className="absolute inset-0 animate-pulse bg-gray-200" aria-hidden="true" />
+          )}
+
+          {thumbError ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-gray-400 py-6">
+              <AlertCircle className="w-5 h-5" />
+              <span className="text-[10px]">Image unavailable</span>
+            </div>
+          ) : (
+            <img
+              src={item.attachment_url}
+              alt={item.attachment_name || "Attachment image"}
+              onLoad={() => setThumbLoaded(true)}
+              onError={() => setThumbError(true)}
+              className={
+                thumbLoaded
+                  ? "w-full h-auto object-contain opacity-100 transition-transform duration-300 group-hover/img:scale-105"
+                  : "absolute inset-0 w-full h-full object-cover opacity-0"
+              }
+              loading="lazy"
+            />
+          )}
           <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 group-focus-visible/img:bg-black/10 transition-colors duration-200" />
+          {showProgress && <UploadProgressBar progress={item.attachment_progress} />}
         </div>
       </button>
     );
@@ -340,7 +452,7 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageCli
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`Open attachment ${item.attachment_name || "file"}${sizeLabel ? `, ${sizeLabel}` : ""}`}
-      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1.5 border transition-all duration-150 active:scale-[0.99] ${FOCUS_RING} ${
+      className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1.5 border transition-all duration-150 active:scale-[0.99] overflow-hidden ${FOCUS_RING} ${
         isSent ? "border-white/25 bg-white/10 hover:bg-white/15 focus-visible:bg-white/15" : "border-gray-200 bg-gray-50 hover:bg-gray-100 focus-visible:bg-gray-100"
       }`}
     >
@@ -355,6 +467,7 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageCli
           <span className={`block text-[10px] mt-0.5 ${isSent ? "text-white/70" : "text-gray-400"}`}>{sizeLabel}</span>
         )}
       </span>
+      {showProgress && <UploadProgressBar progress={item.attachment_progress} rounded />}
     </a>
   );
 });
@@ -471,17 +584,80 @@ const ReactionPickerPanel = memo(function ReactionPickerPanel({ top, left, openU
   );
 });
 
-const ImageModal = memo(function ImageModal({ item, onClose }) {
+const ImageNavButton = memo(function ImageNavButton({ direction, onClick, disabled }) {
+  const Icon = direction === "prev" ? ChevronLeft : ChevronRight;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={direction === "prev" ? "Previous image" : "Next image"}
+      className={`absolute top-1/2 -translate-y-1/2 ${direction === "prev" ? "left-2" : "right-2"} z-10 w-9 h-9 flex items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60 focus-visible:bg-black/60 disabled:opacity-0 disabled:pointer-events-none transition-all duration-150 ${FOCUS_RING}`}
+    >
+      <Icon className="w-5 h-5" />
+    </button>
+  );
+});
+
+// Preloads the image (off-DOM) to learn its natural dimensions before ever
+// rendering it, so the dialog can size itself to the image's true aspect
+// ratio from the very first paint — no skeleton-to-final-size jump, and
+// portrait/landscape images both shrink-wrap correctly instead of sitting
+// in an oversized or cropped box. The component stays mounted across
+// prev/next navigation (only `item` changes) so the entrance animation
+// doesn't replay on every arrow-key press; internal state resets off the
+// image URL instead.
+const ImageModal = memo(function ImageModal({
+  item,
+  onClose,
+  onNavigate,
+  hasPrev,
+  hasNext,
+  currentIndex,
+  totalImages,
+}) {
   const dialogRef = useRef(null);
   const closeButtonRef = useRef(null);
   const previouslyFocusedRef = useRef(null);
   const [entered, setEntered] = useState(false);
   const [imgStatus, setImgStatus] = useState("loading");
+  const [naturalSize, setNaturalSize] = useState(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [zoom, setZoom] = useState(1);
 
   const name = item.attachment_name || "Attachment image";
 
-  // Lock background scroll, remember prior focus, animate in, focus the close button.
+  // Reset load state, natural size, and zoom whenever the image URL changes
+  // — either the very first open, or stepping to a different image via
+  // prev/next — so a new image never inherits stale status or zoom level.
+  useEffect(() => {
+    let cancelled = false;
+    setImgStatus("loading");
+    setNaturalSize(null);
+    setZoom(1);
+
+    const preload = new Image();
+    preload.onload = () => {
+      if (cancelled) return;
+      setNaturalSize({ width: preload.naturalWidth, height: preload.naturalHeight });
+      setImgStatus("loaded");
+    };
+    preload.onerror = () => {
+      if (cancelled) return;
+      setImgStatus("error");
+    };
+    preload.src = item.attachment_url;
+
+    return () => {
+      cancelled = true;
+      preload.onload = null;
+      preload.onerror = null;
+    };
+  }, [item.attachment_url]);
+
+  // Lock background scroll, remember prior focus, animate in, focus the
+  // close button. Runs once on mount only — navigating between images
+  // keeps this component mounted, so the entrance transition doesn't replay.
   useEffect(() => {
     previouslyFocusedRef.current = document.activeElement;
     const originalOverflow = document.body.style.overflow;
@@ -498,12 +674,24 @@ const ImageModal = memo(function ImageModal({ item, onClose }) {
     };
   }, []);
 
-  // Escape to close + focus trap while the modal is open.
+  // Escape to close, Tab to trap focus, Left/Right to step between images.
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        if (!hasNext) return;
+        e.preventDefault();
+        onNavigate?.(1);
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        if (!hasPrev) return;
+        e.preventDefault();
+        onNavigate?.(-1);
         return;
       }
       if (e.key === "Tab") {
@@ -526,14 +714,23 @@ const ImageModal = memo(function ImageModal({ item, onClose }) {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, onNavigate, hasPrev, hasNext]);
 
   const handleBackdropClick = useCallback((e) => {
     if (dialogRef.current && !dialogRef.current.contains(e.target)) onClose();
   }, [onClose]);
 
-  const handleImgLoad = useCallback(() => setImgStatus("loaded"), []);
-  const handleImgError = useCallback(() => setImgStatus("error"), []);
+  // Mouse-wheel zoom, clamped between 1x and 4x. Double-click resets to 1x.
+  const handleWheel = useCallback((e) => {
+    if (imgStatus !== "loaded") return;
+    e.preventDefault();
+    setZoom((z) => {
+      const next = e.deltaY < 0 ? z + IMAGE_ZOOM_STEP : z - IMAGE_ZOOM_STEP;
+      return Math.min(IMAGE_ZOOM_MAX, Math.max(IMAGE_ZOOM_MIN, Number(next.toFixed(2))));
+    });
+  }, [imgStatus]);
+
+  const handleDoubleClick = useCallback(() => setZoom(1), []);
 
   // Fetches the image as a blob so the download is forced regardless of the
   // host's Content-Disposition header, rather than relying on an <a download>
@@ -562,6 +759,21 @@ const ImageModal = memo(function ImageModal({ item, onClose }) {
     }
   }, [item.attachment_url, item.attachment_name, isDownloading]);
 
+  // Container sizing: once the natural dimensions are known, the box takes
+  // on the image's exact aspect ratio (capped to the viewport), so there is
+  // never a moment where a wrong-shaped placeholder gets replaced by the
+  // real image. Before that, a modest square placeholder holds space for
+  // the spinner/error state only.
+  const sizingStyle = naturalSize
+    ? {
+        aspectRatio: `${naturalSize.width} / ${naturalSize.height}`,
+        width: `min(90vw, ${naturalSize.width}px)`,
+        maxHeight: "80vh",
+      }
+    : { width: "18rem", height: "18rem", maxWidth: "90vw", maxHeight: "80vh" };
+
+  const showCounter = Number.isInteger(currentIndex) && currentIndex >= 0 && totalImages > 1;
+
   return (
     <div
       className={`fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity duration-300 ease-out ${
@@ -572,14 +784,22 @@ const ImageModal = memo(function ImageModal({ item, onClose }) {
       aria-label={name}
       onMouseDown={handleBackdropClick}
     >
+      {/* inline-flex + w-fit lets the dialog shrink-wrap to the image's
+          rendered size instead of claiming a fixed box, so portrait images
+          no longer sit inside a tall, mostly-empty panel. */}
       <div
         ref={dialogRef}
-        className={`relative max-w-[92vw] max-h-[90vh] flex flex-col items-center gap-3 transition-all duration-300 ease-out ${
+        className={`relative inline-flex flex-col items-center gap-3 w-fit max-w-[90vw] max-h-[90vh] transition-all duration-300 ease-out ${
           entered ? "opacity-100 scale-100" : "opacity-0 scale-95"
         }`}
       >
-        <div className="flex items-center justify-between w-full gap-4 px-1">
-          <span className="text-xs font-medium text-white/90 truncate">{name}</span>
+        {/* Header matches the image's own width (w-full of the shrink-wrapped
+            dialog) rather than stretching across the viewport. */}
+        <div className="flex items-center justify-between w-full max-w-[90vw] gap-4 px-1">
+          <span className="text-xs font-medium text-white/90 truncate">
+            {name}
+            {showCounter && <span className="text-white/50 ml-1.5">{currentIndex + 1} / {totalImages}</span>}
+          </span>
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
@@ -607,7 +827,23 @@ const ImageModal = memo(function ImageModal({ item, onClose }) {
           </div>
         </div>
 
-        <div className="relative flex items-center justify-center min-w-40 min-h-40">
+        {onNavigate && (
+          <>
+            <ImageNavButton direction="prev" onClick={() => onNavigate(-1)} disabled={!hasPrev} />
+            <ImageNavButton direction="next" onClick={() => onNavigate(1)} disabled={!hasNext} />
+          </>
+        )}
+
+        {/* Sizing wrapper: takes on the image's true aspect ratio as soon as
+            it's known (preloaded off-DOM), so the visible <img> fades in
+            without ever resizing its container. Wheel zooms in/out;
+            double-click resets to 1x. Overflow is clipped so a zoomed image
+            never spills outside the dialog. */}
+        <div
+          className="relative flex items-center justify-center overflow-hidden"
+          style={sizingStyle}
+          onWheel={handleWheel}
+        >
           {imgStatus === "loading" && (
             <div className="absolute inset-0 flex items-center justify-center" role="status" aria-live="polite">
               <span className="sr-only">Loading image…</span>
@@ -620,16 +856,20 @@ const ImageModal = memo(function ImageModal({ item, onClose }) {
               <AlertCircle className="w-8 h-8" />
               <p className="text-xs">This image couldn't be loaded.</p>
             </div>
-          ) : (
+          ) : imgStatus === "loaded" ? (
             <img
               src={item.attachment_url}
               alt={name}
-              onLoad={handleImgLoad}
-              onError={handleImgError}
-              className={`max-w-full max-h-[80vh] w-auto h-auto rounded-lg object-contain shadow-2xl transition-all duration-300 ease-out ${
-                imgStatus === "loaded" ? "opacity-100 scale-100" : "opacity-0 scale-[0.98]"
-              }`}
+              onDoubleClick={handleDoubleClick}
+              className="w-full h-full rounded-lg object-contain shadow-2xl opacity-100 transition-transform duration-150 ease-out"
+              style={{ transform: `scale(${zoom})`, cursor: zoom > 1 ? "zoom-out" : "zoom-in" }}
             />
+          ) : null}
+
+          {zoom !== 1 && imgStatus === "loaded" && (
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-black/50 text-white text-[10px] font-medium pointer-events-none">
+              {Math.round(zoom * 100)}%
+            </div>
           )}
         </div>
       </div>
@@ -728,6 +968,136 @@ const MessageBubble = memo(function MessageBubble({
   );
 });
 
+/* --------------------------- Layout subcomponents -------------------------- */
+
+const ChatHeader = memo(function ChatHeader({ selectedConversation, selectedName, isGroupChat, isOnline, onBack }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100 shadow-sm shrink-0">
+      {onBack && (
+        <button
+          onClick={onBack}
+          aria-label="Back to conversations"
+          className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 transition-all md:hidden shrink-0"
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </button>
+      )}
+
+      <div className="relative shrink-0">
+        {isGroupChat ? (
+          <GroupAvatar label={selectedName} />
+        ) : (
+          <Avatar name={selectedName} src={selectedConversation.photo} size="md" />
+        )}
+        {isOnline && !isGroupChat && (
+          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white bg-[rgb(var(--primary-500))]" />
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <h3 className="text-sm font-bold text-gray-800 truncate">{selectedName}</h3>
+          {isOnline && !isGroupChat && (
+            <span className="text-[10px] font-semibold shrink-0 text-[rgb(var(--primary-600))]">Online</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+          {!isGroupChat && selectedConversation.role && (
+            <span className="text-[10px] text-gray-500 capitalize font-medium">{selectedConversation.role}</span>
+          )}
+          {isGroupChat && selectedConversation.member_count != null && (
+            <span className="text-[10px] text-gray-500 font-medium">{selectedConversation.member_count} members</span>
+          )}
+          {(selectedConversation.role || isGroupChat) && <span className="text-[10px] text-gray-300">·</span>}
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${BADGE_SURFACE} ${PRIMARY_TEXT}`}>
+            <BookOpen className="w-2.5 h-2.5" />OJT Consultation
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const NoConversationState = memo(function NoConversationState() {
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4 p-8 text-center">
+      <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
+        <BookOpen className="w-7 h-7 text-[rgb(var(--primary-500))]" />
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-1">No Consultation Selected</h3>
+        <p className="text-xs text-gray-400 max-w-50 leading-relaxed">
+          Select a student from the list to begin or continue an OJT consultation.
+        </p>
+      </div>
+      <div className={`px-3 py-1.5 rounded-full ${BADGE_SURFACE}`}>
+        <span className={`text-[11px] font-medium ${PRIMARY_TEXT}`}>OJT Monitoring System</span>
+      </div>
+    </div>
+  );
+});
+
+const LoadingState = memo(function LoadingState() {
+  return (
+    <div className="flex items-center justify-center h-full" role="status">
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-6 h-6 rounded-full animate-spin border-2 border-gray-200 border-t-[rgb(var(--primary-700))]" />
+        <p className="text-xs text-gray-400">Loading consultation…</p>
+      </div>
+    </div>
+  );
+});
+
+const EmptyMessagesState = memo(function EmptyMessagesState({ selectedName }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+      <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
+        <BookOpen className="w-6 h-6 text-[rgb(var(--primary-500))]" />
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-gray-700 mb-1">Start a consultation with {selectedName}</p>
+        <p className="text-xs text-gray-400 leading-relaxed max-w-55">
+          Discuss daily logs, narratives, or internship concerns.
+        </p>
+      </div>
+    </div>
+  );
+});
+
+const DateSeparator = memo(function DateSeparator({ label }) {
+  return (
+    <div className="flex items-center gap-2 py-4">
+      <div className="flex-1 h-px bg-gray-200" />
+      <span className="text-[10px] text-gray-400 font-medium px-2.5 py-1 bg-white border border-gray-200 rounded-full shadow-sm">
+        {label}
+      </span>
+      <div className="flex-1 h-px bg-gray-200" />
+    </div>
+  );
+});
+
+// Shown while a file is dragged over the window. Purely visual (pointer
+// events pass through) — the drag/drop handlers live on the ancestor
+// container so the overlay never needs to intercept the drop itself.
+const DropOverlay = memo(function DropOverlay() {
+  return (
+    <div
+      className="absolute inset-0 z-40 flex items-center justify-center bg-[rgb(var(--primary-50))]/95 backdrop-blur-sm border-4 border-dashed border-[rgb(var(--primary-300))] m-2 rounded-2xl pointer-events-none"
+      aria-hidden="true"
+    >
+      <div className="flex flex-col items-center gap-3 text-center px-6">
+        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
+          <Upload className="w-6 h-6 text-[rgb(var(--primary-500))]" />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-700 mb-1">Drop files to send</p>
+          <p className="text-xs text-gray-400">Images and documents are supported</p>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function ChatWindow({
   selectedConversation,
   messages,
@@ -745,6 +1115,15 @@ export default function ChatWindow({
   const tempCounterRef = useRef(0);
   const isMountedRef = useRef(true);
   const skipNextScrollRef = useRef(false);
+  // Tracks blob: URLs created for optimistic attachment previews so they can
+  // be revoked once the real uploaded URL takes over (or on unmount),
+  // avoiding a memory leak without risking a flash of a broken image if we
+  // revoked them synchronously mid-render.
+  const pendingObjectUrlsRef = useRef(new Set());
+  // Tracks the simulated upload-progress interval per optimistic message so
+  // it can be cleared as soon as the real send resolves/fails or on unmount.
+  const progressIntervalsRef = useRef(new Map());
+  const dragCounterRef = useRef(0);
 
   const userId = useMemo(() => resolveCurrentUserId(currentUserId), [currentUserId]);
 
@@ -762,10 +1141,17 @@ export default function ChatWindow({
   const [typingUsers, setTypingUsers] = useState(() => new Set());
   const [reactionPicker, setReactionPicker] = useState(null);
   const [imageModalItem, setImageModalItem] = useState(null);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
-    return () => { isMountedRef.current = false; };
+    return () => {
+      isMountedRef.current = false;
+      pendingObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+      pendingObjectUrlsRef.current.clear();
+      progressIntervalsRef.current.forEach((id) => clearInterval(id));
+      progressIntervalsRef.current.clear();
+    };
   }, []);
 
   useEffect(() => {
@@ -930,6 +1316,37 @@ export default function ChatWindow({
   const grouped = useMemo(() => groupMessagesByDate(localMessages), [localMessages]);
   const groupingMap = useMemo(() => buildGroupingMap(localMessages), [localMessages]);
 
+  // Ordered list of image attachments currently in the conversation, used to
+  // drive prev/next navigation and the "n / total" counter in ImageModal.
+  const imageAttachments = useMemo(
+    () => localMessages.filter(isImageAttachmentItem),
+    [localMessages]
+  );
+
+  const imageModalIndex = useMemo(() => {
+    if (!imageModalItem) return -1;
+    const key = resolveMessageKey(imageModalItem);
+    return imageAttachments.findIndex((m) => resolveMessageKey(m) === key);
+  }, [imageModalItem, imageAttachments]);
+
+  const handleNavigateImage = useCallback((direction) => {
+    setImageModalItem((current) => {
+      if (!current) return current;
+      const key = resolveMessageKey(current);
+      const idx = imageAttachments.findIndex((m) => resolveMessageKey(m) === key);
+      if (idx === -1) return current;
+      const nextIdx = idx + direction;
+      if (nextIdx < 0 || nextIdx >= imageAttachments.length) return current;
+      return imageAttachments[nextIdx];
+    });
+  }, [imageAttachments]);
+
+  // Opening/toggling always fully replaces reactionPicker in one state
+  // update (never two writes), and the panel below only ever renders a
+  // single instance keyed to the active message + orientation — this keeps
+  // exactly one picker mounted at a time and forces a clean remount (rather
+  // than an awkward re-animation) if it flips from opening upward to
+  // downward for a different message.
   const handleTogglePicker = useCallback((messageId, rect, triggerEl) => {
     setReactionPicker((prev) => {
       if (prev && prev.messageId === messageId) {
@@ -972,10 +1389,16 @@ export default function ChatWindow({
 
   const handleSend = useCallback(async (...args) => {
     const text = extractOptimisticText(args);
+    const attachmentPreview = extractOptimisticAttachment(args);
     let tempId = null;
 
-    if (text) {
+    // Attachment-only sends (no caption) still get an optimistic bubble, so
+    // the preview appears immediately instead of only after the upload
+    // round-trip completes.
+    if (text || attachmentPreview) {
       tempId = `temp-${Date.now()}-${tempCounterRef.current++}`;
+      if (attachmentPreview) pendingObjectUrlsRef.current.add(attachmentPreview.url);
+
       setMessages((prev) => [
         ...prev,
         {
@@ -985,7 +1408,7 @@ export default function ChatWindow({
           contactKey: identityKey,
           sender_id: userId,
           message: text,
-          message_type: "text",
+          message_type: attachmentPreview ? "attachment" : "text",
           created_at: new Date().toISOString(),
           is_read: false,
           delivered: false,
@@ -993,13 +1416,61 @@ export default function ChatWindow({
           mentions: [],
           reactions: { total: 0, reactions: [] },
           pending: true,
+          ...(attachmentPreview && {
+            attachment_url: attachmentPreview.url,
+            attachment_name: attachmentPreview.name,
+            attachment_type: attachmentPreview.type,
+            attachment_size: attachmentPreview.size,
+            attachment_progress: 0,
+          }),
         },
       ]);
+
+      // Simulated upload progress: this component has no real byte-level
+      // hook into the underlying upload request, so it ramps optimistically
+      // to 90% and holds there until onSend resolves, at which point the
+      // pending bubble is replaced/cleared and the bar disappears.
+      if (attachmentPreview) {
+        let simulated = 0;
+        const currentTempId = tempId;
+        const intervalId = setInterval(() => {
+          simulated = Math.min(90, simulated + 5 + Math.random() * 10);
+          const rounded = Math.round(simulated);
+          setMessages((prev) => prev.map((m) => (m.tempId === currentTempId ? { ...m, attachment_progress: rounded } : m)));
+          if (simulated >= 90) clearInterval(intervalId);
+        }, 250);
+        progressIntervalsRef.current.set(tempId, intervalId);
+      }
     }
+
+    const clearProgress = () => {
+      const id = progressIntervalsRef.current.get(tempId);
+      if (id != null) {
+        clearInterval(id);
+        progressIntervalsRef.current.delete(tempId);
+      }
+    };
+
+    const releasePreviewUrl = () => {
+      if (!attachmentPreview) return;
+      // Deferred so the message list has a chance to re-render with the
+      // real attachment URL (or the pending/failed fallback) before the
+      // blob URL backing the optimistic preview is revoked — revoking it
+      // synchronously risks a broken-image flash if the swap hasn't
+      // painted yet.
+      setTimeout(() => {
+        URL.revokeObjectURL(attachmentPreview.url);
+        pendingObjectUrlsRef.current.delete(attachmentPreview.url);
+      }, 1000);
+    };
 
     try {
       const result = await onSend?.(...args);
-      if (!isMountedRef.current) return result;
+      clearProgress();
+      if (!isMountedRef.current) {
+        releasePreviewUrl();
+        return result;
+      }
 
       const real = result?.data ?? result;
       if (tempId) {
@@ -1013,32 +1484,85 @@ export default function ChatWindow({
           return prev.map((m) => (m.tempId === tempId ? { ...m, pending: false } : m));
         });
       }
+      releasePreviewUrl();
       return result;
     } catch (err) {
+      clearProgress();
       if (isMountedRef.current && tempId) {
         setMessages((prev) => prev.map((m) => (m.tempId === tempId ? { ...m, pending: false, failed: true } : m)));
       }
+      releasePreviewUrl();
       throw err;
     }
   }, [onSend, conversationId, identityKey, userId]);
 
+  // Sends a batch of raw Files (from drag-and-drop or clipboard paste) one
+  // at a time through the same optimistic pipeline as a normal attachment
+  // send, so each gets its own bubble, preview, and progress bar. Files are
+  // sent sequentially to preserve the order they were dropped/pasted in;
+  // one failure doesn't block the rest.
+  const handleFilesSelected = useCallback(async (files) => {
+    if (!selectedConversation || !files?.length) return;
+    for (const file of files) {
+      const formData = new FormData();
+      formData.append("attachment", file);
+      try {
+        await handleSend(formData);
+      } catch {
+        // handleSend already marks this file's optimistic bubble as failed;
+        // continue on to the remaining files.
+      }
+    }
+  }, [selectedConversation, handleSend]);
+
+  const handleDragEnter = useCallback((e) => {
+    if (!selectedConversation) return;
+    if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDraggingFile(true);
+  }, [selectedConversation]);
+
+  const handleDragOver = useCallback((e) => {
+    if (!selectedConversation) return;
+    if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
+    e.preventDefault();
+  }, [selectedConversation]);
+
+  const handleDragLeave = useCallback((e) => {
+    if (!selectedConversation) return;
+    e.preventDefault();
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setIsDraggingFile(false);
+  }, [selectedConversation]);
+
+  const handleDrop = useCallback((e) => {
+    if (!selectedConversation) return;
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDraggingFile(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (files.length) handleFilesSelected(files);
+  }, [selectedConversation, handleFilesSelected]);
+
+  // Paste handler lives on the outer container so it catches Ctrl+V
+  // regardless of which inner element has focus (typically the message
+  // input). Only image/file paste is intercepted — plain text paste is left
+  // alone so normal typing into the input keeps working.
+  const handlePaste = useCallback((e) => {
+    if (!selectedConversation) return;
+    const items = Array.from(e.clipboardData?.items || []);
+    const files = items
+      .filter((it) => it.kind === "file")
+      .map((it) => it.getAsFile())
+      .filter(Boolean);
+    if (files.length === 0) return;
+    e.preventDefault();
+    handleFilesSelected(files);
+  }, [selectedConversation, handleFilesSelected]);
+
   if (!selectedConversation) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 gap-4 p-8 text-center">
-        <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
-          <BookOpen className="w-7 h-7 text-[rgb(var(--primary-500))]" />
-        </div>
-        <div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-1">No Consultation Selected</h3>
-          <p className="text-xs text-gray-400 max-w-50 leading-relaxed">
-            Select a student from the list to begin or continue an OJT consultation.
-          </p>
-        </div>
-        <div className={`px-3 py-1.5 rounded-full ${BADGE_SURFACE}`}>
-          <span className={`text-[11px] font-medium ${PRIMARY_TEXT}`}>OJT Monitoring System</span>
-        </div>
-      </div>
-    );
+    return <NoConversationState />;
   }
 
   const selectedName = getFullName(selectedConversation);
@@ -1046,50 +1570,21 @@ export default function ChatWindow({
   const showTyping = typingUsers.size > 0;
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
-      <div className="flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-100 shadow-sm shrink-0">
-        {onBack && (
-          <button
-            onClick={onBack}
-            aria-label="Back to conversations"
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 transition-all md:hidden shrink-0"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        )}
-
-        <div className="relative shrink-0">
-          {isGroupChat ? (
-            <GroupAvatar label={selectedName} />
-          ) : (
-            <Avatar name={selectedName} src={selectedConversation.photo} size="md" />
-          )}
-          {isOnline && !isGroupChat && (
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white bg-[rgb(var(--primary-500))]" />
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <h3 className="text-sm font-bold text-gray-800 truncate">{selectedName}</h3>
-            {isOnline && !isGroupChat && (
-              <span className="text-[10px] font-semibold shrink-0 text-[rgb(var(--primary-600))]">Online</span>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-            {!isGroupChat && selectedConversation.role && (
-              <span className="text-[10px] text-gray-500 capitalize font-medium">{selectedConversation.role}</span>
-            )}
-            {isGroupChat && selectedConversation.member_count != null && (
-              <span className="text-[10px] text-gray-500 font-medium">{selectedConversation.member_count} members</span>
-            )}
-            {(selectedConversation.role || isGroupChat) && <span className="text-[10px] text-gray-300">·</span>}
-            <span className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${BADGE_SURFACE} ${PRIMARY_TEXT}`}>
-              <BookOpen className="w-2.5 h-2.5" />OJT Consultation
-            </span>
-          </div>
-        </div>
-      </div>
+    <div
+      className="relative flex flex-col h-full bg-gray-50"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onPaste={handlePaste}
+    >
+      <ChatHeader
+        selectedConversation={selectedConversation}
+        selectedName={selectedName}
+        isGroupChat={isGroupChat}
+        isOnline={isOnline}
+        onBack={onBack}
+      />
 
       <div
         ref={scrollRef}
@@ -1099,37 +1594,14 @@ export default function ChatWindow({
         aria-label={`Conversation with ${selectedName}`}
       >
         {loading ? (
-          <div className="flex items-center justify-center h-full" role="status">
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-6 h-6 rounded-full animate-spin border-2 border-gray-200 border-t-[rgb(var(--primary-700))]" />
-              <p className="text-xs text-gray-400">Loading consultation…</p>
-            </div>
-          </div>
+          <LoadingState />
         ) : localMessages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
-              <BookOpen className="w-6 h-6 text-[rgb(var(--primary-500))]" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-700 mb-1">Start a consultation with {selectedName}</p>
-              <p className="text-xs text-gray-400 leading-relaxed max-w-55">
-                Discuss daily logs, narratives, or internship concerns.
-              </p>
-            </div>
-          </div>
+          <EmptyMessagesState selectedName={selectedName} />
         ) : (
           <div className="flex flex-col">
             {grouped.map((item) => {
               if (item.type === "date-label") {
-                return (
-                  <div key={item.id} className="flex items-center gap-2 py-4">
-                    <div className="flex-1 h-px bg-gray-200" />
-                    <span className="text-[10px] text-gray-400 font-medium px-2.5 py-1 bg-white border border-gray-200 rounded-full shadow-sm">
-                      {item.label}
-                    </span>
-                    <div className="flex-1 h-px bg-gray-200" />
-                  </div>
-                );
+                return <DateSeparator key={item.id} label={item.label} />;
               }
 
               if (item.message_type === "system" || item.type === "system" || item.is_system) {
@@ -1173,7 +1645,7 @@ export default function ChatWindow({
 
       {reactionPicker && (
         <ReactionPickerPanel
-          key={reactionPicker.messageId}
+          key={`${reactionPicker.messageId}-${reactionPicker.openUpward}`}
           top={reactionPicker.top}
           left={reactionPicker.left}
           openUpward={reactionPicker.openUpward}
@@ -1182,7 +1654,19 @@ export default function ChatWindow({
         />
       )}
 
-      {imageModalItem && <ImageModal item={imageModalItem} onClose={handleCloseImageModal} />}
+      {imageModalItem && (
+        <ImageModal
+          item={imageModalItem}
+          onClose={handleCloseImageModal}
+          onNavigate={handleNavigateImage}
+          hasPrev={imageModalIndex > 0}
+          hasNext={imageModalIndex !== -1 && imageModalIndex < imageAttachments.length - 1}
+          currentIndex={imageModalIndex}
+          totalImages={imageAttachments.length}
+        />
+      )}
+
+      {isDraggingFile && <DropOverlay />}
     </div>
   );
 }
