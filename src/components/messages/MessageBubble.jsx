@@ -1,6 +1,6 @@
 import { useCallback, memo } from "react";
 import { Check, CheckCheck, Clock, AlertCircle, SmilePlus } from "lucide-react";
-import Avatar from "../../ui/Avatar";
+import Avatar from "../ui/Avatar";
 import ReactionIcon from "../ui/ReactionIcon";
 import AttachmentBlock from "./AttachmentBlock";
 import { getReactionMeta } from "../../constants/reactions";
