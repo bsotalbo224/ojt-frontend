@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, memo } from "react";
-import ReactionIcon from "../../ui/ReactionIcon";
-import { REACTION_CODES, getReactionMeta } from "../../../constants/reactions";
+import ReactionIcon from "../ui/ReactionIcon";
+import { REACTION_CODES, getReactionMeta } from "../../constants/reactions";
 
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary-400))]";
 

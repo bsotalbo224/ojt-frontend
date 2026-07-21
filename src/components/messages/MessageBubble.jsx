@@ -3,16 +3,13 @@ import { Check, CheckCheck, Clock, AlertCircle, SmilePlus } from "lucide-react";
 import Avatar from "../../ui/Avatar";
 import ReactionIcon from "../ui/ReactionIcon";
 import AttachmentBlock from "./AttachmentBlock";
-import { getReactionMeta } from "../../../constants/reactions";
+import { getReactionMeta } from "../../constants/reactions";
 
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary-400))]";
 const PRIMARY_TEXT = "text-[rgb(var(--primary-700))]";
 const SENT_BUBBLE = "bg-[rgb(var(--primary-700))] text-white";
 
 /* ----------------------------- Local helpers ------------------------------ */
-// Duplicated (not moved) from ChatWindow.jsx, which still uses its own copies
-// for date-grouping and the conversation header — keeping MessageBubble
-// self-contained avoids reaching back into ChatWindow for shared utilities.
 
 const getFullName = (user = {}) => {
   if (user.f_name || user.l_name) return `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();

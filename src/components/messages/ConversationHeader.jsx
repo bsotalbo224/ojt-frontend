@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { ArrowLeft, BookOpen } from "lucide-react";
-import Avatar from "../../ui/Avatar";
+import Avatar from "../ui/Avatar";
 
 const BADGE_SURFACE = "bg-[rgb(var(--primary-50))] border border-[rgb(var(--primary-100))]";
 const PRIMARY_TEXT = "text-[rgb(var(--primary-700))]";

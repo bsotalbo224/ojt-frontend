@@ -12,9 +12,6 @@ import {
 
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary-400))]";
 
-// Local copy: ChatWindow also needs this check (to build its imageAttachments
-// list for the ImageModal), so the tiny pure predicate is duplicated here
-// rather than imported, keeping this component self-contained/reusable.
 function isImageAttachmentItem(item) {
   return !!item?.attachment_url && typeof item.attachment_type === "string" && item.attachment_type.startsWith("image/");
 }
