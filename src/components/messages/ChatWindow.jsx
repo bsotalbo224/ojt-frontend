@@ -2,10 +2,10 @@ import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
 import { BookOpen, Upload } from "lucide-react";
 import MessageInput from "./MessageInput";
 import ImageModal from "./ImageModal";
-import ConversationHeader from "../components/messages/ConversationHeader";
-import MessageList from "../components/messages/MessageList";
-import ReactionPickerPanel from "../components/messages/ReactionPickerPanel";
-import TypingIndicator from "../components/messages/TypingIndicator";
+import ConversationHeader from "./ConversationHeader";
+import MessageList from "./MessageList";
+import ReactionPickerPanel from "./ReactionPickerPanel";
+import TypingIndicator from "./TypingIndicator";
 import { REACTION_CODES } from "../../constants/reactions";
 
 const BADGE_SURFACE = "bg-[rgb(var(--primary-50))] border border-[rgb(var(--primary-100))]";
