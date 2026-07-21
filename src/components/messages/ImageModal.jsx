@@ -53,9 +53,6 @@ const ImageModal = memo(function ImageModal({
 
   const name = item.attachment_name || "Attachment image";
 
-  // Reset load state, natural size, and zoom whenever the image URL changes
-  // — either the very first open, or stepping to a different image via
-  // prev/next — so a new image never inherits stale status or zoom level.
   useEffect(() => {
     let cancelled = false;
     setImgStatus("loading");
@@ -81,9 +78,6 @@ const ImageModal = memo(function ImageModal({
     };
   }, [item.attachment_url]);
 
-  // Lock background scroll, remember prior focus, animate in, focus the
-  // close button. Runs once on mount only — navigating between images
-  // keeps this component mounted, so the entrance transition doesn't replay.
   useEffect(() => {
     previouslyFocusedRef.current = document.activeElement;
     const originalOverflow = document.body.style.overflow;
@@ -100,7 +94,7 @@ const ImageModal = memo(function ImageModal({
     };
   }, []);
 
-  // Escape to close, Tab to trap focus, Left/Right to step between images.
+
   useEffect(() => {
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
@@ -146,7 +140,6 @@ const ImageModal = memo(function ImageModal({
     if (dialogRef.current && !dialogRef.current.contains(e.target)) onClose();
   }, [onClose]);
 
-  // Mouse-wheel zoom, clamped between 1x and 4x. Double-click resets to 1x.
   const handleWheel = useCallback((e) => {
     if (imgStatus !== "loaded") return;
     e.preventDefault();
@@ -158,11 +151,6 @@ const ImageModal = memo(function ImageModal({
 
   const handleDoubleClick = useCallback(() => setZoom(1), []);
 
-  // Fetches the image as a blob so the download is forced regardless of the
-  // host's Content-Disposition header, rather than relying on an <a download>
-  // combined with target="_blank" (which browsers largely ignore for
-  // cross-origin URLs). Falls back to opening the file directly if the
-  // fetch fails (e.g. CORS-restricted host).
   const handleDownload = useCallback(async () => {
     if (isDownloading) return;
     setIsDownloading(true);
@@ -185,11 +173,6 @@ const ImageModal = memo(function ImageModal({
     }
   }, [item.attachment_url, item.attachment_name, isDownloading]);
 
-  // Container sizing: once the natural dimensions are known, the box takes
-  // on the image's exact aspect ratio (capped to the viewport), so there is
-  // never a moment where a wrong-shaped placeholder gets replaced by the
-  // real image. Before that, a modest square placeholder holds space for
-  // the spinner/error state only.
   const sizingStyle = naturalSize
     ? {
         aspectRatio: `${naturalSize.width} / ${naturalSize.height}`,
@@ -202,7 +185,7 @@ const ImageModal = memo(function ImageModal({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-100 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity duration-300 ease-out ${
+      className={`fixed inset-0 z-9999 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-opacity duration-300 ease-out ${
         entered ? "opacity-100" : "opacity-0"
       }`}
       role="dialog"
@@ -210,17 +193,12 @@ const ImageModal = memo(function ImageModal({
       aria-label={name}
       onMouseDown={handleBackdropClick}
     >
-      {/* inline-flex + w-fit lets the dialog shrink-wrap to the image's
-          rendered size instead of claiming a fixed box, so portrait images
-          no longer sit inside a tall, mostly-empty panel. */}
       <div
         ref={dialogRef}
         className={`relative inline-flex flex-col items-center gap-3 w-fit max-w-[90vw] max-h-[90vh] transition-all duration-300 ease-out ${
           entered ? "opacity-100 scale-100" : "opacity-0 scale-95"
         }`}
       >
-        {/* Header matches the image's own width (w-full of the shrink-wrapped
-            dialog) rather than stretching across the viewport. */}
         <div className="flex items-center justify-between w-full max-w-[90vw] gap-4 px-1">
           <span className="text-xs font-medium text-white/90 truncate">
             {name}
@@ -260,11 +238,6 @@ const ImageModal = memo(function ImageModal({
           </>
         )}
 
-        {/* Sizing wrapper: takes on the image's true aspect ratio as soon as
-            it's known (preloaded off-DOM), so the visible <img> fades in
-            without ever resizing its container. Wheel zooms in/out;
-            double-click resets to 1x. Overflow is clipped so a zoomed image
-            never spills outside the dialog. */}
         <div
           className="relative flex items-center justify-center overflow-hidden"
           style={sizingStyle}
