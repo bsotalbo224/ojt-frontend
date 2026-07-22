@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
-import { BookOpen, Upload } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import MessageInput from "./MessageInput";
 import ImageModal from "./ImageModal";
 import ConversationHeader from "./ConversationHeader";
@@ -204,26 +204,6 @@ const DateSeparator = memo(function DateSeparator({ label }) {
   );
 });
 
-// Shown while a file is dragged over the window.
-const DropOverlay = memo(function DropOverlay() {
-  return (
-    <div
-      className="absolute inset-0 z-40 flex items-center justify-center bg-[rgb(var(--primary-50))]/95 backdrop-blur-sm border-4 border-dashed border-[rgb(var(--primary-300))] m-2 rounded-2xl pointer-events-none"
-      aria-hidden="true"
-    >
-      <div className="flex flex-col items-center gap-3 text-center px-6">
-        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm ${BADGE_SURFACE}`}>
-          <Upload className="w-6 h-6 text-[rgb(var(--primary-500))]" />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-700 mb-1">Drop files to send</p>
-          <p className="text-xs text-gray-400">Images and documents are supported</p>
-        </div>
-      </div>
-    </div>
-  );
-});
-
 export default function ChatWindow({
   selectedConversation,
   messages,
@@ -245,7 +225,6 @@ export default function ChatWindow({
   const pendingObjectUrlsRef = useRef(new Set());
   // Tracks the simulated upload-progress interval per optimistic message.
   const progressIntervalsRef = useRef(new Map());
-  const dragCounterRef = useRef(0);
 
   const userId = useMemo(() => resolveCurrentUserId(currentUserId), [currentUserId]);
 
@@ -263,7 +242,6 @@ export default function ChatWindow({
   const [typingUsers, setTypingUsers] = useState(() => new Set());
   const [reactionPicker, setReactionPicker] = useState(null);
   const [imageModalItem, setImageModalItem] = useState(null);
-  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -504,6 +482,9 @@ export default function ChatWindow({
     setImageModalItem(null);
   }, []);
 
+  // Sole entry point for outgoing messages. MessageInput builds the
+  // FormData (text + attachments) and calls this once per send; ChatWindow's
+  // job here is only the optimistic bubble / upload-progress / retry pipeline.
   const handleSend = useCallback(async (...args) => {
     const text = extractOptimisticText(args);
     const attachmentPreview = extractOptimisticAttachment(args);
@@ -604,64 +585,6 @@ export default function ChatWindow({
     }
   }, [onSend, conversationId, identityKey, userId]);
 
-  // Sends a batch of raw Files sequentially through the optimistic pipeline.
-  const handleFilesSelected = useCallback(async (files) => {
-    if (!selectedConversation || !files?.length) return;
-    for (const file of files) {
-      const formData = new FormData();
-      formData.append("attachment", file);
-      try {
-        await handleSend(formData);
-      } catch {
-        // handleSend already marks this file's optimistic bubble as failed;
-        // continue on to the remaining files.
-      }
-    }
-  }, [selectedConversation, handleSend]);
-
-  const handleDragEnter = useCallback((e) => {
-    if (!selectedConversation) return;
-    if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
-    e.preventDefault();
-    dragCounterRef.current += 1;
-    setIsDraggingFile(true);
-  }, [selectedConversation]);
-
-  const handleDragOver = useCallback((e) => {
-    if (!selectedConversation) return;
-    if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
-    e.preventDefault();
-  }, [selectedConversation]);
-
-  const handleDragLeave = useCallback((e) => {
-    if (!selectedConversation) return;
-    e.preventDefault();
-    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-    if (dragCounterRef.current === 0) setIsDraggingFile(false);
-  }, [selectedConversation]);
-
-  const handleDrop = useCallback((e) => {
-    if (!selectedConversation) return;
-    e.preventDefault();
-    dragCounterRef.current = 0;
-    setIsDraggingFile(false);
-    const files = Array.from(e.dataTransfer?.files || []);
-    if (files.length) handleFilesSelected(files);
-  }, [selectedConversation, handleFilesSelected]);
-
-  // Only image/file paste is intercepted; plain text paste is left alone.
-  const handlePaste = useCallback((e) => {
-    if (!selectedConversation) return;
-    const items = Array.from(e.clipboardData?.items || []);
-    const files = items
-      .filter((it) => it.kind === "file")
-      .map((it) => it.getAsFile())
-      .filter(Boolean);
-    if (files.length === 0) return;
-    e.preventDefault();
-    handleFilesSelected(files);
-  }, [selectedConversation, handleFilesSelected]);
-
   if (!selectedConversation) {
     return <NoConversationState />;
   }
@@ -671,14 +594,7 @@ export default function ChatWindow({
   const showTyping = typingUsers.size > 0;
 
   return (
-    <div
-      className="relative flex flex-col h-full bg-gray-50"
-      onDragEnter={handleDragEnter}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      onPaste={handlePaste}
-    >
+    <div className="relative flex flex-col h-full bg-gray-50">
       <ConversationHeader
         selectedConversation={selectedConversation}
         selectedName={selectedName}
@@ -747,8 +663,6 @@ export default function ChatWindow({
           totalImages={imageAttachments.length}
         />
       )}
-
-      {isDraggingFile && <DropOverlay />}
     </div>
   );
 }
