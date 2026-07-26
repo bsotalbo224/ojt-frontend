@@ -24,9 +24,21 @@ function formatFileSize(bytes) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/* --------------------------- Attachment kind map -------------------------- */
-// Resolves a MIME type / filename to a broad attachment "kind" so the file
-// icon reflects the actual content instead of a single generic paperclip.
+/* ----------------------------- Attachment Helpers -------------------------- */
+
+function resolveAttachmentList(item) {
+  if (Array.isArray(item?.attachments) && item.attachments.length > 0) return item.attachments;
+  if (item?.attachment_url) return [item];
+  return [];
+}
+
+function resolveProgress(attachment) {
+  if (typeof attachment.attachment_progress === "number") return attachment.attachment_progress;
+  if (typeof attachment.progress === "number") return attachment.progress;
+  return null;
+}
+
+/* --------------------------- Attachment Kind Map -------------------------- */
 
 const EXTENSION_KIND_MAP = {
   pdf: "pdf",
@@ -77,12 +89,11 @@ function getAttachmentIcon(item) {
   return ATTACHMENT_ICON_BY_KIND[getAttachmentKind(item)] || File;
 }
 
-/* -------------------------------------------------------------------------- */
+const IMAGE_MAX_WIDTH = 320;
+const IMAGE_MAX_HEIGHT = 380;
+const IMAGE_LOADING_ASPECT_RATIO = "4 / 3";
 
-// Thin progress bar shown along the bottom edge of a pending attachment. It
-// reflects `attachment_progress` on the message item — either a real value
-// reported by the caller or the simulated ramp maintained in ChatWindow —
-// and disappears automatically once the message resolves (pending clears).
+/* ------------------------------ Upload Progress ---------------------------- */
 const UploadProgressBar = memo(function UploadProgressBar({ progress, rounded }) {
   const pct = Math.min(100, Math.max(0, progress));
   return (
@@ -102,79 +113,77 @@ const UploadProgressBar = memo(function UploadProgressBar({ progress, rounded })
   );
 });
 
-// Thumbnail sizing reserves a fixed-ratio box while the image loads (via a
-// pulsing skeleton) so surrounding bubbles/messages don't jump once the
-// image resolves. The real <img> fades in over the skeleton and, once
-// loaded, the box lets go of the placeholder ratio so the final thumbnail
-// isn't cropped to it.
-const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageClick }) {
+/* ------------------------------ Image Attachment ---------------------------- */
+const ImageAttachment = memo(function ImageAttachment({ item, attachment, onImageClick }) {
   const [thumbLoaded, setThumbLoaded] = useState(false);
   const [thumbError, setThumbError] = useState(false);
 
-  // If the attachment URL changes (e.g. optimistic blob URL swapped for the
-  // real uploaded URL), reset load state so the skeleton/fade replay for
-  // the new source instead of showing a stale image or blank frame.
   useEffect(() => {
     setThumbLoaded(false);
     setThumbError(false);
-  }, [item.attachment_url]);
+  }, [attachment.attachment_url]);
 
-  if (!item.attachment_url) return null;
+  const progress = resolveProgress(attachment);
+  const showProgress = item.pending && progress != null && progress < 100;
 
-  const isImage = isImageAttachmentItem(item);
-  const sizeLabel = formatFileSize(item.attachment_size);
-  const showProgress = item.pending && typeof item.attachment_progress === "number" && item.attachment_progress < 100;
-
-  if (isImage) {
-    return (
-      <button
-        type="button"
-        onClick={() => onImageClick?.(item)}
-        aria-label={`Open image ${item.attachment_name || "attachment"} in viewer`}
-        className={`group/img block mb-1.5 rounded-xl overflow-hidden w-60 max-w-full ring-1 ring-black/5 transition-all duration-200 hover:scale-[1.02] hover:ring-black/10 focus-visible:scale-[1.02] active:scale-[0.99] cursor-pointer ${FOCUS_RING}`}
+  return (
+    <button
+      type="button"
+      onClick={() => onImageClick?.(item, attachment)}
+      aria-label={`Open image ${attachment.attachment_name || "attachment"} in viewer`}
+      className={`group/img block rounded-xl overflow-hidden transition-transform duration-150 hover:scale-[1.008] active:scale-[0.99] cursor-pointer ${FOCUS_RING}`}
+    >
+      <div
+        className={`relative overflow-hidden bg-gray-100 w-full ${thumbLoaded ? "inline-block max-w-full" : "max-w-full"}`}
+        style={{
+          maxWidth: IMAGE_MAX_WIDTH,
+          ...(!thumbLoaded ? { aspectRatio: IMAGE_LOADING_ASPECT_RATIO } : null),
+        }}
       >
-        <div
-          className="relative overflow-hidden bg-gray-100"
-          style={!thumbLoaded ? { aspectRatio: "4 / 3" } : undefined}
-        >
-          {!thumbLoaded && !thumbError && (
-            <div className="absolute inset-0 animate-pulse bg-gray-200" aria-hidden="true" />
-          )}
+        {!thumbLoaded && !thumbError && (
+          <div className="absolute inset-0 animate-pulse bg-gray-200" aria-hidden="true" />
+        )}
 
-          {thumbError ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-gray-400 py-6">
-              <AlertCircle className="w-5 h-5" />
-              <span className="text-[10px]">Image unavailable</span>
-            </div>
-          ) : (
-            <img
-              src={item.attachment_url}
-              alt={item.attachment_name || "Attachment image"}
-              onLoad={() => setThumbLoaded(true)}
-              onError={() => setThumbError(true)}
-              className={
-                thumbLoaded
-                  ? "w-full h-auto object-contain opacity-100 transition-transform duration-300 group-hover/img:scale-105"
-                  : "absolute inset-0 w-full h-full object-cover opacity-0"
-              }
-              loading="lazy"
-            />
-          )}
-          <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 group-focus-visible/img:bg-black/10 transition-colors duration-200" />
-          {showProgress && <UploadProgressBar progress={item.attachment_progress} />}
-        </div>
-      </button>
-    );
-  }
+        {thumbError ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-gray-400 py-6">
+            <AlertCircle className="w-5 h-5" />
+            <span className="text-[10px]">Image unavailable</span>
+          </div>
+        ) : (
+          <img
+            src={attachment.attachment_url}
+            alt={attachment.attachment_name || "Attachment image"}
+            onLoad={() => setThumbLoaded(true)}
+            onError={() => setThumbError(true)}
+            className={
+              thumbLoaded
+                ? "block max-w-full w-auto h-auto object-contain opacity-100"
+                : "absolute inset-0 w-full h-full object-cover opacity-0"
+            }
+            style={thumbLoaded ? { maxHeight: IMAGE_MAX_HEIGHT } : undefined}
+            loading="lazy"
+          />
+        )}
+        <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/5 group-focus-visible/img:bg-black/5 transition-colors duration-150" />
+        {showProgress && <UploadProgressBar progress={progress} />}
+      </div>
+    </button>
+  );
+});
 
-  const FileIcon = getAttachmentIcon(item);
+/* ------------------------------- File Attachment ---------------------------- */
+const FileAttachment = memo(function FileAttachment({ attachment, isSent, pending }) {
+  const sizeLabel = formatFileSize(attachment.attachment_size);
+  const progress = resolveProgress(attachment);
+  const showProgress = pending && progress != null && progress < 100;
+  const FileIcon = getAttachmentIcon(attachment);
 
   return (
     <a
-      href={item.attachment_url}
+      href={attachment.attachment_url}
       target="_blank"
       rel="noopener noreferrer"
-      aria-label={`Open attachment ${item.attachment_name || "file"}${sizeLabel ? `, ${sizeLabel}` : ""}`}
+      aria-label={`Open attachment ${attachment.attachment_name || "file"}${sizeLabel ? `, ${sizeLabel}` : ""}`}
       className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-1.5 border transition-all duration-150 active:scale-[0.99] overflow-hidden ${FOCUS_RING} ${
         isSent ? "border-white/25 bg-white/10 hover:bg-white/15 focus-visible:bg-white/15" : "border-gray-200 bg-gray-50 hover:bg-gray-100 focus-visible:bg-gray-100"
       }`}
@@ -184,14 +193,42 @@ const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageCli
       </span>
       <span className="min-w-0 flex-1">
         <span className={`block text-[11px] font-medium wrap-break-words ${isSent ? "text-white" : "text-gray-700"}`}>
-          {item.attachment_name || "Attachment"}
+          {attachment.attachment_name || "Attachment"}
         </span>
         {sizeLabel && (
           <span className={`block text-[10px] mt-0.5 ${isSent ? "text-white/70" : "text-gray-400"}`}>{sizeLabel}</span>
         )}
       </span>
-      {showProgress && <UploadProgressBar progress={item.attachment_progress} rounded />}
+      {showProgress && <UploadProgressBar progress={progress} rounded />}
     </a>
+  );
+});
+
+/* ------------------------------ Attachment Renderer -------------------------- */
+const AttachmentBlock = memo(function AttachmentBlock({ item, isSent, onImageClick }) {
+  const attachments = resolveAttachmentList(item);
+  if (attachments.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-1">
+      {attachments.map((attachment, idx) =>
+        isImageAttachmentItem(attachment) ? (
+          <ImageAttachment
+            key={attachment.attachment_url ? `img-${attachment.attachment_url}` : `img-${idx}`}
+            item={item}
+            attachment={attachment}
+            onImageClick={onImageClick}
+          />
+        ) : (
+          <FileAttachment
+            key={attachment.attachment_url ? `file-${attachment.attachment_url}` : `file-${idx}`}
+            attachment={attachment}
+            isSent={isSent}
+            pending={item.pending}
+          />
+        )
+      )}
+    </div>
   );
 });
 

@@ -89,59 +89,10 @@ function buildGroupingMap(rawMessages) {
   return map;
 }
 
-function isImageAttachmentItem(item) {
-  return !!item?.attachment_url && typeof item.attachment_type === "string" && item.attachment_type.startsWith("image/");
-}
-
-function extractOptimisticText(args) {
-  const first = args[0];
-  if (typeof first === "string") return first.trim();
-  if (typeof FormData !== "undefined" && first instanceof FormData) {
-    const v = first.get("message");
-    return typeof v === "string" ? v.trim() : "";
-  }
-  if (first && typeof first === "object") {
-    if (typeof first.message === "string") return first.message.trim();
-    if (typeof first.text === "string") return first.text.trim();
-  }
-  return "";
-}
-
-// Looks for a File instance in the arguments passed to onSend, so an
-// attachment-only send can render an immediate local preview.
-function extractOptimisticAttachment(args) {
-  const first = args[0];
-  let file = null;
-
-  if (typeof File === "undefined") return null;
-
-  if (typeof FormData !== "undefined" && first instanceof FormData) {
-    for (const value of first.values()) {
-      if (value instanceof File) {
-        file = value;
-        break;
-      }
-    }
-  } else if (first && typeof first === "object") {
-    if (first.file instanceof File) file = first.file;
-    else if (first.attachment instanceof File) file = first.attachment;
-  }
-
-  if (!file) return null;
-
-  let url;
-  try {
-    url = URL.createObjectURL(file);
-  } catch {
-    return null;
-  }
-
-  return {
-    url,
-    name: file.name,
-    type: file.type,
-    size: file.size,
-  };
+// Works against a single attachment object (from message.attachments[]),
+// not the legacy message-level attachment_* fields.
+function isImageAttachmentItem(attachment) {
+  return !!attachment?.attachment_url && typeof attachment.attachment_type === "string" && attachment.attachment_type.startsWith("image/");
 }
 
 /* --------------------------- Layout subcomponents -------------------------- */
@@ -241,7 +192,10 @@ export default function ChatWindow({
   const [localMessages, setMessages] = useState(() => (Array.isArray(messages) ? messages : []));
   const [typingUsers, setTypingUsers] = useState(() => new Set());
   const [reactionPicker, setReactionPicker] = useState(null);
+  // Holds { message, attachment, key } for the image currently open in the modal.
   const [imageModalItem, setImageModalItem] = useState(null);
+  // Holds the full message object currently being replied to (Messenger-style reply).
+  const [replyingTo, setReplyingTo] = useState(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -416,24 +370,35 @@ export default function ChatWindow({
   const grouped = useMemo(() => groupMessagesByDate(localMessages), [localMessages]);
   const groupingMap = useMemo(() => buildGroupingMap(localMessages), [localMessages]);
 
-  // Ordered list of image attachments currently in the conversation, used to
+  // Flat, ordered list of every image attachment across every message, used to
   // drive prev/next navigation and the "n / total" counter in ImageModal.
-  const imageAttachments = useMemo(
-    () => localMessages.filter(isImageAttachmentItem),
-    [localMessages]
-  );
+  // A single message can now contribute more than one entry.
+  const imageAttachments = useMemo(() => {
+    const list = [];
+    localMessages.forEach((msg) => {
+      if (!Array.isArray(msg.attachments)) return;
+      msg.attachments.forEach((attachment, idx) => {
+        if (isImageAttachmentItem(attachment)) {
+          list.push({
+            message: msg,
+            attachment,
+            key: `${resolveMessageKey(msg)}-${idx}`,
+          });
+        }
+      });
+    });
+    return list;
+  }, [localMessages]);
 
   const imageModalIndex = useMemo(() => {
     if (!imageModalItem) return -1;
-    const key = resolveMessageKey(imageModalItem);
-    return imageAttachments.findIndex((m) => resolveMessageKey(m) === key);
+    return imageAttachments.findIndex((entry) => entry.key === imageModalItem.key);
   }, [imageModalItem, imageAttachments]);
 
   const handleNavigateImage = useCallback((direction) => {
     setImageModalItem((current) => {
       if (!current) return current;
-      const key = resolveMessageKey(current);
-      const idx = imageAttachments.findIndex((m) => resolveMessageKey(m) === key);
+      const idx = imageAttachments.findIndex((entry) => entry.key === current.key);
       if (idx === -1) return current;
       const nextIdx = idx + direction;
       if (nextIdx < 0 || nextIdx >= imageAttachments.length) return current;
@@ -474,26 +439,65 @@ export default function ChatWindow({
     closePicker();
   }, [onReact, closePicker]);
 
-  const handleImageClick = useCallback((item) => {
-    setImageModalItem(item);
+  // Called from MessageList when an image attachment is clicked. Accepts
+  // (message, attachment) so a specific image within a multi-image message
+  // opens directly, and falls back to the message's first image if only a
+  // message is passed.
+  const handleImageClick = useCallback((message, attachment) => {
+    if (!message) return;
+    const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+    const resolvedAttachment = attachment ?? attachments.find(isImageAttachmentItem) ?? attachments[0];
+    if (!resolvedAttachment) return;
+    const idx = attachments.indexOf(resolvedAttachment);
+    setImageModalItem({
+      message,
+      attachment: resolvedAttachment,
+      key: `${resolveMessageKey(message)}-${idx}`,
+    });
   }, []);
 
   const handleCloseImageModal = useCallback(() => {
     setImageModalItem(null);
   }, []);
 
-  // Sole entry point for outgoing messages. MessageInput builds the
-  // FormData (text + attachments) and calls this once per send; ChatWindow's
-  // job here is only the optimistic bubble / upload-progress / retry pipeline.
-  const handleSend = useCallback(async (...args) => {
-    const text = extractOptimisticText(args);
-    const attachmentPreview = extractOptimisticAttachment(args);
+  // Sole entry point for outgoing messages. MessageInput calls
+  // onSend(message, files) directly; ChatWindow's job here is only the
+  // optimistic bubble / upload-progress / retry pipeline, keyed off
+  // message.attachments[] instead of legacy single-attachment fields.
+  const handleSend = useCallback(async (message, files) => {
+    const text = typeof message === "string" ? message.trim() : "";
+    const fileList = Array.isArray(files) ? files : [];
     let tempId = null;
+    const previewUrls = [];
+    // Snapshot the reply target at send time so a later cancel/change doesn't
+    // affect this in-flight send.
+    const replyTarget = replyingTo;
 
     // Attachment-only sends (no caption) still get an optimistic bubble.
-    if (text || attachmentPreview) {
-      tempId = `temp-${Date.now()}-${tempCounterRef.current++}`;
-      if (attachmentPreview) pendingObjectUrlsRef.current.add(attachmentPreview.url);
+    if (text || fileList.length > 0) {
+      tempId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? `temp-${crypto.randomUUID()}`
+          : `temp-${Date.now()}-${Math.random().toString(36).slice(2)}-${tempCounterRef.current++}`;
+
+      const attachments = fileList.map((file) => {
+        let url = "";
+        try {
+          url = URL.createObjectURL(file);
+          pendingObjectUrlsRef.current.add(url);
+          previewUrls.push(url);
+        } catch {
+          url = "";
+        }
+        return {
+          attachment_name: file.name,
+          attachment_url: url,
+          attachment_type: file.type,
+          attachment_size: file.size,
+          uploading: true,
+          progress: 0,
+        };
+      });
 
       setMessages((prev) => [
         ...prev,
@@ -504,7 +508,7 @@ export default function ChatWindow({
           contactKey: identityKey,
           sender_id: userId,
           message: text,
-          message_type: attachmentPreview ? "attachment" : "text",
+          message_type: attachments.length > 0 ? "attachment" : "text",
           created_at: new Date().toISOString(),
           is_read: false,
           delivered: false,
@@ -512,24 +516,24 @@ export default function ChatWindow({
           mentions: [],
           reactions: { total: 0, reactions: [] },
           pending: true,
-          ...(attachmentPreview && {
-            attachment_url: attachmentPreview.url,
-            attachment_name: attachmentPreview.name,
-            attachment_type: attachmentPreview.type,
-            attachment_size: attachmentPreview.size,
-            attachment_progress: 0,
-          }),
+          attachments,
+          reply_to: replyTarget,
         },
       ]);
 
-      // Simulated upload progress until onSend resolves.
-      if (attachmentPreview) {
+      // Simulated upload progress (one message-level value, mirrored onto
+      // every attachment) until onSend resolves.
+      if (attachments.length > 0) {
         let simulated = 0;
         const currentTempId = tempId;
         const intervalId = setInterval(() => {
           simulated = Math.min(90, simulated + 5 + Math.random() * 10);
           const rounded = Math.round(simulated);
-          setMessages((prev) => prev.map((m) => (m.tempId === currentTempId ? { ...m, attachment_progress: rounded } : m)));
+          setMessages((prev) => prev.map((m) => (
+            m.tempId === currentTempId
+              ? { ...m, attachments: m.attachments.map((a) => ({ ...a, progress: rounded })) }
+              : m
+          )));
           if (simulated >= 90) clearInterval(intervalId);
         }, 250);
         progressIntervalsRef.current.set(tempId, intervalId);
@@ -544,20 +548,22 @@ export default function ChatWindow({
       }
     };
 
-    const releasePreviewUrl = () => {
-      if (!attachmentPreview) return;
+    const releasePreviewUrls = () => {
+      if (previewUrls.length === 0) return;
       // Deferred to avoid a broken-image flash before the swap paints.
       setTimeout(() => {
-        URL.revokeObjectURL(attachmentPreview.url);
-        pendingObjectUrlsRef.current.delete(attachmentPreview.url);
+        previewUrls.forEach((url) => {
+          URL.revokeObjectURL(url);
+          pendingObjectUrlsRef.current.delete(url);
+        });
       }, 1000);
     };
 
     try {
-      const result = await onSend?.(...args);
+      const result = await onSend?.(message, files, replyTarget);
       clearProgress();
       if (!isMountedRef.current) {
-        releasePreviewUrl();
+        releasePreviewUrls();
         return result;
       }
 
@@ -573,17 +579,18 @@ export default function ChatWindow({
           return prev.map((m) => (m.tempId === tempId ? { ...m, pending: false } : m));
         });
       }
-      releasePreviewUrl();
+      releasePreviewUrls();
+      setReplyingTo(null);
       return result;
     } catch (err) {
       clearProgress();
       if (isMountedRef.current && tempId) {
         setMessages((prev) => prev.map((m) => (m.tempId === tempId ? { ...m, pending: false, failed: true } : m)));
       }
-      releasePreviewUrl();
+      releasePreviewUrls();
       throw err;
     }
-  }, [onSend, conversationId, identityKey, userId]);
+  }, [onSend, conversationId, identityKey, userId, replyingTo]);
 
   if (!selectedConversation) {
     return <NoConversationState />;
@@ -625,6 +632,7 @@ export default function ChatWindow({
             handleTogglePicker={handleTogglePicker}
             handleImageClick={handleImageClick}
             DateSeparator={DateSeparator}
+            onReply={setReplyingTo}
           />
         )}
         <div ref={bottomRef} />
@@ -639,6 +647,8 @@ export default function ChatWindow({
         disabled={loading}
         socket={socket}
         conversationId={conversationId}
+        replyingTo={replyingTo}
+        onCancelReply={() => setReplyingTo(null)}
       />
 
       {reactionPicker && (
@@ -654,7 +664,10 @@ export default function ChatWindow({
 
       {imageModalItem && (
         <ImageModal
-          item={imageModalItem}
+          item={{
+            ...imageModalItem.attachment,
+            message_id: resolveMessageKey(imageModalItem.message),
+          }}
           onClose={handleCloseImageModal}
           onNavigate={handleNavigateImage}
           hasPrev={imageModalIndex > 0}

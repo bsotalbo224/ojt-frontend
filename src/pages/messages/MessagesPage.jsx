@@ -21,6 +21,26 @@ const isSameContact = (a, b) => {
 const findCoordinator = (contacts) =>
   safeArray(contacts).find((c) => String(c.role ?? "").toLowerCase() === "coordinator") || null;
 
+// Temp IDs
+const generateTempId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `temp-${crypto.randomUUID()}`;
+  }
+  return `temp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+};
+
+// Conversation preview
+const buildAttachmentPreviewText = (attachments) => {
+  const atts = safeArray(attachments);
+  if (atts.length === 0) return "";
+  if (atts.length === 1) return atts[0].attachment_name || "Attachment";
+
+  const allImages = atts.every((a) => a.attachment_type?.startsWith("image/"));
+  if (allImages) return `📷 ${atts.length} images`;
+
+  return `${atts[0].attachment_name || "Attachment"} (+${atts.length - 1})`;
+};
+
 export default function MessagesPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
 
@@ -32,6 +52,9 @@ export default function MessagesPage() {
   const [conversationsLoading, setConversationsLoading] = useState(true);
   const [showChat, setShowChat] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState([]);
+
+  // Reply State
+  const [replyingTo, setReplyingTo] = useState(null);
 
   const pollingRef              = useRef(null);
   const autoOpenRef             = useRef(false);
@@ -81,6 +104,8 @@ export default function MessagesPage() {
     const handleReceiveMessage = (incomingMsg) => {
       const activeConversation = selectedConversationRef.current;
       const isOwnMessage = String(incomingMsg.sender_id) === String(currentUser?.user_id);
+      const incomingAttachmentCount = safeArray(incomingMsg.attachments).length;
+      let attachmentsToRevoke = [];
 
       setMessages((prev) => {
         const arr = safeArray(prev);
@@ -95,14 +120,21 @@ export default function MessagesPage() {
               m.tempId &&
               !m.message_id &&
               String(m.conversation_id) === String(incomingMsg.conversation_id) &&
-              m.message === incomingMsg.message
+              m.message === incomingMsg.message &&
+              safeArray(m.attachments).length === incomingAttachmentCount
           );
           if (pendingIdx !== -1) {
             const updated = [...arr];
-            if (updated[pendingIdx].attachment_url) {
-              revokeObjectUrl(updated[pendingIdx].attachment_url);
-            }
-            updated[pendingIdx] = { ...updated[pendingIdx], ...incomingMsg, tempId: undefined, uploading: false };
+            attachmentsToRevoke = safeArray(updated[pendingIdx].attachments);
+            // Preserve the optimistic reply_to until/unless the authoritative
+            // message brings its own, so the reply preview never flickers out.
+            updated[pendingIdx] = {
+              ...updated[pendingIdx],
+              ...incomingMsg,
+              reply_to: incomingMsg.reply_to ?? updated[pendingIdx].reply_to,
+              tempId: undefined,
+              uploading: false,
+            };
             return updated;
           }
         }
@@ -112,6 +144,10 @@ export default function MessagesPage() {
           activeConversation.conversation_id != null &&
           String(incomingMsg.conversation_id) === String(activeConversation.conversation_id);
         return belongsToChat ? [...arr, incomingMsg] : arr;
+      });
+
+      attachmentsToRevoke.forEach((att) => {
+        if (att.attachment_url) revokeObjectUrl(att.attachment_url);
       });
 
       if (currentUser?.user_id && !isOwnMessage) {
@@ -129,7 +165,7 @@ export default function MessagesPage() {
             String(c.conversation_id) === String(activeConversation.conversation_id);
           return {
             ...c,
-            last_message:      incomingMsg.message,
+            last_message:      incomingMsg.message || buildAttachmentPreviewText(incomingMsg.attachments),
             last_message_time: incomingMsg.sent_at ?? incomingMsg.created_at,
             unread_count:      isActive || isOwnMessage ? 0 : (c.unread_count ?? 0) + 1,
           };
@@ -258,6 +294,7 @@ export default function MessagesPage() {
     setSelectedConversation(conversation);
     setMessages([]);
     setShowChat(true);
+    setReplyingTo(null);
 
     if (conversation.conversation_id == null) return;
 
@@ -283,6 +320,15 @@ export default function MessagesPage() {
 
     setSelectedConversation(null);
     setShowChat(false);
+  }, []);
+
+  // Reply Handlers
+  const handleReply = useCallback((message) => {
+    setReplyingTo(message);
+  }, []);
+
+  const handleCancelReply = useCallback(() => {
+    setReplyingTo(null);
   }, []);
 
   // Deep links
@@ -394,12 +440,13 @@ export default function MessagesPage() {
     };
   }, [fetchContacts, fetchMessages, markRead]);
 
-  // Send
-  const handleSend = useCallback(async (message, file) => {
+  // Sending
+  const handleSend = useCallback(async (message, attachments, reply) => {
+    const files = safeArray(attachments);
     const hasText = !!message?.trim();
-    const hasFile = !!file;
+    const hasAttachments = files.length > 0;
 
-    if (!selectedConversation || (!hasText && !hasFile)) return;
+    if (!selectedConversation || (!hasText && !hasAttachments)) return;
 
     let activeConversation = selectedConversation;
 
@@ -409,13 +456,22 @@ export default function MessagesPage() {
       setSelectedConversation(activeConversation);
     }
 
-    const tempId = `temp-${Date.now()}`;
+    const tempId = generateTempId();
 
-    let tempAttachmentUrl = null;
-    if (hasFile && file.type?.startsWith("image/")) {
-      tempAttachmentUrl = URL.createObjectURL(file);
-      objectUrlsRef.current.add(tempAttachmentUrl);
-    }
+    const tempAttachments = files.map((file) => {
+      let previewUrl = null;
+      if (file.type?.startsWith("image/")) {
+        previewUrl = URL.createObjectURL(file);
+        objectUrlsRef.current.add(previewUrl);
+      }
+      return {
+        attachment_name: file.name,
+        attachment_url:  previewUrl,
+        attachment_type: file.type,
+        attachment_size: file.size,
+        uploading:       true,
+      };
+    });
 
     const optimistic = {
       tempId,
@@ -427,15 +483,9 @@ export default function MessagesPage() {
       sent_at:         new Date().toISOString(),
       is_read:         false,
       delivered:       false,
-      ...(hasFile
-        ? {
-            attachment_name: file.name,
-            attachment_url:  tempAttachmentUrl,
-            attachment_type: file.type,
-            attachment_size: file.size,
-            uploading:       true,
-          }
-        : {}),
+      ...(hasAttachments ? { attachments: tempAttachments } : {}),
+      // Lets the reply preview render immediately, ahead of server confirmation.
+      ...(reply ? { reply_to: reply } : {}),
     };
 
     setMessages((prev) => [...safeArray(prev), optimistic]);
@@ -444,37 +494,50 @@ export default function MessagesPage() {
         String(c.conversation_id) === String(activeConversation.conversation_id)
           ? {
               ...c,
-              last_message:      message || (hasFile ? file.name : ""),
+              last_message:      message || buildAttachmentPreviewText(tempAttachments),
               last_message_time: optimistic.sent_at,
             }
           : c
       )
     );
 
+    const revokeTempAttachments = () => {
+      tempAttachments.forEach((att) => revokeObjectUrl(att.attachment_url));
+    };
+
     try {
       const formData = new FormData();
       formData.append("conversation_id", activeConversation.conversation_id);
       formData.append("message", message || "");
-      if (hasFile) {
-        formData.append("attachment", file);
+      if (reply) {
+        formData.append("reply_to_message_id", reply.message_id);
       }
+      files.forEach((file) => {
+        formData.append("attachments", file);
+      });
 
       const res  = await api.post("/messages/messages", formData);
       const sent = res?.data?.data;
 
+      revokeTempAttachments();
+
       if (sent) {
         setMessages((prev) =>
-          safeArray(prev).map((m) => {
-            if (m.tempId !== tempId) return m;
-            revokeObjectUrl(tempAttachmentUrl);
-            return { ...m, ...sent, tempId: undefined, uploading: false };
-          })
+          safeArray(prev).map((m) =>
+            m.tempId === tempId
+              ? { ...m, ...sent, reply_to: sent.reply_to ?? m.reply_to, tempId: undefined, uploading: false }
+              : m
+          )
         );
       }
+
+      // Reply only clears once the send actually succeeds.
+      if (reply) setReplyingTo(null);
     } catch (err) {
       console.error("Failed to send message:", err);
-      revokeObjectUrl(tempAttachmentUrl);
+      revokeTempAttachments();
       setMessages((prev) => safeArray(prev).filter((m) => m.tempId !== tempId));
+      // Leave replyingTo untouched so the user can retry the same reply.
     }
   }, [selectedConversation, currentUser, ensureConversation, revokeObjectUrl]);
 
@@ -564,6 +627,9 @@ export default function MessagesPage() {
           onBack={handleBack}
           socket={socket}
           isOnline={isSelectedConversationOnline}
+          replyingTo={replyingTo}
+          onReply={handleReply}
+          onCancelReply={handleCancelReply}
         />
       </div>
     </div>

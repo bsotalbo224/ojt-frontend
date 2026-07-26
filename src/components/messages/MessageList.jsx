@@ -12,6 +12,7 @@ const MessageList = memo(function MessageList({
   handleTogglePicker,
   handleImageClick,
   DateSeparator,
+  onReply,
 }) {
   return (
     <div className="flex flex-col">
@@ -40,6 +41,7 @@ const MessageList = memo(function MessageList({
             isPickerOpen={reactionPicker?.messageId === item.message_id}
             onTogglePicker={handleTogglePicker}
             onImageClick={handleImageClick}
+            onReply={onReply}
           />
         );
       })}
