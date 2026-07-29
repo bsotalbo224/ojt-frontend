@@ -13,6 +13,9 @@ const MessageList = memo(function MessageList({
   handleImageClick,
   DateSeparator,
   onReply,
+  onJumpToReply,
+  registerMessageRef,
+  highlightedMessageId,
 }) {
   return (
     <div className="flex flex-col">
@@ -30,19 +33,30 @@ const MessageList = memo(function MessageList({
         const { isGroupStart, isGroupEnd } = groupingMap.get(msgKey) ?? { isGroupStart: true, isGroupEnd: true };
 
         return (
-          <MessageBubble
+          <div
             key={msgKey}
-            item={item}
-            isSent={isSent}
-            isGroupStart={isGroupStart}
-            isGroupEnd={isGroupEnd}
-            isGroupChat={isGroupChat}
-            onReact={handleReact}
-            isPickerOpen={reactionPicker?.messageId === item.message_id}
-            onTogglePicker={handleTogglePicker}
-            onImageClick={handleImageClick}
-            onReply={onReply}
-          />
+            tabIndex={-1}
+            ref={(node) => {
+              // Registry: real messages only, ignore optimistic/null ids.
+              if (item.message_id == null) return;
+              registerMessageRef?.(item.message_id, node);
+            }}
+          >
+            <MessageBubble
+              item={item}
+              isSent={isSent}
+              isGroupStart={isGroupStart}
+              isGroupEnd={isGroupEnd}
+              isGroupChat={isGroupChat}
+              onReact={handleReact}
+              isPickerOpen={reactionPicker?.messageId === item.message_id}
+              onTogglePicker={handleTogglePicker}
+              onImageClick={handleImageClick}
+              onReply={onReply}
+              onJumpToReply={onJumpToReply}
+              highlightedMessageId={highlightedMessageId}
+            />
+          </div>
         );
       })}
     </div>

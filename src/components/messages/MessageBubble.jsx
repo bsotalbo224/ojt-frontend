@@ -1,5 +1,19 @@
 import { useCallback, memo } from "react";
-import { Check, CheckCheck, Clock, AlertCircle, SmilePlus, Reply } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  Clock,
+  AlertCircle,
+  SmilePlus,
+  Reply,
+  Image as ImageIcon,
+  FileText,
+  FileArchive,
+  FileSpreadsheet,
+  FileAudio,
+  FileVideo,
+  File as FileIconGeneric,
+} from "lucide-react";
 import Avatar from "../ui/Avatar";
 import ReactionIcon from "../ui/ReactionIcon";
 import AttachmentBlock from "./AttachmentBlock";
@@ -8,6 +22,8 @@ import { getReactionMeta } from "../../constants/reactions";
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--primary-400))]";
 const PRIMARY_TEXT = "text-[rgb(var(--primary-700))]";
 const SENT_BUBBLE = "bg-[rgb(var(--primary-700))] text-white";
+const HIGHLIGHT_ON = "bg-[rgb(var(--primary-50))] ring-1 ring-[rgb(var(--primary-200))] shadow-md";
+const HIGHLIGHT_OFF = "bg-transparent ring-1 ring-transparent shadow-none";
 
 /* -------------------------------- Helpers ---------------------------------- */
 
@@ -79,20 +95,56 @@ function splitAttachments(attachments) {
   return { images, files };
 }
 
-function getReplyPreviewText(replyTo) {
-  if (!replyTo) return "Message unavailable";
+// Maps a non-image attachment to its Lucide icon.
+function getAttachmentTypeIcon(attachment) {
+  const type = attachment?.attachment_type || "";
+  const name = attachment?.attachment_name || "";
+  const ext = name.split(".").pop()?.toLowerCase();
+
+  if (type.startsWith("image/")) return ImageIcon;
+  if (type.startsWith("audio/") || ["mp3", "wav", "m4a", "ogg", "flac"].includes(ext)) return FileAudio;
+  if (type.startsWith("video/") || ["mp4", "mov", "avi", "mkv", "webm"].includes(ext)) return FileVideo;
+  if (type === "application/pdf" || ext === "pdf") return FileText;
+  if (["zip", "rar", "7z"].includes(ext)) return FileArchive;
+  if (["xls", "xlsx", "csv"].includes(ext)) return FileSpreadsheet;
+  if (["doc", "docx", "txt"].includes(ext)) return FileText;
+  return FileIconGeneric;
+}
+
+// Returns { icon, label } describing the quoted message.
+function getReplyPreviewContent(replyTo) {
+  if (!replyTo) return { icon: null, label: "Message unavailable" };
 
   const text = typeof replyTo.message === "string" ? replyTo.message.trim() : "";
-  if (text) return text;
+  if (text) return { icon: null, label: text };
 
   const { images, files } = splitAttachments(replyTo.attachments);
-  if (images.length > 0) return images.length > 1 ? `📷 ${images.length} Photos` : "📷 Photo";
+  if (images.length > 0) {
+    return { icon: ImageIcon, label: images.length > 1 ? `${images.length} Photos` : "Photo" };
+  }
   if (files.length > 0) {
-    const firstName = files[0]?.attachment_name || "File";
-    return files.length > 1 ? `📄 ${firstName} (+${files.length - 1})` : `📄 ${firstName}`;
+    const first = files[0];
+    const label =
+      files.length > 1
+        ? `${first?.attachment_name || "File"} (+${files.length - 1})`
+        : first?.attachment_name || "File";
+    return { icon: getAttachmentTypeIcon(first), label };
   }
 
-  return "Message unavailable";
+  return { icon: null, label: "Message unavailable" };
+}
+
+/* -------------------------------- Reply Helpers ------------------------------ */
+
+// Sender IDs, not names, decide self-replies.
+function getSenderId(entity) {
+  return entity?.sender_id ?? entity?.user_id ?? entity?.id ?? null;
+}
+
+// Builds the "You replied to X" / "X replied to themselves" label.
+function getReplyLabel({ isSent, isSelfReply, itemSenderName, replySenderName }) {
+  if (isSent) return isSelfReply ? "You replied to yourself" : `You replied to ${replySenderName}`;
+  return isSelfReply ? `${itemSenderName} replied to themselves` : `${itemSenderName} replied to ${replySenderName}`;
 }
 
 /* ----------------------------- Message Actions ------------------------------ */
@@ -170,21 +222,42 @@ const MessageActionGroup = memo(function MessageActionGroup({ isPickerOpen, chil
 
 /* -------------------------------- Reply Preview ------------------------------ */
 
-const ReplyPreview = memo(function ReplyPreview({ replyTo, isSent }) {
+// Single wrapper — a real <button> now that it's interactive.
+const ReplyPreview = memo(function ReplyPreview({ replyTo, isSent, sourceItem, onJumpToReply }) {
+  const handleClick = useCallback(() => {
+    const targetId = replyTo?.message_id;
+    if (targetId != null) onJumpToReply?.(targetId);
+  }, [replyTo?.message_id, onJumpToReply]);
+
   if (!replyTo) return null;
 
-  const senderName = getFullName(replyTo);
-  const previewText = getReplyPreviewText(replyTo);
+  const itemSenderName = getFullName(sourceItem);
+  const replySenderName = getFullName(replyTo);
+  const itemSenderId = getSenderId(sourceItem);
+  const replySenderId = getSenderId(replyTo);
+  const isSelfReply = itemSenderId != null && replySenderId != null && itemSenderId === replySenderId;
+
+  const label = getReplyLabel({ isSent, isSelfReply, itemSenderName, replySenderName });
+  const { icon: PreviewIcon, label: previewLabel } = getReplyPreviewContent(replyTo);
 
   return (
-    <div
-      className={`max-w-full px-2 py-0.5 rounded-md border-l border-gray-300/80 bg-gray-500/5 ${
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-label={`Jump to original message. ${label}. ${previewLabel}`}
+      className={`flex flex-col gap-0.5 max-w-full pl-2 pr-1 py-0.5 border-l border-gray-200 text-left rounded-sm hover:bg-gray-500/5 transition-colors duration-150 ${FOCUS_RING} ${
         isSent ? "self-end" : "self-start"
       }`}
     >
-      <p className={`text-[10px] font-semibold leading-tight truncate ${PRIMARY_TEXT}`}>{senderName}</p>
-      <p className="text-[10.5px] leading-tight text-gray-500 truncate">{previewText}</p>
-    </div>
+      <div className="flex items-center gap-1 min-w-0">
+        <Reply className="w-3 h-3 text-gray-300 shrink-0" aria-hidden="true" />
+        <span className="text-[10px] font-medium leading-tight truncate text-gray-600">{label}</span>
+      </div>
+      <div className="flex items-center gap-1 min-w-0 pl-4">
+        {PreviewIcon && <PreviewIcon className="w-3 h-3 text-gray-400 shrink-0" aria-hidden="true" />}
+        <span className="text-[10px] leading-tight text-gray-400 truncate">{previewLabel}</span>
+      </div>
+    </button>
   );
 });
 
@@ -201,8 +274,13 @@ const MessageBubble = memo(function MessageBubble({
   onTogglePicker,
   onImageClick,
   onReply,
+  onJumpToReply,
+  highlightedMessageId,
 }) {
   const ts = resolveTimestamp(item);
+
+  // Highlight
+  const isHighlighted = item.message_id != null && item.message_id === highlightedMessageId;
 
   const sentCorners = ["rounded-2xl", !isGroupStart && "rounded-tr-md", !isGroupEnd && "rounded-br-md"].filter(Boolean).join(" ");
   const recvCorners = ["rounded-2xl", !isGroupStart && "rounded-tl-md", !isGroupEnd && "rounded-bl-md"].filter(Boolean).join(" ");
@@ -228,8 +306,8 @@ const MessageBubble = memo(function MessageBubble({
   }, [onTogglePicker, item.message_id]);
 
   const handleReplyClick = useCallback(() => {
-    onReply?.(item);
-  }, [onReply, item]);
+    onReply?.({ ...item, _isSentByCurrentUser: isSent });
+  }, [onReply, item, isSent]);
 
   const bubbleNode = hasBubble && (
     <div className={bubbleClass}>
@@ -258,7 +336,9 @@ const MessageBubble = memo(function MessageBubble({
   return (
     <div
       data-reaction-picker-root
-      className={`flex gap-2 items-end ${isSent ? "flex-row-reverse" : "flex-row"} ${isGroupStart ? "mt-3" : "mt-1"}`}
+      className={`flex gap-2 items-end rounded-2xl -mx-2 -my-1 px-2 py-1 transition-all duration-700 ease-out ${
+        isHighlighted ? HIGHLIGHT_ON : HIGHLIGHT_OFF
+      } ${isSent ? "flex-row-reverse" : "flex-row"} ${isGroupStart ? "mt-3" : "mt-1"}`}
     >
       {!isSent && (
         <div className="shrink-0 w-7 self-end mb-1">
@@ -274,8 +354,15 @@ const MessageBubble = memo(function MessageBubble({
         <div className="relative group/bubble flex items-center gap-1">
           {isSent && actionButtons}
 
-          <div className={`flex flex-col gap-1 ${isSent ? "items-end" : "items-start"}`}>
-            {item.reply_to && <ReplyPreview replyTo={item.reply_to} isSent={isSent} />}
+          <div className={`flex flex-col gap-0.5 ${isSent ? "items-end" : "items-start"}`}>
+            {item.reply_to && (
+              <ReplyPreview
+                replyTo={item.reply_to}
+                isSent={isSent}
+                sourceItem={item}
+                onJumpToReply={onJumpToReply}
+              />
+            )}
 
             {imageFirst ? (
               <>

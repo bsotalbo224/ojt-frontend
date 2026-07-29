@@ -7,6 +7,8 @@ import {
   Image,
   FileArchive,
   FileSpreadsheet,
+  FileAudio,
+  FileVideo,
   FileCode,
   File as FileIcon,
   Reply,
@@ -27,12 +29,15 @@ function formatFileSize(bytes) {
   return `${i === 0 ? size : size.toFixed(1)} ${units[i]}`;
 }
 
+// Attachment Helpers
 function getFileIcon(file) {
   const name = file?.name || "";
   const type = file?.type || "";
   const ext = name.split(".").pop()?.toLowerCase();
 
   if (type.startsWith("image/")) return Image;
+  if (type.startsWith("audio/") || ["mp3", "wav", "m4a", "ogg", "flac"].includes(ext)) return FileAudio;
+  if (type.startsWith("video/") || ["mp4", "mov", "avi", "mkv", "webm"].includes(ext)) return FileVideo;
   if (type === "application/pdf" || ext === "pdf") return FileText;
   if (["zip", "rar", "7z"].includes(ext)) return FileArchive;
   if (["xls", "xlsx", "csv"].includes(ext)) return FileSpreadsheet;
@@ -45,7 +50,7 @@ function isSameFile(a, b) {
   return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 }
 
-// Reply banner helpers (mirrors MessageBubble's ReplyPreview formatting)
+// Reply Banner Helpers
 
 function getFullName(user = {}) {
   if (user.f_name || user.l_name) return `${user.f_name ?? ""} ${user.l_name ?? ""}`.trim();
@@ -56,8 +61,7 @@ function isImageAttachment(attachment) {
   return !!attachment?.attachment_url && typeof attachment.attachment_type === "string" && attachment.attachment_type.startsWith("image/");
 }
 
-// Single pass over attachments: images counted, non-images kept in order.
-// Feeds getReplyPreviewText without scanning the array twice.
+// Splits attachments into image count + non-image files in one pass.
 function summarizeAttachments(attachments) {
   const atts = Array.isArray(attachments) ? attachments : [];
   let imageCount = 0;
@@ -69,21 +73,38 @@ function summarizeAttachments(attachments) {
   return { imageCount, files };
 }
 
-function getReplyPreviewText(replyTo) {
-  if (!replyTo) return "Message unavailable";
+// Returns { icon, label } describing the quoted message.
+function getReplyPreviewContent(replyTo) {
+  if (!replyTo) return { icon: null, label: "Message unavailable" };
 
   const text = typeof replyTo.message === "string" ? replyTo.message.trim() : "";
-  if (text) return text;
+  if (text) return { icon: null, label: text };
 
   const { imageCount, files } = summarizeAttachments(replyTo.attachments);
-  if (imageCount > 0) return imageCount > 1 ? `📷 ${imageCount} Photos` : "📷 Photo";
-
-  if (files.length > 0) {
-    const firstName = files[0]?.attachment_name || "File";
-    return files.length > 1 ? `📄 ${firstName} (+${files.length - 1})` : `📄 ${firstName}`;
+  if (imageCount > 0) {
+    return { icon: Image, label: imageCount > 1 ? `${imageCount} Photos` : "Photo" };
   }
 
-  return "Message unavailable";
+  if (files.length > 0) {
+    const first = files[0];
+    const icon = getFileIcon({ name: first?.attachment_name, type: first?.attachment_type });
+    const label =
+      files.length > 1
+        ? `${first?.attachment_name || "File"} (+${files.length - 1})`
+        : first?.attachment_name || "File";
+    return { icon, label };
+  }
+
+  return { icon: null, label: "Message unavailable" };
+}
+
+// "You" is always the composer. _isSentByCurrentUser (stamped by
+// MessageBubble) tells us if the quoted message was the user's own.
+function getReplyBannerLabel(replyingTo) {
+  if (!replyingTo) return "";
+  return replyingTo._isSentByCurrentUser
+    ? "You replied to yourself"
+    : `You replied to ${getFullName(replyingTo)}`;
 }
 
 export default function MessageInput({ onSend, disabled, socket, conversationId, replyingTo, onCancelReply }) {
@@ -109,8 +130,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
   useEffect(() => {
     attachmentsRef.current = attachments;
 
-    // Prune revokedUrlsRef of URLs no longer referenced, so it can't grow
-    // unbounded and self-empties once attachments clear.
+    // Prune stale revoked-URL entries
     const liveUrls = new Set(attachments.map((att) => att.previewUrl).filter(Boolean));
     revokedUrlsRef.current.forEach((url) => {
       if (!liveUrls.has(url)) revokedUrlsRef.current.delete(url);
@@ -121,10 +141,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
     if (!disabled) textareaRef.current?.focus();
   }, [disabled]);
 
-  // Composer visibility — only on the null -> message transition, so
-  // starting a reply always scrolls the composer into view then focuses it,
-  // without stealing focus from someone already typing when the reply
-  // target simply changes. scrollIntoView is a no-op when already in view.
+  // Scroll Into View — only on the null -> message transition
   useEffect(() => {
     if (replyingTo && !prevReplyingToRef.current) {
       const el = textareaRef.current;
@@ -148,16 +165,14 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
     isTypingRef.current = false;
   }, [socket, conversationId]);
 
-  // Revokes a preview URL at most once, so a URL already released by
-  // remove/send can't be double-revoked by the unmount cleanup below.
+  // Revokes a preview URL at most once
   const revokeUrl = useCallback((url) => {
     if (!url || revokedUrlsRef.current.has(url)) return;
     revokedUrlsRef.current.add(url);
     URL.revokeObjectURL(url);
   }, []);
 
-  // Unmount cleanup — reads attachmentsRef (kept in sync above), not the
-  // `attachments` closure, so it sees the latest list, not the mount-time one.
+  // Unmount Cleanup
   useEffect(() => {
     return () => {
       clearTypingTimeout();
@@ -174,8 +189,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
 
   const ERROR_DISPLAY_MS = 3000;
 
-  // Single auto-dismissing error message — a new one replaces (and resets
-  // the timer of) whatever's currently showing, rather than stacking.
+  // Attachment Error — auto-dismissing, one at a time
   const showAttachmentError = useCallback((message) => {
     if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
     setAttachmentError(message);
@@ -185,9 +199,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
     }, ERROR_DISPLAY_MS);
   }, []);
 
-  // Attachment Intake — shared by the file picker, drag & drop, and paste.
-  // Skips duplicates (name+size+lastModified), oversized files, and
-  // anything past the attachment cap.
+  // Attachment Intake — shared by file picker, drag & drop, and paste
   const addAttachments = useCallback((fileList) => {
     const incoming = Array.from(fileList || []).filter(Boolean);
     if (incoming.length === 0) return;
@@ -251,8 +263,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
 
     try {
       await onSend(trimmed, attachments.map((att) => att.file), replyingTo);
-      // Only clear the composer once the send actually succeeds. replyingTo
-      // itself is owned by the parent, which clears it on success.
+      // Clear composer only after a successful send
       attachments.forEach((att) => revokeUrl(att.previewUrl));
       setAttachments([]);
       setValue("");
@@ -267,9 +278,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
     }
   }, [value, attachments, disabled, onSend, clearTypingTimeout, emitStopTyping, revokeUrl, replyingTo]);
 
-  // Keyboard — Enter sends, Shift+Enter inserts a newline, Ctrl/Cmd+Enter is
-  // a secondary send shortcut, and Escape cancels an active reply without
-  // touching the typed text or attachments.
+  // Keyboard
   const handleKeyDown = (e) => {
     if (e.key === "Escape" && replyingTo) {
       e.preventDefault();
@@ -318,8 +327,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Drag & Drop — only reacts to file drags; subtle highlight on the
-  // composer itself, no fullscreen overlay.
+  // Drag & Drop
   const handleDragEnter = (e) => {
     if (locked) return;
     if (!Array.from(e.dataTransfer?.types || []).includes("Files")) return;
@@ -350,7 +358,7 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
     if (files.length) addAttachments(files);
   };
 
-  // Paste — intercepts image/file paste only; plain text paste is untouched.
+  // Paste
   const handlePaste = (e) => {
     if (locked) return;
     const items = Array.from(e.clipboardData?.items || []);
@@ -364,6 +372,10 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
   };
 
   const canSend = (!!value.trim() || attachments.length > 0) && !locked;
+
+  const replyBannerLabel = replyingTo ? getReplyBannerLabel(replyingTo) : "";
+  const replyBannerPreview = replyingTo ? getReplyPreviewContent(replyingTo) : { icon: null, label: "" };
+  const ReplyPreviewIcon = replyBannerPreview.icon;
 
   return (
     <div
@@ -404,15 +416,22 @@ export default function MessageInput({ onSend, disabled, socket, conversationId,
       {replyingTo && (
         <div
           role="group"
-          aria-label={`Replying to ${getFullName(replyingTo)}: ${getReplyPreviewText(replyingTo)}`}
-          className="mx-3 mt-2 flex items-center gap-2 rounded-lg border-l-2 border-gray-200/80 bg-gray-50/80 pl-2.5 pr-1.5 py-1.5"
+          aria-label={`${replyBannerLabel}. ${replyBannerPreview.label}`}
+          className="mx-3 mt-2 flex items-center gap-1.5 border-l border-gray-200 bg-gray-50/60 pl-2 pr-1 py-1 rounded-md"
         >
-          <Reply className="w-3.5 h-3.5 text-gray-400 shrink-0" aria-hidden="true" />
-          <div className="min-w-0 flex-1 flex flex-col gap-1">
-            <p className="text-[10px] font-semibold leading-tight truncate text-[rgb(var(--primary-700))]">
-              Replying to {getFullName(replyingTo)}
+          <Reply className="w-3 h-3 text-gray-300 shrink-0" aria-hidden="true" />
+          <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+            <p className="text-[10px] font-medium leading-tight truncate text-gray-600">
+              {replyBannerLabel}
             </p>
-            <p className="text-[10.5px] leading-tight text-gray-500 truncate">{getReplyPreviewText(replyingTo)}</p>
+            <div className="flex items-center gap-1 min-w-0">
+              {ReplyPreviewIcon && (
+                <ReplyPreviewIcon className="w-3 h-3 text-gray-400 shrink-0" aria-hidden="true" />
+              )}
+              <span className="text-[10px] leading-tight text-gray-400 truncate">
+                {replyBannerPreview.label}
+              </span>
+            </div>
           </div>
           <button
             type="button"

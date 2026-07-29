@@ -6,6 +6,7 @@ import ConversationHeader from "./ConversationHeader";
 import MessageList from "./MessageList";
 import ReactionPickerPanel from "./ReactionPickerPanel";
 import TypingIndicator from "./TypingIndicator";
+import JumpToLatestButton from "./JumpToLatestButton";
 import { REACTION_CODES } from "../../constants/reactions";
 
 const BADGE_SURFACE = "bg-[rgb(var(--primary-50))] border border-[rgb(var(--primary-100))]";
@@ -16,6 +17,11 @@ const REACTION_BUTTON_SIZE = 32;
 const REACTION_BUTTON_GAP = 6;
 const REACTION_PICKER_PADDING = 20; // px-2.5 on both sides
 const REACTION_PICKER_VIEWPORT_MARGIN = 10;
+// Smart auto-scroll: how close to the bottom (px) still counts as "reading the latest".
+const NEAR_BOTTOM_THRESHOLD = 140;
+// Bottom Detection: how close (px) counts as "actually at the latest message" — tighter
+// than NEAR_BOTTOM_THRESHOLD so the unread badge doesn't vanish mid-scroll.
+const AT_BOTTOM_THRESHOLD = 4;
 
 function getReactionPickerWidth(count) {
   return count * REACTION_BUTTON_SIZE + Math.max(0, count - 1) * REACTION_BUTTON_GAP + REACTION_PICKER_PADDING;
@@ -176,6 +182,22 @@ export default function ChatWindow({
   const pendingObjectUrlsRef = useRef(new Set());
   // Tracks the simulated upload-progress interval per optimistic message.
   const progressIntervalsRef = useRef(new Map());
+  // Reply navigation: message_id -> DOM node, populated via callback refs from
+  // rendered messages. Never triggers a render on its own.
+  const messageRegistryRef = useRef(new Map());
+  // Pending post-scroll focus animation frame, so a rapid second jump cancels the first.
+  const jumpFocusFrameRef = useRef(null);
+  // Highlight State
+  const highlightTimerRef = useRef(null);
+  // Scroll Tracking
+  const isNearBottomRef = useRef(true);
+  const scrollTickingRef = useRef(false);
+  // Set right before adding the current user's own optimistic message, so the
+  // next auto-scroll pass always runs regardless of reading position.
+  const forceNextScrollRef = useRef(false);
+  // Unread Tracking: message_ids already counted, so duplicate socket
+  // deliveries can never double-increment. Independent of the DOM registry.
+  const countedUnreadMessageIdsRef = useRef(new Set());
 
   const userId = useMemo(() => resolveCurrentUserId(currentUserId), [currentUserId]);
 
@@ -196,6 +218,10 @@ export default function ChatWindow({
   const [imageModalItem, setImageModalItem] = useState(null);
   // Holds the full message object currently being replied to (Messenger-style reply).
   const [replyingTo, setReplyingTo] = useState(null);
+  // Highlight State
+  const [highlightedMessageId, setHighlightedMessageId] = useState(null);
+  // Unread Messages
+  const [newMessageCount, setNewMessageCount] = useState(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -205,6 +231,8 @@ export default function ChatWindow({
       pendingObjectUrlsRef.current.clear();
       progressIntervalsRef.current.forEach((id) => clearInterval(id));
       progressIntervalsRef.current.clear();
+      if (jumpFocusFrameRef.current != null) cancelAnimationFrame(jumpFocusFrameRef.current);
+      if (highlightTimerRef.current != null) clearTimeout(highlightTimerRef.current);
     };
   }, []);
 
@@ -218,12 +246,53 @@ export default function ChatWindow({
     });
   }, [messages, identityKey]);
 
+  // Auto Scroll
   const scrollToBottom = useCallback((force = false) => {
+    if (!force && !isNearBottomRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  // Scroll Tracking
+  const updateIsNearBottom = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (force || distanceFromBottom < 100) bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isNearBottomRef.current = distance < NEAR_BOTTOM_THRESHOLD;
+    // Bottom Detection: only clear once truly at the latest message, so the
+    // badge doesn't disappear mid-scroll.
+    if (distance < AT_BOTTOM_THRESHOLD) {
+      countedUnreadMessageIdsRef.current.clear();
+      setNewMessageCount(0);
+    }
   }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      if (scrollTickingRef.current) return;
+      scrollTickingRef.current = true;
+      requestAnimationFrame(() => {
+        updateIsNearBottom();
+        scrollTickingRef.current = false;
+      });
+    };
+
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [updateIsNearBottom]);
+
+  // Image Loading: maintain reading position as late-loading images resize content.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const handleMediaLoad = () => scrollToBottom();
+    // capture:true — the "load" event doesn't bubble, so it must be caught
+    // on the way down; this needs no access to individual image elements.
+    el.addEventListener("load", handleMediaLoad, true);
+    return () => el.removeEventListener("load", handleMediaLoad, true);
+  }, [scrollToBottom]);
 
   // Closes the reaction picker and restores focus to whichever trigger button opened it.
   const closePicker = useCallback(() => {
@@ -237,15 +306,38 @@ export default function ChatWindow({
 
   useEffect(() => {
     skipNextScrollRef.current = true;
+    forceNextScrollRef.current = false;
+    isNearBottomRef.current = true;
     scrollToBottom(true);
     setTypingUsers(() => new Set());
     setReactionPicker(null);
     seenIdsRef.current = new Set();
+    // Stale refs from the previous conversation would otherwise dangle in the
+    // registry and never get cleaned up by unmount ref-callbacks alone.
+    messageRegistryRef.current.clear();
+    // Cleanup: cancel in-flight navigation/highlight from the prior conversation.
+    if (jumpFocusFrameRef.current != null) {
+      cancelAnimationFrame(jumpFocusFrameRef.current);
+      jumpFocusFrameRef.current = null;
+    }
+    if (highlightTimerRef.current != null) {
+      clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = null;
+    }
+    setHighlightedMessageId(null);
+    // Unread Tracking
+    countedUnreadMessageIdsRef.current.clear();
+    setNewMessageCount(0);
   }, [identityKey, scrollToBottom]);
 
   useEffect(() => {
     if (skipNextScrollRef.current) {
       skipNextScrollRef.current = false;
+      return;
+    }
+    if (forceNextScrollRef.current) {
+      forceNextScrollRef.current = false;
+      scrollToBottom(true);
       return;
     }
     scrollToBottom();
@@ -298,6 +390,17 @@ export default function ChatWindow({
         }
         return [...prev, msg];
       });
+      // Unread Tracking: only genuinely new messages from other users, while
+      // reading history. Dedicated set guards against duplicate deliveries.
+      if (
+        msg.sender_id !== userId &&
+        !isNearBottomRef.current &&
+        msg.message_id != null &&
+        !countedUnreadMessageIdsRef.current.has(msg.message_id)
+      ) {
+        countedUnreadMessageIdsRef.current.add(msg.message_id);
+        setNewMessageCount((c) => c + 1);
+      }
     };
     socket.on("receive_message", onReceive);
     return () => { socket.off("receive_message", onReceive); };
@@ -460,6 +563,83 @@ export default function ChatWindow({
     setImageModalItem(null);
   }, []);
 
+  /* --------------------------- Reply navigation --------------------------- */
+
+  // Message Registry
+  const registerMessageRef = useCallback((messageId, node) => {
+    if (messageId == null) return;
+    if (node) {
+      messageRegistryRef.current.set(messageId, node);
+    } else {
+      messageRegistryRef.current.delete(messageId);
+    }
+  }, []);
+
+  // Highlight Timer
+  const triggerHighlight = useCallback((messageId) => {
+    if (highlightTimerRef.current != null) clearTimeout(highlightTimerRef.current);
+    setHighlightedMessageId(messageId);
+    highlightTimerRef.current = setTimeout(() => {
+      highlightTimerRef.current = null;
+      setHighlightedMessageId(null);
+    }, 1800);
+  }, []);
+
+  // Jump Handler
+  const handleJumpToReply = useCallback((messageId) => {
+    if (messageId == null) return;
+    const node = messageRegistryRef.current.get(messageId);
+    if (!node) return;
+
+    node.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+
+    // Accessibility: focus follows scroll once the container's scroll
+    // position stops changing — no fixed delay, so it adapts to fast/slow
+    // browsers and resolves almost immediately under reduced motion.
+    if (jumpFocusFrameRef.current != null) cancelAnimationFrame(jumpFocusFrameRef.current);
+
+    const container = scrollRef.current;
+    let lastTop = container ? container.scrollTop : null;
+    let stableFrames = 0;
+
+    const waitForSettle = () => {
+      if (!isMountedRef.current) {
+        jumpFocusFrameRef.current = null;
+        return;
+      }
+      const currentTop = container ? container.scrollTop : null;
+      if (Math.abs(currentTop - lastTop) < 1) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+        lastTop = currentTop;
+      }
+
+      if (stableFrames < 2) {
+        jumpFocusFrameRef.current = requestAnimationFrame(waitForSettle);
+        return;
+      }
+
+      jumpFocusFrameRef.current = null;
+      const isFocusable = node.hasAttribute("tabindex") || /^(a|button|input|select|textarea)$/i.test(node.tagName);
+      if (isFocusable && typeof node.focus === "function") {
+        node.focus({ preventScroll: true });
+      }
+      // Highlight
+      triggerHighlight(messageId);
+    };
+
+    jumpFocusFrameRef.current = requestAnimationFrame(waitForSettle);
+  }, [triggerHighlight]);
+
+  // Jump To Latest
+  const handleJumpToLatest = useCallback(() => {
+    isNearBottomRef.current = true;
+    countedUnreadMessageIdsRef.current.clear();
+    setNewMessageCount(0);
+    scrollToBottom(true);
+  }, [scrollToBottom]);
+
   // Sole entry point for outgoing messages. MessageInput calls
   // onSend(message, files) directly; ChatWindow's job here is only the
   // optimistic bubble / upload-progress / retry pipeline, keyed off
@@ -499,6 +679,7 @@ export default function ChatWindow({
         };
       });
 
+      forceNextScrollRef.current = true;
       setMessages((prev) => [
         ...prev,
         {
@@ -610,46 +791,59 @@ export default function ChatWindow({
         onBack={onBack}
       />
 
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-4"
-        role="log"
-        aria-live="polite"
-        aria-label={`Conversation with ${selectedName}`}
-      >
-        {loading ? (
-          <LoadingState />
-        ) : localMessages.length === 0 ? (
-          <EmptyMessagesState selectedName={selectedName} />
-        ) : (
-          <MessageList
-            grouped={grouped}
-            groupingMap={groupingMap}
-            userId={userId}
-            isGroupChat={isGroupChat}
-            reactionPicker={reactionPicker}
-            handleReact={handleReact}
-            handleTogglePicker={handleTogglePicker}
-            handleImageClick={handleImageClick}
-            DateSeparator={DateSeparator}
-            onReply={setReplyingTo}
-          />
+      <div className="relative flex-1 flex flex-col min-h-0">
+        <div
+          ref={scrollRef}
+          className="flex-1 overflow-y-auto px-4 py-4"
+          role="log"
+          aria-live="polite"
+          aria-label={`Conversation with ${selectedName}`}
+        >
+          {loading ? (
+            <LoadingState />
+          ) : localMessages.length === 0 ? (
+            <EmptyMessagesState selectedName={selectedName} />
+          ) : (
+            <MessageList
+              grouped={grouped}
+              groupingMap={groupingMap}
+              userId={userId}
+              isGroupChat={isGroupChat}
+              reactionPicker={reactionPicker}
+              handleReact={handleReact}
+              handleTogglePicker={handleTogglePicker}
+              handleImageClick={handleImageClick}
+              DateSeparator={DateSeparator}
+              onReply={setReplyingTo}
+              onJumpToReply={handleJumpToReply}
+              registerMessageRef={registerMessageRef}
+              highlightedMessageId={highlightedMessageId}
+            />
+          )}
+          <div ref={bottomRef} />
+        </div>
+
+        {showTyping && !loading && (
+          <div className="mt-1"><TypingIndicator name={typingName} /></div>
         )}
-        <div ref={bottomRef} />
+
+        <JumpToLatestButton
+          show={newMessageCount > 0}
+          newMessageCount={newMessageCount}
+          onClick={handleJumpToLatest}
+        />
       </div>
 
-      {showTyping && !loading && (
-        <div className="mt-1"><TypingIndicator name={typingName} /></div>
-      )}
-
-      <MessageInput
-        onSend={handleSend}
-        disabled={loading}
-        socket={socket}
-        conversationId={conversationId}
-        replyingTo={replyingTo}
-        onCancelReply={() => setReplyingTo(null)}
-      />
+      <div className="shrink-0">
+        <MessageInput
+          onSend={handleSend}
+          disabled={loading}
+          socket={socket}
+          conversationId={conversationId}
+          replyingTo={replyingTo}
+          onCancelReply={() => setReplyingTo(null)}
+        />
+      </div>
 
       {reactionPicker && (
         <ReactionPickerPanel
