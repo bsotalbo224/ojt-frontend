@@ -191,15 +191,15 @@ export default function MessagesPage() {
     });
   }, [messages, selectedConversation, currentUser]);
 
-  // Contacts
-  const fetchContacts = useCallback(async () => {
+  // Conversations
+  const fetchConversations = useCallback(async () => {
     try {
-      const res = await api.get("/messages/contacts");
+      const res = await api.get("/messages/conversations");
 
-      const data = Array.isArray(res?.data?.contacts)
-        ? res.data.contacts
-        : Array.isArray(res?.data?.conversations)
-          ? res.data.conversations
+      const data = Array.isArray(res?.data?.conversations)
+        ? res.data.conversations
+        : Array.isArray(res?.data?.contacts)
+          ? res.data.contacts
           : Array.isArray(res?.data)
             ? res.data
             : [];
@@ -207,7 +207,7 @@ export default function MessagesPage() {
       setConversations(data);
       return data;
     } catch (err) {
-      console.error("Failed to load contacts:", err);
+      console.error("Failed to load conversations:", err);
       setConversations([]);
       return [];
     } finally {
@@ -215,7 +215,7 @@ export default function MessagesPage() {
     }
   }, []);
 
-  useEffect(() => { fetchContacts(); }, [fetchContacts]);
+  useEffect(() => { fetchConversations(); }, [fetchConversations]);
 
   // Messages
   const fetchMessages = useCallback(async (conversationId, requestId) => {
@@ -401,7 +401,7 @@ export default function MessagesPage() {
 
       setConversationsLoading(true);
 
-      const freshContacts = await fetchContacts();
+      const freshContacts = await fetchConversations();
 
       const currentSelected = selectedConversationRef.current;
 
@@ -438,7 +438,7 @@ export default function MessagesPage() {
     return () => {
       window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
     };
-  }, [fetchContacts, fetchMessages, markRead]);
+  }, [fetchConversations, fetchMessages, markRead]);
 
   // Sending
   const handleSend = useCallback(async (message, attachments, reply) => {
