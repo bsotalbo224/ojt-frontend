@@ -8,6 +8,33 @@ import ChatWindow from "../../components/messages/ChatWindow";
 
 const safeArray = (value) => (Array.isArray(value) ? value : []);
 
+// Merge conversations (groups + existing private conversations) with
+// consultation contacts, appending only contacts that do not already have
+// a private conversation. Existing conversations are never removed and
+// always appear first; contacts without conversations are appended after,
+// preserving conversation_id = null so lazy creation keeps working.
+const mergeConversationsAndContacts = (conversations, contacts) => {
+  const convs = safeArray(conversations);
+  const cts = safeArray(contacts);
+
+  // Only private (non-group) conversations count toward "already has a
+  // conversation" — group conversations are ignored when checking duplicates.
+  const existingUserIds = new Set(
+    convs
+      .filter((c) => !c.is_group && c.user_id != null)
+      .map((c) => String(c.user_id))
+  );
+
+  const remainingContacts = cts
+    .filter((contact) => contact.user_id != null && !existingUserIds.has(String(contact.user_id)))
+    .map((contact) => ({
+      ...contact,
+      conversation_id: contact.conversation_id ?? null,
+    }));
+
+  return [...convs, ...remainingContacts];
+};
+
 // Selection
 const isSameContact = (a, b) => {
   if (!a || !b) return false;
@@ -191,21 +218,34 @@ export default function MessagesPage() {
     });
   }, [messages, selectedConversation, currentUser]);
 
-  // Conversations
+  // Conversations + Consultation Contacts
   const fetchConversations = useCallback(async () => {
     try {
-      const res = await api.get("/messages/conversations");
+      const [conversationsRes, contactsRes] = await Promise.all([
+        api.get("/messages/conversations"),
+        api.get("/messages/contacts"),
+      ]);
 
-      const data = Array.isArray(res?.data?.conversations)
-        ? res.data.conversations
-        : Array.isArray(res?.data?.contacts)
-          ? res.data.contacts
-          : Array.isArray(res?.data)
-            ? res.data
+      const conversationsData = Array.isArray(conversationsRes?.data?.conversations)
+        ? conversationsRes.data.conversations
+        : Array.isArray(conversationsRes?.data?.contacts)
+          ? conversationsRes.data.contacts
+          : Array.isArray(conversationsRes?.data)
+            ? conversationsRes.data
             : [];
 
-      setConversations(data);
-      return data;
+      const contactsData = Array.isArray(contactsRes?.data?.contacts)
+        ? contactsRes.data.contacts
+        : Array.isArray(contactsRes?.data?.conversations)
+          ? contactsRes.data.conversations
+          : Array.isArray(contactsRes?.data)
+            ? contactsRes.data
+            : [];
+
+      const merged = mergeConversationsAndContacts(conversationsData, contactsData);
+
+      setConversations(merged);
+      return merged;
     } catch (err) {
       console.error("Failed to load conversations:", err);
       setConversations([]);
