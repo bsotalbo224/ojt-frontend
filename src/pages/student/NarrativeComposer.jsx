@@ -32,13 +32,25 @@ const PAPER_SIZES = {
 
 /* ─────────────────────────────────────────
    FloatImageView — uses CSS vars for accent
+   FIX (image dragging): the drag badge now carries a real
+   `data-drag-handle` attribute so ProseMirror's native node-dragging
+   system (HTML5 drag & drop) is scoped to that handle only — grabbing
+   the handle moves the existing node (no duplication), while the rest
+   of the image (selection, resize handle) is unaffected.
+   FIX (inline flow): float === "none" images now render as
+   `inline-block` instead of a full-width `block` element, and no
+   longer force a block-level "clear" break after themselves, so
+   multiple inline images can sit on the same line and wrap naturally.
 ───────────────────────────────────────────*/
 const FloatImageView = ({ node, updateAttributes, selected }) => {
   const { src, alt, width = "260", float = "none" } = node.attrs;
 
   const wrapperStyle = {
     none: {
-      display: "block", clear: "both", margin: "20px auto", maxWidth: "100%",
+      display: "inline-block",
+      verticalAlign: "top",
+      margin: "6px 10px 6px 0",
+      maxWidth: "100%",
     },
     left: {
       float: "left", maxWidth: "45%", marginRight: "16px",
@@ -48,7 +60,7 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
       float: "right", maxWidth: "45%", marginLeft: "16px",
       marginBottom: "10px", marginTop: "6px", marginRight: "0", clear: "none",
     },
-  }[float] || { display: "block", margin: "20px auto" };
+  }[float] || { display: "inline-block", verticalAlign: "top", margin: "6px 10px 6px 0" };
 
   const handleResizeMouseDown = useCallback((e) => {
     e.preventDefault();
@@ -71,15 +83,15 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
   const accentGlow   = "rgb(var(--p500) / 0.15)";
 
   return (
-    <NodeViewWrapper as="span" style={{ display: "contents" }} data-drag-handle>
+    <NodeViewWrapper as="span" style={{ display: "contents" }}>
       <span
         contentEditable={false}
         style={{
           ...wrapperStyle,
           position: "relative",
-          display: float === "none" ? "block" : "inline-block",
+          display: "inline-block",
           userSelect: "none",
-          verticalAlign: float !== "none" ? "top" : undefined,
+          verticalAlign: "top",
         }}
       >
         <span
@@ -113,13 +125,21 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
                 {float === "none" ? "Inline" : `Float ${float}`}
               </span>
 
-              <span style={{
-                position: "absolute", top: -12, right: 0,
-                background: accentDarker, color: "#fff",
-                fontSize: 10, fontWeight: 600, padding: "2px 8px",
-                borderRadius: "4px 4px 0 4px", cursor: "grab",
-                userSelect: "none", zIndex: 20,
-              }} title="Drag to reposition">⠿ drag</span>
+              {/* Real drag handle: data-drag-handle scopes ProseMirror's
+                  native node-drag initiation to this element only, so
+                  grabbing it (and only it) moves the existing image node
+                  via TipTap/ProseMirror's supported drag-and-drop system. */}
+              <span
+                data-drag-handle
+                style={{
+                  position: "absolute", top: -12, right: 0,
+                  background: accentDarker, color: "#fff",
+                  fontSize: 10, fontWeight: 600, padding: "2px 8px",
+                  borderRadius: "4px 4px 0 4px", cursor: "grab",
+                  userSelect: "none", zIndex: 20,
+                }}
+                title="Drag to reposition"
+              >⠿ drag</span>
 
               <span
                 onMouseDown={handleResizeMouseDown}
@@ -139,7 +159,6 @@ const FloatImageView = ({ node, updateAttributes, selected }) => {
             </>
           )}
         </span>
-        {float === "none" && <span style={{ display: "block", clear: "both", height: 0 }} />}
       </span>
     </NodeViewWrapper>
   );
@@ -184,7 +203,7 @@ const FloatImage = Node.create({
     } else if (float === "right") {
       style = `float:right;max-width:45%;margin-left:16px;margin-bottom:10px;width:${width}px`;
     } else {
-      style = `display:block;margin:20px auto;width:${width}px`;
+      style = `display:inline-block;vertical-align:top;margin:6px 10px 6px 0;max-width:100%;width:${width}px`;
     }
     return ["img", mergeAttributes({ src, alt, style })];
   },
@@ -326,6 +345,9 @@ const FileTypeIcon = ({ name, mimeType }) => {
    PaperEditor
    FIX: handleImageUpload now uses res.data.url
         directly (Cloudinary URL) — no BASE_URL prefix.
+   FIX: image insertion now goes through insertFloatImageNode, which
+        keeps consecutive inline images flowing horizontally instead of
+        always wedging an empty paragraph between them.
 ───────────────────────────────────────────*/
 const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
   const editor = useEditor({
@@ -349,6 +371,61 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
 
   if (!editor) return null;
 
+  /* ── INSERT IMAGE NODE ──
+     Inserts a floatImage node at the current cursor position.
+
+     If the cursor is currently sitting inside an empty paragraph that
+     directly follows another inline (float: none) image — which is
+     exactly where the cursor lands right after inserting a previous
+     image — the new image is inserted immediately before that empty
+     paragraph (i.e. right beside the previous image) via a direct
+     ProseMirror transaction, instead of going through the generic
+     insertContent path, which would otherwise split the empty
+     paragraph and wedge it between the two images. This lets multiple
+     inline images flow onto the same line and wrap naturally, like
+     inline images in Word/Google Docs.
+
+     Otherwise (inserting into arbitrary text, or as the first image),
+     the image is inserted followed by an empty paragraph, exactly as
+     before, so the user can keep typing underneath/after it.
+  ── */
+  const insertFloatImageNode = (imageUrl) => {
+    const { state, view } = editor;
+    const { doc, selection } = state;
+    const { $from } = selection;
+
+    const attrs = { src: imageUrl, alt: "", float: "none", width: "260" };
+
+    if (
+      $from.depth === 1 &&
+      $from.parent.type.name === "paragraph" &&
+      $from.parent.content.size === 0
+    ) {
+      const boundaryPos = $from.before($from.depth);
+      const nodeBeforeBoundary = doc.resolve(boundaryPos).nodeBefore;
+
+      if (
+        nodeBeforeBoundary?.type.name === "floatImage" &&
+        nodeBeforeBoundary.attrs.float === "none"
+      ) {
+        const imageNode = state.schema.nodes.floatImage.create(attrs);
+        const tr = state.tr.insert(boundaryPos, imageNode);
+        view.dispatch(tr);
+        editor.commands.focus();
+        return;
+      }
+    }
+
+    editor
+      .chain()
+      .focus()
+      .insertContent([
+        { type: "floatImage", attrs },
+        { type: "paragraph" },
+      ])
+      .run();
+  };
+
   /* ── IMAGE UPLOAD ──
      res.data.url is already a full Cloudinary URL.
      Never prepend VITE_BASE_URL or any local path.
@@ -364,17 +441,7 @@ const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
       // Use the Cloudinary URL directly — no prefix needed
       const imageUrl = res.data.url;
 
-      editor
-        .chain()
-        .focus()
-        .insertContent([
-          {
-            type: "floatImage",
-            attrs: { src: imageUrl, float: "none", width: "260" },
-          },
-          { type: "paragraph" },
-        ])
-        .run();
+      insertFloatImageNode(imageUrl);
     } catch (err) {
       console.error("Image upload failed:", err);
     }
