@@ -1,1293 +1,913 @@
-import { useNavigate, useLocation } from "react-router-dom";
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import api from "../../api/axios";
 import {
-  ArrowLeft, Save, Send, AlertCircle, FileText,
-  AlignLeft, AlignCenter, AlignRight, Image as ImageIcon,
-  Minus, Bold, Italic, List, Paperclip, X, File,
-  CheckCircle2, Clock, RotateCcw, Lock, ChevronDown,
-  Upload, Loader2,
-} from "lucide-react";
-import {
-  useEditor, EditorContent,
-  NodeViewWrapper, ReactNodeViewRenderer,
-} from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import TextAlign from "@tiptap/extension-text-align";
-import { Node, mergeAttributes } from "@tiptap/core";
-
-/* ─────────────────────────────────────────
-   Utility: today as YYYY-MM-DD
-───────────────────────────────────────────*/
-const todayISO = () => new Date().toISOString().split("T")[0];
+  FileText, Eye, Edit3, Calendar, MessageSquare,
+  ChevronRight, Inbox, CheckCircle2,
+  Clock, RotateCcw, BookOpen, AlertCircle, X, FileCheck,
+} from 'lucide-react';
 
 /* ─────────────────────────────────────────
    Paper size config
 ───────────────────────────────────────────*/
 const PAPER_SIZES = {
-  A4:     { label: "A4",     maxWidth: "794px", minHeight: undefined },
-  Letter: { label: "Letter", maxWidth: "816px", minHeight: undefined },
-  Legal:  { label: "Legal",  maxWidth: "816px", minHeight: "1344px" },
+  A4:     { label: "A4",     maxWidth: "794px" },
+  Letter: { label: "Letter", maxWidth: "816px" },
+  Legal:  { label: "Legal",  maxWidth: "816px" },
 };
 
 /* ─────────────────────────────────────────
-   FloatImageView — uses CSS vars for accent
-   FIX (image dragging): the drag badge now carries a real
-   `data-drag-handle` attribute so ProseMirror's native node-dragging
-   system (HTML5 drag & drop) is scoped to that handle only — grabbing
-   the handle moves the existing node (no duplication), while the rest
-   of the image (selection, resize handle) is unaffected.
-   FIX (inline flow): float === "none" images now render as
-   `inline-block` instead of a full-width `block` element, and no
-   longer force a block-level "clear" break after themselves, so
-   multiple inline images can sit on the same line and wrap naturally.
+   Read a CSS variable as an rgb() string.
+   Used inside injected <style> / print windows
+   that cannot access :root CSS vars directly.
 ───────────────────────────────────────────*/
-const FloatImageView = ({ node, updateAttributes, selected }) => {
-  const { src, alt, width = "260", float = "none" } = node.attrs;
-
-  const wrapperStyle = {
-    none: {
-      display: "inline-block",
-      verticalAlign: "top",
-      margin: "6px 10px 6px 0",
-      maxWidth: "100%",
-    },
-    left: {
-      float: "left", maxWidth: "45%", marginRight: "16px",
-      marginBottom: "10px", marginTop: "6px", marginLeft: "0", clear: "none",
-    },
-    right: {
-      float: "right", maxWidth: "45%", marginLeft: "16px",
-      marginBottom: "10px", marginTop: "6px", marginRight: "0", clear: "none",
-    },
-  }[float] || { display: "inline-block", verticalAlign: "top", margin: "6px 10px 6px 0" };
-
-  const handleResizeMouseDown = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const startX = e.clientX;
-    const startWidth = parseInt(width, 10) || 260;
-    const onMouseMove = (me) => {
-      updateAttributes({ width: String(Math.max(80, startWidth + (me.clientX - startX))) });
-    };
-    const onMouseUp = () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }, [width, updateAttributes]);
-
-  const accentColor  = "rgb(var(--p600))";
-  const accentDarker = "rgb(var(--p700))";
-  const accentGlow   = "rgb(var(--p500) / 0.15)";
-
-  return (
-    <NodeViewWrapper as="span" style={{ display: "contents" }}>
-      <span
-        contentEditable={false}
-        style={{
-          ...wrapperStyle,
-          position: "relative",
-          display: "inline-block",
-          userSelect: "none",
-          verticalAlign: "top",
-        }}
-      >
-        <span
-          style={{
-            display: "inline-block",
-            position: "relative",
-            outline: selected ? `2.5px solid ${accentColor}` : "2.5px solid transparent",
-            outlineOffset: 3,
-            borderRadius: 6,
-            boxShadow: selected ? `0 0 0 4px ${accentGlow}` : "none",
-            transition: "all 0.15s ease",
-          }}
-        >
-          {/* Image renders directly from Cloudinary URL */}
-          <img
-            src={src}
-            alt={alt || ""}
-            draggable={false}
-            style={{ width: `${width}px`, maxWidth: "100%", display: "block", borderRadius: 6 }}
-          />
-
-          {selected && (
-            <>
-              <span style={{
-                position: "absolute", top: -12, left: 0,
-                background: accentColor, color: "#fff",
-                fontSize: 10, fontWeight: 700, padding: "2px 8px",
-                borderRadius: "4px 4px 4px 0", userSelect: "none", zIndex: 20,
-                letterSpacing: 1, textTransform: "uppercase",
-              }}>
-                {float === "none" ? "Inline" : `Float ${float}`}
-              </span>
-
-              {/* Real drag handle: data-drag-handle scopes ProseMirror's
-                  native node-drag initiation to this element only, so
-                  grabbing it (and only it) moves the existing image node
-                  via TipTap/ProseMirror's supported drag-and-drop system. */}
-              <span
-                data-drag-handle
-                style={{
-                  position: "absolute", top: -12, right: 0,
-                  background: accentDarker, color: "#fff",
-                  fontSize: 10, fontWeight: 600, padding: "2px 8px",
-                  borderRadius: "4px 4px 0 4px", cursor: "grab",
-                  userSelect: "none", zIndex: 20,
-                }}
-                title="Drag to reposition"
-              >⠿ drag</span>
-
-              <span
-                onMouseDown={handleResizeMouseDown}
-                title="Drag to resize"
-                style={{
-                  position: "absolute", bottom: 0, right: 0,
-                  width: 18, height: 18,
-                  background: accentColor, borderRadius: "5px 0 5px 0",
-                  cursor: "se-resize", display: "flex",
-                  alignItems: "center", justifyContent: "center", zIndex: 20,
-                }}
-              >
-                <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
-                  <path d="M1 7L7 1M4 7L7 4" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-              </span>
-            </>
-          )}
-        </span>
-      </span>
-    </NodeViewWrapper>
-  );
+const cssVarRgb = (name, fallback = "22 163 74") => {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue(name).trim() || fallback;
+  const [r, g, b] = raw.split(/\s+/).map(Number);
+  return `rgb(${r}, ${g}, ${b})`;
 };
 
 /* ─────────────────────────────────────────
-   FloatImage TipTap Extension
+   Build preview styles at inject-time so CSS
+   picks up the active theme variables.
+   Images use max-width:100% — Cloudinary URLs
+   render directly; no blob conversion needed.
 ───────────────────────────────────────────*/
-const FloatImage = Node.create({
-  name: "floatImage",
-  group: "block",
-  inline: false,
-  atom: true,
-  draggable: true,
-
-  addAttributes() {
-    return {
-      src:   { default: null },
-      alt:   { default: "" },
-      float: { default: "none" },
-      width: { default: "260" },
-    };
-  },
-  parseHTML() {
-    return [{
-      tag: "img[src]",
-      getAttrs: (el) => ({
-        src:   el.getAttribute("src"),
-        alt:   el.getAttribute("alt") || "",
-        float: el.style.float || "none",
-        width: el.style.width
-          ? el.style.width.replace("px", "")
-          : el.getAttribute("width") || "260",
-      }),
-    }];
-  },
-  renderHTML({ HTMLAttributes }) {
-    const { float, width, src, alt } = HTMLAttributes;
-    let style;
-    if (float === "left") {
-      style = `float:left;max-width:45%;margin-right:16px;margin-bottom:10px;width:${width}px`;
-    } else if (float === "right") {
-      style = `float:right;max-width:45%;margin-left:16px;margin-bottom:10px;width:${width}px`;
-    } else {
-      style = `display:inline-block;vertical-align:top;margin:6px 10px 6px 0;max-width:100%;width:${width}px`;
-    }
-    return ["img", mergeAttributes({ src, alt, style })];
-  },
-  addNodeView() {
-    return ReactNodeViewRenderer(FloatImageView);
-  },
-});
-
-/* ─────────────────────────────────────────
-   Set float on selected image
-───────────────────────────────────────────*/
-const setSelectedImageFloat = (editor, float) => {
-  const { state, dispatch } = editor.view;
-  const { selection } = state;
-  if (selection.node?.type?.name === "floatImage") {
-    dispatch(state.tr.setNodeMarkup(selection.from, undefined, {
-      ...selection.node.attrs, float,
-    }));
-  }
-};
+const buildPreviewStyles = () => `
+.narrative-preview {
+  width: 100%;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+.narrative-preview h1 {
+  font-size: 21px; font-weight: 700; margin-bottom: 12px;
+  border-bottom: 2px solid ${cssVarRgb("--primary-100")};
+  padding-bottom: 6px; color: #0f172a;
+}
+.narrative-preview h2 {
+  font-size: 17px; font-weight: 700; margin: 20px 0 8px;
+  border-bottom: 1px solid ${cssVarRgb("--primary-200")};
+  color: ${cssVarRgb("--primary-800")};
+}
+.narrative-preview h3 {
+  font-size: 15px; font-weight: 700; margin: 16px 0 6px; color: #1e293b;
+}
+.narrative-preview p {
+  margin-bottom: 14px; text-align: justify;
+  word-break: break-word; overflow-wrap: break-word;
+}
+.narrative-preview ul,
+.narrative-preview ol { padding-left: 24px; margin-bottom: 14px; }
+.narrative-preview li  { margin-bottom: 5px; word-break: break-word; }
+.narrative-preview strong { color: #0f172a; }
+.narrative-preview em    { color: #374151; }
+.narrative-preview img {
+  /* Cloudinary images render directly — no fetch needed */
+  max-width: 100%; width: auto; height: auto;
+  display: block; border-radius: 6px; margin: 12px auto;
+}
+.narrative-preview blockquote {
+  border-left: 3px solid ${cssVarRgb("--primary-600")};
+  padding-left: 16px; margin: 16px 0;
+  color: #475569; font-style: italic; word-break: break-word;
+}
+.narrative-preview a {
+  color: ${cssVarRgb("--primary-700")};
+  text-decoration: underline; word-break: break-all;
+}
+.narrative-preview table {
+  width: 100%; display: block; overflow-x: auto;
+  border-collapse: collapse; margin-bottom: 14px; font-size: 14px;
+}
+.narrative-preview th,
+.narrative-preview td {
+  border: 1px solid #e2e8f0; padding: 8px 12px;
+  text-align: left; word-break: break-word;
+}
+.narrative-preview th { background: #f8fafc; font-weight: 700; color: #374151; }
+.narrative-preview pre {
+  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+  padding: 12px 16px; margin-bottom: 14px;
+  white-space: pre-wrap; word-break: break-word;
+  overflow-wrap: break-word; overflow-x: hidden;
+  font-size: 13px; color: #1e293b;
+}
+.narrative-preview code {
+  background: #f1f5f9; border-radius: 3px; padding: 1px 5px;
+  font-size: 13px; white-space: pre-wrap; word-break: break-word;
+}
+.narrative-preview pre code { background: transparent; padding: 0; }
+`;
 
 /* ─────────────────────────────────────────
    Status config
 ───────────────────────────────────────────*/
-const STATUS_CONFIG = {
+const statusConfig = {
   draft: {
-    label: "Draft",
-    icon: Clock,
-    className: "bg-slate-100 text-slate-600 border border-slate-300",
-    dot: "bg-slate-400",
+    label: 'Draft',
+    bg: 'bg-slate-100', text: 'text-slate-700',
+    border: 'border-slate-200', dot: 'bg-slate-400',
+    icon: Edit3, inlineStyle: null,
   },
   submitted: {
-    label: "Submitted",
-    icon: Send,
-    className: "border",
-    dot: null,
+    label: 'Submitted',
+    bg: '', text: '', border: '', dot: '',
+    icon: Clock, inlineStyle: true,
   },
   revision: {
-    label: "For Revision",
-    icon: RotateCcw,
-    className: "bg-amber-50 text-amber-700 border border-amber-300",
-    dot: "bg-amber-500",
+    label: 'Revision',
+    bg: 'bg-amber-50', text: 'text-amber-800',
+    border: 'border-amber-200', dot: 'bg-amber-500',
+    icon: RotateCcw, inlineStyle: null,
   },
   approved: {
-    label: "Approved",
-    icon: CheckCircle2,
-    className: "border",
-    dot: null,
+    label: 'Approved',
+    bg: '', text: '', border: '', dot: '',
+    icon: CheckCircle2, inlineStyle: true,
   },
+};
+
+/* ─────────────────────────────────────────
+   Helpers
+───────────────────────────────────────────*/
+const formatDate = (dateStr) => {
+  const date = new Date(dateStr);
+  return {
+    short: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    full:  date.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+    year:  date.getFullYear(),
+  };
 };
 
 /* ─────────────────────────────────────────
    StatusBadge
 ───────────────────────────────────────────*/
 const StatusBadge = ({ status }) => {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.draft;
-  const Icon = cfg.icon;
-  const isPrimary = status === "submitted" || status === "approved";
+  const config = statusConfig[status] || statusConfig.draft;
+
+  if (config.inlineStyle) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border"
+        style={{
+          backgroundColor: `rgb(var(--primary-50))`,
+          color:           `rgb(var(--primary-700))`,
+          borderColor:     `rgb(var(--primary-200))`,
+        }}
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: `rgb(var(--primary-500))` }}
+        />
+        {config.label}
+      </span>
+    );
+  }
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest px-3 py-1.5 rounded-full ${cfg.className}`}
-      style={isPrimary ? {
-        backgroundColor: `rgb(var(--p50))`,
-        color: `rgb(var(--p700))`,
-        borderColor: `rgb(var(--p400))`,
-      } : {}}
-    >
-      <span
-        className={cfg.dot ? `w-1.5 h-1.5 rounded-full ${cfg.dot}` : "w-1.5 h-1.5 rounded-full"}
-        style={isPrimary ? { backgroundColor: `rgb(var(--p500))` } : {}}
-      />
-      <Icon className="w-3 h-3" />
-      {cfg.label}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${config.bg} ${config.text} ${config.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${config.dot} shrink-0`} />
+      {config.label}
     </span>
   );
 };
 
 /* ─────────────────────────────────────────
-   Toolbar Button Helpers
+   SkeletonRow
 ───────────────────────────────────────────*/
-const TB = ({ active, onClick, title, disabled, children }) => (
-  <button
-    onClick={onClick}
-    title={title}
-    disabled={disabled}
-    className={`
-      h-8 px-2.5 rounded-md text-sm font-medium transition-all duration-100 flex items-center gap-1.5 border
-      ${disabled
-        ? "bg-transparent text-slate-300 border-transparent cursor-not-allowed"
-        : "bg-transparent border-transparent"
-      }
-    `}
-    style={
-      active
-        ? { backgroundColor: `rgb(var(--p600))`, color: "white", borderColor: `rgb(var(--p600))` }
-        : disabled ? {} : undefined
-    }
-    onMouseEnter={e => {
-      if (!active && !disabled) {
-        e.currentTarget.style.backgroundColor = `rgb(var(--p50))`;
-        e.currentTarget.style.color           = `rgb(var(--p700))`;
-        e.currentTarget.style.borderColor     = `rgb(var(--p200))`;
-      }
-    }}
-    onMouseLeave={e => {
-      if (!active && !disabled) {
-        e.currentTarget.style.backgroundColor = "";
-        e.currentTarget.style.color           = "";
-        e.currentTarget.style.borderColor     = "";
-      }
-    }}
-  >
-    {children}
-  </button>
-);
-
-const Divider = () => (
-  <span className="w-px h-5 bg-slate-200 mx-0.5 inline-block self-center" />
+const SkeletonRow = () => (
+  <div className="flex items-center gap-4 p-4 border-b border-slate-100 animate-pulse">
+    <div className="w-14 h-14 rounded-xl bg-slate-100 shrink-0" />
+    <div className="flex-1 space-y-2">
+      <div className="h-4 bg-slate-100 rounded w-32" />
+      <div className="h-3 bg-slate-100 rounded w-48" />
+    </div>
+    <div className="h-6 bg-slate-100 rounded-full w-20" />
+    <div className="h-8 bg-slate-100 rounded-lg w-16" />
+  </div>
 );
 
 /* ─────────────────────────────────────────
-   File icon helper
-   Uses file_type (MIME) first, falls back to extension.
+   exportNarrative — reads CSS vars at call-
+   time so the print window matches the theme.
+   Images in narrative.content are Cloudinary
+   URLs and render directly in the print window.
 ───────────────────────────────────────────*/
-const FileTypeIcon = ({ name, mimeType }) => {
-  const isImage = mimeType?.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/i.test(name ?? "");
-  const ext = (name ?? "").split(".").pop().toLowerCase();
-  const colors = {
-    pdf: "text-red-500", docx: "text-blue-500", doc: "text-blue-500",
-    jpg: "text-purple-500", jpeg: "text-purple-500", png: "text-purple-500",
-    gif: "text-purple-500", webp: "text-purple-500", svg: "text-purple-500",
-  };
-  if (isImage) return <ImageIcon className={`w-4 h-4 ${colors[ext] || "text-purple-400"}`} />;
-  return <File className={`w-4 h-4 ${colors[ext] || "text-slate-400"}`} />;
-};
+function exportNarrative(narrative) {
+  const p50  = cssVarRgb("--primary-50");
+  const p200 = cssVarRgb("--primary-200");
+  const p600 = cssVarRgb("--primary-600");
+  const p700 = cssVarRgb("--primary-700");
+  const p800 = cssVarRgb("--primary-800");
 
-/* ─────────────────────────────────────────
-   PaperEditor
-   FIX: handleImageUpload now uses res.data.url
-        directly (Cloudinary URL) — no BASE_URL prefix.
-   FIX: image insertion now goes through insertFloatImageNode, which
-        keeps consecutive inline images flowing horizontally instead of
-        always wedging an empty paragraph between them.
-───────────────────────────────────────────*/
-const PaperEditor = ({ value, onChange, editable, paperSize = "A4" }) => {
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      FloatImage,
-      TextAlign.configure({ types: ["heading", "paragraph"] }),
-    ],
-    content: value || "",
-    editable,
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+  const formattedDate = new Date(narrative.narrative_date).toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
+  const statusLabel =
+    (narrative.status || 'draft').charAt(0).toUpperCase() +
+    (narrative.status || 'draft').slice(1);
 
-  useEffect(() => {
-    if (!editor) return;
-    const current = editor.getHTML();
-    if (value !== current) {
-      editor.commands.setContent(value || "", false);
+  const remarksBlock = narrative.coordinator_remarks?.trim()
+    ? `<p class="section-label">Coordinator Remarks</p>
+       <div class="remarks"><p>${narrative.coordinator_remarks}</p></div>`
+    : '';
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) return;
+
+  printWindow.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>OJT Narrative Report — ${formattedDate}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Georgia', serif; font-size: 13pt;
+      line-height: 1.75; color: #1a1a1a; background: #fff;
+      padding: 56px 72px; max-width: 794px; margin: 0 auto;
     }
-  }, [value, editor]);
-
-  if (!editor) return null;
-
-  /* ── INSERT IMAGE NODE ──
-     Inserts a floatImage node at the current cursor position.
-
-     If the cursor is currently sitting inside an empty paragraph that
-     directly follows another inline (float: none) image — which is
-     exactly where the cursor lands right after inserting a previous
-     image — the new image is inserted immediately before that empty
-     paragraph (i.e. right beside the previous image) via a direct
-     ProseMirror transaction, instead of going through the generic
-     insertContent path, which would otherwise split the empty
-     paragraph and wedge it between the two images. This lets multiple
-     inline images flow onto the same line and wrap naturally, like
-     inline images in Word/Google Docs.
-
-     Otherwise (inserting into arbitrary text, or as the first image),
-     the image is inserted followed by an empty paragraph, exactly as
-     before, so the user can keep typing underneath/after it.
-  ── */
-  const insertFloatImageNode = (imageUrl) => {
-    const { state, view } = editor;
-    const { doc, selection } = state;
-    const { $from } = selection;
-
-    const attrs = { src: imageUrl, alt: "", float: "none", width: "260" };
-
-    if (
-      $from.depth === 1 &&
-      $from.parent.type.name === "paragraph" &&
-      $from.parent.content.size === 0
-    ) {
-      const boundaryPos = $from.before($from.depth);
-      const nodeBeforeBoundary = doc.resolve(boundaryPos).nodeBefore;
-
-      if (
-        nodeBeforeBoundary?.type.name === "floatImage" &&
-        nodeBeforeBoundary.attrs.float === "none"
-      ) {
-        const imageNode = state.schema.nodes.floatImage.create(attrs);
-        const tr = state.tr.insert(boundaryPos, imageNode);
-        view.dispatch(tr);
-        editor.commands.focus();
-        return;
-      }
-    }
-
-    editor
-      .chain()
-      .focus()
-      .insertContent([
-        { type: "floatImage", attrs },
-        { type: "paragraph" },
-      ])
-      .run();
-  };
-
-  /* ── IMAGE UPLOAD ──
-     res.data.url is already a full Cloudinary URL.
-     Never prepend VITE_BASE_URL or any local path.
-  ── */
-  const handleImageUpload = async (file) => {
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await api.post("/upload/image", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      // Use the Cloudinary URL directly — no prefix needed
-      const imageUrl = res.data.url;
-
-      insertFloatImageNode(imageUrl);
-    } catch (err) {
-      console.error("Image upload failed:", err);
-    }
-  };
-
-  const selNode     = editor.state.selection.node;
-  const isImgSelected = selNode?.type?.name === "floatImage";
-  const currentFloat  = isImgSelected ? selNode.attrs.float : null;
-
-  const paperStyle = {
-    maxWidth:  PAPER_SIZES[paperSize]?.maxWidth  ?? "794px",
-    minHeight: PAPER_SIZES[paperSize]?.minHeight,
-  };
-
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <style>{`
-        .nc-editor .ProseMirror {
-          outline: none;
-          font-family: 'Georgia', 'Times New Roman', serif;
-          font-size: 15.5px;
-          line-height: 1.85;
-          color: #1e293b;
-          min-height: 560px;
-          padding: 52px 64px;
-        }
-        .nc-editor .ProseMirror::after {
-          content: ""; display: table; clear: both;
-        }
-        .nc-editor .ProseMirror h1 {
-          font-family: 'Georgia', serif;
-          font-size: 21px; font-weight: 700;
-          color: #0f172a; margin: 0 0 12px;
-          border-bottom: 2px solid rgb(var(--p100));
-          padding-bottom: 8px; clear: both;
-          letter-spacing: 0.01em;
-        }
-        .nc-editor .ProseMirror h2 {
-          font-family: 'Georgia', serif;
-          font-size: 16.5px; font-weight: 700;
-          color: rgb(var(--p800)); margin: 24px 0 8px;
-          padding-bottom: 4px;
-          border-bottom: 1px solid rgb(var(--p200));
-        }
-        .nc-editor .ProseMirror p {
-          margin-bottom: 14px;
-          text-align: justify;
-          overflow: hidden;
-        }
-        .nc-editor .ProseMirror ul {
-          padding-left: 24px; margin-bottom: 14px; overflow: hidden;
-        }
-        .nc-editor .ProseMirror li { margin-bottom: 6px; }
-        .nc-editor .ProseMirror strong { color: #0f172a; }
-        .nc-editor .ProseMirror em { color: #374151; }
-        @media (max-width: 640px) {
-          .nc-editor .ProseMirror { padding: 28px 20px; }
-        }
-      `}</style>
-
-      {/* Toolbar */}
-      {editable && (
-        <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 flex flex-wrap gap-0.5 items-center sticky top-0 z-10">
-          <TB
-            active={editor.isActive("bold")}
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            title="Bold"
-          >
-            <Bold className="w-3.5 h-3.5" />
-          </TB>
-          <TB
-            active={editor.isActive("italic")}
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            title="Italic"
-          >
-            <Italic className="w-3.5 h-3.5" />
-          </TB>
-
-          <Divider />
-
-          <TB
-            active={editor.isActive("heading", { level: 1 })}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-            title="Heading 1"
-          >
-            <span className="font-bold text-xs">H1</span>
-          </TB>
-          <TB
-            active={editor.isActive("heading", { level: 2 })}
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            title="Heading 2"
-          >
-            <span className="font-bold text-xs">H2</span>
-          </TB>
-
-          <Divider />
-
-          <TB
-            active={editor.isActive("bulletList")}
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            title="Bullet list"
-          >
-            <List className="w-3.5 h-3.5" />
-          </TB>
-
-          <Divider />
-
-          <TB
-            active={editor.isActive({ textAlign: "left" })}
-            onClick={() => editor.chain().focus().setTextAlign("left").run()}
-            title="Align left"
-          >
-            <AlignLeft className="w-3.5 h-3.5" />
-          </TB>
-          <TB
-            active={editor.isActive({ textAlign: "center" })}
-            onClick={() => editor.chain().focus().setTextAlign("center").run()}
-            title="Align center"
-          >
-            <AlignCenter className="w-3.5 h-3.5" />
-          </TB>
-          <TB
-            active={editor.isActive({ textAlign: "right" })}
-            onClick={() => editor.chain().focus().setTextAlign("right").run()}
-            title="Align right"
-          >
-            <AlignRight className="w-3.5 h-3.5" />
-          </TB>
-
-          <Divider />
-
-          {/* Image upload — triggers handleImageUpload on file select */}
-          <label
-            className="h-8 px-2.5 rounded-md text-sm font-medium transition-all duration-100 flex items-center gap-1.5 border border-transparent text-slate-600 cursor-pointer"
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = `rgb(var(--p50))`;
-              e.currentTarget.style.color           = `rgb(var(--p700))`;
-              e.currentTarget.style.borderColor     = `rgb(var(--p200))`;
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = "";
-              e.currentTarget.style.color           = "";
-              e.currentTarget.style.borderColor     = "";
-            }}
-          >
-            <ImageIcon className="w-3.5 h-3.5" />
-            <span>Image</span>
-            <input
-              type="file"
-              accept="image/*"
-              hidden
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleImageUpload(file);
-                e.target.value = "";
-              }}
-            />
-          </label>
-
-          <Divider />
-
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest self-center mr-1">
-            Wrap:
-          </span>
-          <TB
-            active={isImgSelected && currentFloat === "left"}
-            onClick={() => setSelectedImageFloat(editor, "left")}
-            title="Float left"
-            disabled={!isImgSelected}
-          >
-            <AlignLeft className="w-3.5 h-3.5" /><span className="text-xs">Left</span>
-          </TB>
-          <TB
-            active={isImgSelected && currentFloat === "right"}
-            onClick={() => setSelectedImageFloat(editor, "right")}
-            title="Float right"
-            disabled={!isImgSelected}
-          >
-            <AlignRight className="w-3.5 h-3.5" /><span className="text-xs">Right</span>
-          </TB>
-          <TB
-            active={isImgSelected && currentFloat === "none"}
-            onClick={() => setSelectedImageFloat(editor, "none")}
-            title="Inline"
-            disabled={!isImgSelected}
-          >
-            <Minus className="w-3.5 h-3.5" /><span className="text-xs">Inline</span>
-          </TB>
-
-          {!isImgSelected && (
-            <span className="text-[10px] text-slate-400 italic ml-1 self-center">
-              (select image to wrap)
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Paper area */}
-      <div className="nc-editor bg-[#fafafa] px-4 py-4">
-        <div
-          className="bg-white shadow-[0_1px_4px_rgba(0,0,0,0.08),0_4px_24px_rgba(0,0,0,0.06)] rounded-sm mx-auto w-full transition-all duration-300"
-          style={paperStyle}
-        >
-          <EditorContent editor={editor} />
-        </div>
-      </div>
-
-      {/* Read-only hint */}
-      {!editable && (
-        <div className="border-t border-slate-100 bg-slate-50 py-2 px-4 flex items-center gap-2">
-          <Lock className="w-3.5 h-3.5 text-slate-400" />
-          <span className="text-xs text-slate-400">This narrative is locked for editing.</span>
-        </div>
-      )}
-    </div>
-  );
-};
+    .report-header { border-bottom: 3px solid ${p600}; padding-bottom: 20px; margin-bottom: 28px; }
+    .report-header .label { font-size: 9pt; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: ${p600}; margin-bottom: 6px; }
+    .report-header h1 { font-size: 22pt; font-weight: 700; color: #0f172a; margin-bottom: 14px; line-height: 1.2; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 32px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 20px; margin-bottom: 32px; font-size: 10pt; }
+    .meta-item { display: flex; flex-direction: column; gap: 2px; }
+    .meta-item .key { font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; }
+    .meta-item .val { font-weight: 600; color: #1e293b; }
+    .status-pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; }
+    .status-draft     { background: #f1f5f9; color: #475569; }
+    .status-submitted { background: ${p50};  color: ${p700}; }
+    .status-revision  { background: #fffbeb; color: #b45309; }
+    .status-approved  { background: ${p50};  color: ${p800}; }
+    .section-label { font-size: 8.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.15em; color: #64748b; border-bottom: 1px solid #e2e8f0; padding-bottom: 6px; margin-bottom: 16px; }
+    .content-body { margin-bottom: 36px; text-align: justify; word-break: break-word; overflow-wrap: break-word; }
+    .content-body h1 { font-size: 16pt; font-weight: 700; color: #0f172a; margin: 0 0 10px; border-bottom: 2px solid ${p200}; padding-bottom: 6px; }
+    .content-body h2 { font-size: 13pt; font-weight: 700; color: ${p800}; margin: 20px 0 8px; }
+    .content-body p  { margin-bottom: 12px; word-break: break-word; }
+    .content-body ul { padding-left: 22px; margin-bottom: 12px; }
+    .content-body li { margin-bottom: 5px; }
+    .content-body strong { color: #0f172a; }
+    .content-body em     { color: #374151; }
+    /* Cloudinary images render directly in the print window */
+    .content-body img { max-width: 100%; height: auto; display: block; border-radius: 6px; margin: 12px auto; }
+    .content-body table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    .content-body th, .content-body td { border: 1px solid #e2e8f0; padding: 6px 10px; text-align: left; font-size: 11pt; }
+    .content-body th { background: #f8fafc; font-weight: 700; }
+    .content-body pre { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; white-space: pre-wrap; word-break: break-word; font-size: 10pt; }
+    .remarks { background: ${p50}; border: 1px solid ${p200}; border-left: 4px solid ${p600}; border-radius: 8px; padding: 16px 20px; margin-top: 8px; margin-bottom: 32px; }
+    .remarks p { font-size: 11pt; color: ${p800}; line-height: 1.65; }
+    .report-footer { margin-top: 52px; padding-top: 14px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 8.5pt; color: #94a3b8; }
+    @media print { body { padding: 40px 56px; } @page { margin: 20mm 18mm; } }
+  </style>
+</head>
+<body>
+  <div class="report-header">
+    <p class="label">OJT Monitoring System</p>
+    <h1>Daily Narrative Report</h1>
+  </div>
+  <div class="meta-grid">
+    <div class="meta-item"><span class="key">Date</span><span class="val">${formattedDate}</span></div>
+    <div class="meta-item"><span class="key">Status</span><span class="val"><span class="status-pill status-${narrative.status || 'draft'}">${statusLabel}</span></span></div>
+  </div>
+  <p class="section-label">Narrative Content</p>
+  <div class="content-body">${narrative.content || '<p><em>No content recorded for this entry.</em></p>'}</div>
+  ${remarksBlock}
+  <div class="report-footer">
+    <span>OJT Monitoring System — Narrative Report</span>
+    <span>Exported ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+  </div>
+  <script>window.onload = function () { window.print(); };<\/script>
+</body>
+</html>`);
+  printWindow.document.close();
+}
 
 /* ─────────────────────────────────────────
-   AttachmentUploader
-   IMPROVEMENTS:
-   - Image preview via URL.createObjectURL
-   - Accurate icon via file.type (MIME)
-   - File size display
-   - No duplicate entries (uses stable id)
+   PaperSizeSelector
 ───────────────────────────────────────────*/
-const AttachmentUploader = ({ attachments, setAttachments, editable }) => {
-  const dropRef  = useRef(null);
-  const [dragging, setDragging] = useState(false);
-  // Track object URLs so we can revoke them on unmount / removal
-  const objectUrlsRef = useRef({});
+const PaperSizeSelector = ({ value, onChange }) => (
+  <div className="flex items-center gap-1.5">
+    <span className="text-xs text-slate-500 font-medium hidden sm:inline select-none">Size:</span>
+    <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-white shadow-sm">
+      {Object.keys(PAPER_SIZES).map((key) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className="px-2.5 py-1 text-xs font-semibold transition-colors duration-150"
+          style={
+            value === key
+              ? { backgroundColor: `rgb(var(--primary-600))`, color: 'white' }
+              : { color: '#475569' }
+          }
+          onMouseEnter={e => { if (value !== key) e.currentTarget.style.backgroundColor = '#f1f5f9'; }}
+          onMouseLeave={e => { if (value !== key) e.currentTarget.style.backgroundColor = ''; }}
+        >
+          {PAPER_SIZES[key].label}
+        </button>
+      ))}
+    </div>
+  </div>
+);
 
-  const addFiles = (files) => {
-    const newItems = Array.from(files).map((f) => {
-      const id      = crypto.randomUUID();
-      const preview = f.type.startsWith("image/") ? URL.createObjectURL(f) : null;
-      if (preview) objectUrlsRef.current[id] = preview;
-      return { id, file: f, name: f.name, size: f.size, mimeType: f.type, preview };
-    });
-    setAttachments((prev) => [...prev, ...newItems]);
-  };
+/* ─────────────────────────────────────────
+   Narrative Preview Modal
 
-  const removeFile = (id) => {
-    // Revoke object URL to free memory
-    if (objectUrlsRef.current[id]) {
-      URL.revokeObjectURL(objectUrlsRef.current[id]);
-      delete objectUrlsRef.current[id];
-    }
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
-  };
+   CLOUDINARY ALIGNMENT:
+   - narrative.content HTML is injected via dangerouslySetInnerHTML
+   - <img> tags inside the HTML already contain Cloudinary URLs
+     (set at write-time by TipTap FloatImage / handleImageUpload)
+   - No backend fetch, no blob conversion — images render instantly
+   - buildPreviewStyles sets img { max-width: 100% } for safe rendering
+───────────────────────────────────────────*/
+const NarrativeModal = ({ narrative, onClose, onConsult }) => {
+  const [paperSize, setPaperSize] = useState('A4');
 
-  // Revoke all on unmount
   useEffect(() => {
-    const urls = objectUrlsRef.current;
+    const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  // Inject preview styles on open, clean up on close
+  useEffect(() => {
+    const styleId = 'narrative-preview-styles';
+    const existing = document.getElementById(styleId);
+    if (existing) existing.remove();
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = buildPreviewStyles();
+    document.head.appendChild(style);
     return () => {
-      Object.values(urls).forEach(URL.revokeObjectURL);
+      const el = document.getElementById(styleId);
+      if (el) el.remove();
     };
-  }, []);
+  }, [narrative]);
 
-  const handleDrop = (e) => {
-    e.preventDefault();
-    setDragging(false);
-    if (editable) addFiles(e.dataTransfer.files);
-  };
+  if (!narrative) return null;
 
-  const formatSize = (bytes) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  const date      = formatDate(narrative.narrative_date);
+  const config    = statusConfig[narrative.status] || statusConfig.draft;
+  const isRevision = narrative.status === 'revision';
+  const paper     = PAPER_SIZES[paperSize];
 
-  return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-slate-50">
-        <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center"
-          style={{ backgroundColor: `rgb(var(--p50))` }}
-        >
-          <Paperclip className="w-4 h-4" style={{ color: `rgb(var(--p600))` }} />
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-slate-800">Evidence & Attachments</p>
-          <p className="text-xs text-slate-500">Upload supporting documents, images, or PDFs</p>
-        </div>
-        <span className="ml-auto text-xs font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-          {attachments.length} file{attachments.length !== 1 ? "s" : ""}
-        </span>
-      </div>
+  const handleBackdropClick = (e) => { if (e.target === e.currentTarget) onClose(); };
 
-      <div className="p-5 space-y-4">
-        {editable && (
-          <div
-            ref={dropRef}
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={handleDrop}
-            className="relative border-2 border-dashed rounded-xl p-8 text-center transition-all duration-200 cursor-pointer"
-            style={{
-              borderColor:     dragging ? `rgb(var(--p400))` : `rgb(var(--p200) / 0.8)`,
-              backgroundColor: dragging ? `rgb(var(--p50))` : "white",
-            }}
-            onMouseEnter={e => {
-              if (!dragging) {
-                e.currentTarget.style.borderColor     = `rgb(var(--p300))`;
-                e.currentTarget.style.backgroundColor = `rgb(var(--p50) / 0.4)`;
-              }
-            }}
-            onMouseLeave={e => {
-              if (!dragging) {
-                e.currentTarget.style.borderColor     = `rgb(var(--p200) / 0.8)`;
-                e.currentTarget.style.backgroundColor = "white";
-              }
-            }}
-          >
-            <label className="absolute inset-0 cursor-pointer">
-              <input
-                type="file"
-                multiple
-                accept="image/*,.pdf,.doc,.docx"
-                hidden
-                onChange={(e) => addFiles(e.target.files)}
-              />
-            </label>
-            <Upload
-              className="w-8 h-8 mx-auto mb-3"
-              style={{ color: dragging ? `rgb(var(--p500))` : "#cbd5e1" }}
-            />
-            <p className="text-sm font-medium text-slate-600 mb-1">
-              Drop files here or{" "}
-              <span
-                className="underline underline-offset-2"
-                style={{ color: `rgb(var(--p600))` }}
-              >
-                browse
-              </span>
-            </p>
-            <p className="text-xs text-slate-400">Supports images, PDF, DOCX</p>
-          </div>
-        )}
-
-        {attachments.length > 0 && (
-          <ul className="space-y-2">
-            {attachments.map((att) => {
-              const isImage = att.mimeType?.startsWith("image/") ||
-                /\.(png|jpe?g|gif|webp|svg)$/i.test(att.name ?? "");
-
-              return (
-                <li
-                  key={att.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-slate-100 bg-slate-50 group hover:border-slate-200 transition-colors"
-                >
-                  {/* Thumbnail for images, icon for others */}
-                  <div className="w-10 h-10 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm shrink-0 overflow-hidden">
-                    {isImage && att.preview ? (
-                      <img
-                        src={att.preview}
-                        alt={att.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <FileTypeIcon name={att.name} mimeType={att.mimeType} />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-700 truncate">{att.name}</p>
-                    {att.size != null && (
-                      <p className="text-xs text-slate-400">{formatSize(att.size)}</p>
-                    )}
-                  </div>
-
-                  {editable && (
-                    <button
-                      onClick={() => removeFile(att.id)}
-                      className="opacity-0 group-hover:opacity-100 w-7 h-7 rounded-full flex items-center justify-center hover:bg-red-50 hover:text-red-500 text-slate-400 transition-all shrink-0"
-                      title="Remove"
-                      aria-label={`Remove ${att.name}`}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {!editable && attachments.length === 0 && (
-          <p className="text-sm text-slate-400 text-center py-4">No attachments uploaded.</p>
-        )}
-      </div>
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────
-   ConfirmModal
-───────────────────────────────────────────*/
-const ConfirmModal = ({
-  open, title, message, confirmLabel = "Confirm",
-  onConfirm, onCancel, loading = false,
-}) => {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={!loading ? onCancel : undefined}
-      />
-      <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6 z-10 animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center gap-3 mb-4">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-            style={{ backgroundColor: `rgb(var(--p50))` }}
-          >
-            <Send className="w-5 h-5" style={{ color: `rgb(var(--p600))` }} />
-          </div>
-          <h2 className="text-base font-bold text-slate-800">{title}</h2>
-        </div>
-        <p className="text-sm text-slate-600 leading-relaxed mb-6">{message}</p>
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onCancel}
-            disabled={loading}
-            className="px-4 py-2 rounded-xl text-sm font-semibold border-2 border-slate-200 text-slate-600
-              hover:bg-slate-50 hover:border-slate-300 transition-all duration-150
-              disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={loading}
-            className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold text-white
-              disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150"
-            style={{
-              background: `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`,
-              boxShadow: `0 4px 14px rgb(var(--p500) / 0.3)`,
-            }}
-            onMouseEnter={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p600)), rgb(var(--p700)))`}
-            onMouseLeave={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`}
-          >
-            {loading
-              ? <><Loader2 className="w-4 h-4 animate-spin" />Submitting…</>
-              : <><Send className="w-4 h-4" />{confirmLabel}</>
-            }
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────
-   AlertModal
-───────────────────────────────────────────*/
-const AlertModal = ({ open, title, message, onClose }) => {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6 z-10">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center shrink-0">
-            <AlertCircle className="w-5 h-5 text-amber-500" />
-          </div>
-          <h2 className="text-base font-bold text-slate-800">{title}</h2>
-        </div>
-        <p className="text-sm text-slate-600 leading-relaxed mb-6">{message}</p>
-        <div className="flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-5 py-2 rounded-xl text-sm font-semibold
-              bg-linear-to-br from-slate-700 to-slate-800 text-white
-              hover:from-slate-800 hover:to-slate-900
-              transition-all duration-150 shadow-sm"
-          >
-            OK
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ─────────────────────────────────────────
-   NarrativeComposer (main component)
-───────────────────────────────────────────*/
-const NarrativeComposer = () => {
-  const navigate  = useNavigate();
-  const location  = useLocation();
-
-  const revisionId =
-    location.state?.narrativeId ||
-    new URLSearchParams(location.search).get("revision");
-
-  const [narrativeId,         setNarrativeId]         = useState(null);
-  const [narrativeDate,       setNarrativeDate]       = useState(null);
-  const [status,              setStatus]              = useState("draft");
-  const [coordinatorFeedback, setCoordinatorFeedback] = useState("");
-  const [content,             setContent]             = useState("");
-  const [attachments,         setAttachments]         = useState([]);
-  const [saving,              setSaving]              = useState(false);
-  const [submitting,          setSubmitting]          = useState(false);
-  const [lastSaved,           setLastSaved]           = useState(null);
-  const [paperSize,           setPaperSize]           = useState("A4");
-  const [showSubmitConfirm,   setShowSubmitConfirm]   = useState(false);
-  const [alertModal,          setAlertModal]          = useState({ open: false, title: "", message: "" });
-
-  const showAlert = (title, message) => setAlertModal({ open: true, title, message });
-
-  /* ── LOAD NARRATIVE ── */
-  useEffect(() => {
-    const loadNarrative = async () => {
-      if (revisionId) {
-        try {
-          const res = await api.get(`/narratives/${revisionId}`);
-          const narrative = res.data.data || res.data;
-          if (!narrative) { navigate("/student/narrative", { replace: true }); return; }
-          setNarrativeId(narrative.narrative_id);
-          setContent(narrative.content || "");
-          setStatus(narrative.status || "revision");
-          setCoordinatorFeedback(narrative.coordinator_remarks || "");
-          setNarrativeDate((narrative.narrative_date || "").split("T")[0]);
-        } catch (err) {
-          console.error("Failed to load narrative:", err);
-          navigate("/student/narrative", { replace: true });
-        }
-        return;
-      }
-
-      try {
-        const res = await api.get("/narratives/student/me");
-        const narratives = res.data || [];
-        const todayNarrative = narratives.find((n) => n.narrative_date === todayISO());
-        if (todayNarrative) {
-          setNarrativeId(todayNarrative.narrative_id);
-          setContent(todayNarrative.content || "");
-          setStatus(todayNarrative.status || "draft");
-          setCoordinatorFeedback(todayNarrative.coordinator_remarks || "");
-          setNarrativeDate((todayNarrative.narrative_date || "").split("T")[0]);
-        } else {
-          setNarrativeId(null);
-          setContent("");
-          setStatus("draft");
-          setCoordinatorFeedback("");
-          setNarrativeDate(todayISO());
-        }
-      } catch (err) {
-        console.error("Failed to check today's narrative:", err);
-        setNarrativeId(null);
-        setContent("");
-        setStatus("draft");
-        setCoordinatorFeedback("");
-        setNarrativeDate(todayISO());
-      }
-    };
-    loadNarrative();
-  }, [revisionId, navigate]);
-
-  /* ── SAVE DRAFT ──
-     Sends multipart/form-data. Only new files (att.file exists) are
-     appended — existing saved attachments are skipped to avoid duplicates.
-  ── */
-  const handleSaveDraft = async () => {
-    setSaving(true);
-    try {
-      const formData = new FormData();
-      formData.append("narrative_date", narrativeDate);
-      formData.append("content", content);
-      formData.append("status", "draft");
-      if (narrativeId) formData.append("narrative_id", narrativeId);
-
-      // Only append files that are new (have a .file property)
-      attachments.forEach((att) => {
-        if (att.file) formData.append("attachments", att.file);
-      });
-
-      const res = await api.post("/narratives/student", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      if (!narrativeId && res.data?.narrative_id) {
-        setNarrativeId(res.data.narrative_id);
-      }
-      setStatus("draft");
-      setLastSaved(new Date());
-    } catch {
-      showAlert("Save Failed", "Failed to save draft.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  /* ── SUBMIT VALIDATION ── */
-  const handleSubmitClick = () => {
-    const isEmptyContent = (html) =>
-      !html || html.replace(/<[^>]*>/g, "").trim() === "";
-
-    const hasContent     = !isEmptyContent(content);
-    const hasAttachments = attachments.length > 0;
-
-    if (!hasContent && !hasAttachments) {
-      showAlert(
-        "Empty Submission",
-        "Please write a narrative or upload at least one attachment before submitting."
-      );
-      return;
-    }
-    setShowSubmitConfirm(true);
-  };
-
-  /* ── SUBMIT CONFIRM ──
-     Same multipart pattern as save draft.
-     Only new files appended — no duplicate uploads.
-  ── */
-  const handleSubmitConfirm = async () => {
-    setSubmitting(true);
-    try {
-      const formData = new FormData();
-      formData.append("narrative_date", narrativeDate);
-      formData.append("content", content);
-      formData.append("status", "submitted");
-      if (narrativeId) formData.append("narrative_id", narrativeId);
-
-      attachments.forEach((att) => {
-        if (att.file) formData.append("attachments", att.file);
-      });
-
-      const res = await api.post("/narratives/student", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      if (!narrativeId && res.data?.narrative_id) {
-        setNarrativeId(res.data.narrative_id);
-      }
-      setStatus("submitted");
-      setShowSubmitConfirm(false);
-    } catch {
-      showAlert("Submission Failed", "Failed to submit narrative.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const isEditable = status === "draft" || status === "revision";
-  const canSubmit  = status === "draft" || status === "revision";
+  const dateIconStyle = config.inlineStyle
+    ? { backgroundColor: `rgb(var(--primary-50))`, borderColor: `rgb(var(--primary-200))` }
+    : {};
+  const dateIconTextClass = config.inlineStyle ? '' : `${config.text}`;
+  const dateIconTextStyle = config.inlineStyle ? { color: `rgb(var(--primary-700))` } : {};
 
   return (
     <div
-      className="min-h-screen"
-      style={{ background: `linear-gradient(to bottom right, #f8fafc, rgb(var(--p50) / 0.3), rgb(var(--p50) / 0.4))` }}
+      className="fixed inset-0 z-[9999] isolate flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+      onClick={handleBackdropClick}
     >
-      <ConfirmModal
-        open={showSubmitConfirm}
-        title="Submit Narrative"
-        message="Submit your narrative? You will not be able to edit it after submission."
-        confirmLabel="Submit Narrative"
-        onConfirm={handleSubmitConfirm}
-        onCancel={() => !submitting && setShowSubmitConfirm(false)}
-        loading={submitting}
-      />
-      <AlertModal
-        open={alertModal.open}
-        title={alertModal.title}
-        message={alertModal.message}
-        onClose={() => setAlertModal({ open: false, title: "", message: "" })}
-      />
-
-      {/* ── TOP NAV BAR ── */}
-      <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-sm border-b border-slate-200/80 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center gap-4">
-          <button
-            onClick={() => navigate("/student/logs")}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-            title="Back to logs"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-
-          <div className="flex items-center gap-2.5 flex-1 min-w-0">
+      <div
+        className="w-full max-w-5xl bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        style={{ maxHeight: '92vh' }}
+      >
+        {/* Modal Header — fixed, never scrolls */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             <div
-              className="w-7 h-7 rounded-lg flex items-center justify-center shadow-sm shrink-0"
-              style={{ background: `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))` }}
+              className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center border shrink-0 ${!config.inlineStyle ? `${config.border} ${config.bg}` : ''}`}
+              style={dateIconStyle}
             >
-              <FileText className="w-4 h-4 text-white" />
+              <span className={`text-[9px] font-bold uppercase tracking-wide leading-tight ${dateIconTextClass}`} style={dateIconTextStyle}>
+                {date.short.split(' ')[0]}
+              </span>
+              <span className={`text-sm font-bold leading-tight ${dateIconTextClass}`} style={dateIconTextStyle}>
+                {date.short.split(' ')[1]}
+              </span>
             </div>
             <div className="min-w-0">
-              <h1 className="text-base font-bold text-slate-800 leading-none truncate">Daily Narrative</h1>
-              <p className="text-[11px] text-slate-400 leading-none mt-0.5 hidden sm:block">
-                Document your daily OJT experience
-              </p>
+              <h2 className="text-sm font-bold text-slate-800">Narrative Entry</h2>
+              <p className="text-xs text-slate-500 truncate">{date.full}</p>
             </div>
           </div>
+          <div className="flex items-center gap-3 shrink-0 ml-4">
+            <PaperSizeSelector value={paperSize} onChange={setPaperSize} />
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors duration-150"
+              aria-label="Close preview"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
 
-          <div className="flex items-center gap-3">
-            {lastSaved && (
-              <span className="text-[11px] text-slate-400 hidden sm:block">
-                Saved {lastSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            )}
+        {/* ── Modal Body — sole scroll container ── */}
+        <div className="flex-1 overflow-y-auto scroll-smooth">
 
-            <StatusBadge status={status} />
-
-            {/* Paper size picker */}
-            <div className="relative hidden sm:flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <div className="relative">
-                <select
-                  value={paperSize}
-                  onChange={(e) => setPaperSize(e.target.value)}
-                  className="appearance-none text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg pl-3 pr-7 py-1.5 cursor-pointer transition-colors outline-none"
-                  onFocus={e  => e.target.style.boxShadow = `0 0 0 2px rgb(var(--p400))`}
-                  onBlur={e   => e.target.style.boxShadow = "none"}
+          {/* Revision notice banner */}
+          {isRevision && (
+            <div className="mx-6 mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-2">
+              <MessageSquare className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+              <div className="text-sm text-blue-800">
+                This narrative requires revision. Review the coordinator remarks below and continue the discussion in the{' '}
+                <button
+                  onClick={onConsult}
+                  className="font-semibold underline underline-offset-2 hover:text-blue-600 transition-colors"
                 >
-                  {Object.entries(PAPER_SIZES).map(([key, { label }]) => (
-                    <option key={key} value={key}>{label}</option>
-                  ))}
-                </select>
-                <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  Consultation Hub
+                </button>.
               </div>
             </div>
-          </div>
-        </div>
-      </header>
+          )}
 
-      {/* ── PAGE BODY ── */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
-
-        {/* Date strip */}
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-widest">
-            {new Date().toLocaleDateString("en-PH", {
-              weekday: "long", year: "numeric", month: "long", day: "numeric",
-            })}
-          </span>
-          {status === "approved" && (
+          {/* ── Paper area ──
+              - maxWidth controls paper size
+              - Height is auto — content drives it, no fixed px
+              - overflow:hidden + word-break prevent bleed
+              - Images inside the HTML render directly from
+                Cloudinary URLs — no fetch or blob conversion
+          ── */}
+          <div className="bg-slate-100 mx-6 my-4 rounded-xl p-4">
             <div
-              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full"
+              className="bg-white mx-auto shadow-lg rounded-sm transition-all duration-300"
               style={{
-                color:           `rgb(var(--p700))`,
-                backgroundColor: `rgb(var(--p50))`,
-                border:          `1px solid rgb(var(--p200))`,
+                maxWidth: paper.maxWidth,
+                width: '100%',
+                padding: '56px 64px',
+                fontFamily: 'Georgia, "Times New Roman", serif',
+                fontSize: '15.5px',
+                lineHeight: '1.85',
+                color: '#1e293b',
+                overflow: 'hidden',
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+                boxSizing: 'border-box',
               }}
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Narrative Approved
+              {narrative.content ? (
+                <div
+                  className="narrative-preview"
+                  dangerouslySetInnerHTML={{ __html: narrative.content }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <FileText className="w-10 h-10 text-slate-300 mb-3" />
+                  <p className="text-sm text-slate-400 italic" style={{ fontFamily: 'system-ui, sans-serif' }}>
+                    No content available for this entry.
+                  </p>
+                </div>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Coordinator Remarks */}
+          <div className="mx-6 mb-5 pt-4 border-t border-slate-100">
+            <div className="flex items-center gap-2 mb-2">
+              <MessageSquare className="w-3.5 h-3.5" style={{ color: `rgb(var(--primary-600))` }} />
+              <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                Coordinator Remarks
+              </span>
+            </div>
+            {narrative.coordinator_remarks?.trim() ? (
+              <div
+                className="rounded-xl px-4 py-3"
+                style={{
+                  backgroundColor: `rgb(var(--primary-50))`,
+                  border:          `1px solid rgb(var(--primary-200))`,
+                }}
+              >
+                <p className="text-sm leading-relaxed" style={{ color: `rgb(var(--primary-800))` }}>
+                  {narrative.coordinator_remarks}
+                </p>
+              </div>
+            ) : isRevision ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                <p className="text-sm text-amber-800 leading-relaxed italic">
+                  Coordinator requested revision. Please consult the coordinator for clarification.
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 italic">No remarks provided.</p>
+            )}
+          </div>
         </div>
 
-        {/* Coordinator Feedback */}
-        {coordinatorFeedback && status !== "approved" && (
-          <div className="flex gap-3 items-start bg-amber-50 border border-amber-200 border-l-4 border-l-amber-400 rounded-xl p-4 shadow-sm">
-            <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
-            <div>
-              <p className="text-xs font-bold text-amber-700 uppercase tracking-widest mb-1.5">
-                Coordinator Feedback
-              </p>
-              <p className="text-sm text-amber-900 leading-relaxed">{coordinatorFeedback}</p>
-            </div>
-          </div>
-        )}
-
-        {/* Read-only banner */}
-        {(status === "submitted" || status === "approved") && (
-          <div className="flex gap-3 items-center bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 shadow-sm">
-            <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-            <p className="text-sm text-slate-500">
-              {status === "approved"
-                ? "This narrative has been approved and is locked for editing."
-                : "This narrative has been submitted and is locked for editing."}
-            </p>
-          </div>
-        )}
-
-        {/* Editor */}
-        <PaperEditor
-          value={content}
-          onChange={setContent}
-          editable={isEditable}
-          paperSize={paperSize}
-        />
-
-        {/* Attachments */}
-        <AttachmentUploader
-          attachments={attachments}
-          setAttachments={setAttachments}
-          editable={isEditable}
-        />
-
-        {/* Action bar */}
-        {canSubmit && (
-          <div className="flex items-center justify-between pt-1 pb-6">
-            <p className="text-xs text-slate-400">
-              {saving
-                ? "Saving…"
-                : lastSaved
-                  ? `Last saved at ${lastSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                  : "Unsaved changes"}
-            </p>
-
-            <div className="flex gap-3">
+        {/* Modal Footer — fixed, never scrolls */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50 shrink-0 flex-wrap gap-2">
+          <StatusBadge status={narrative.status} />
+          <div className="flex items-center gap-2">
+            {isRevision && (
               <button
-                onClick={handleSaveDraft}
-                disabled={saving || submitting}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold
-                  bg-white transition-all duration-150 shadow-sm
-                  disabled:opacity-60 disabled:cursor-not-allowed"
-                style={{ border: `2px solid rgb(var(--p400))`, color: `rgb(var(--p700))` }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.backgroundColor = `rgb(var(--p50))`;
-                  e.currentTarget.style.borderColor     = `rgb(var(--p500))`;
-                  e.currentTarget.style.color           = `rgb(var(--p800))`;
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.backgroundColor = "white";
-                  e.currentTarget.style.borderColor     = `rgb(var(--p400))`;
-                  e.currentTarget.style.color           = `rgb(var(--p700))`;
-                }}
+                onClick={onConsult}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 transition-colors duration-150"
               >
-                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                {saving ? "Saving…" : "Save Draft"}
+                <MessageSquare className="w-3.5 h-3.5" />
+                Consult Coordinator
               </button>
-
-              <button
-                onClick={handleSubmitClick}
-                disabled={submitting || saving}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white
-                  disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-150"
-                style={{
-                  background:  `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`,
-                  boxShadow:   `0 4px 14px rgb(var(--p500) / 0.3)`,
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p600)), rgb(var(--p700)))`}
-                onMouseLeave={e => e.currentTarget.style.background = `linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)))`}
-              >
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {submitting ? "Submitting…" : "Submit Narrative"}
-              </button>
-            </div>
+            )}
+            <button
+              onClick={() => exportNarrative(narrative)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 transition-colors duration-150"
+            >
+              <FileCheck className="w-3.5 h-3.5" />
+              Export
+            </button>
+            <button
+              onClick={onClose}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-white transition-colors duration-150 shadow-sm"
+            >
+              Close
+            </button>
           </div>
-        )}
-      </main>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default NarrativeComposer;
+/* ─────────────────────────────────────────
+   Main Component
+───────────────────────────────────────────*/
+const NarrativesHistory = () => {
+  const [narratives, setNarratives] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [hoveredId,  setHoveredId]  = useState(null);
+  const [viewNarrative, setViewNarrative] = useState(null);
+  const navigate = useNavigate();
+
+  const location   = useLocation();
+  const revisionId = new URLSearchParams(location.search).get('revision');
+
+  const loadNarratives = () => {
+    setLoading(true);
+    api.get('/narratives/student/me')
+      .then((res) => {
+        const data = res.data || [];
+        data.sort((a, b) => new Date(b.narrative_date) - new Date(a.narrative_date));
+        setNarratives(data);
+      })
+      .catch((err) => console.error("Failed to load narratives", err))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { loadNarratives(); }, []);
+
+  useEffect(() => {
+    const handleFocus = () => loadNarratives();
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, []);
+
+  useEffect(() => {
+    if (!revisionId || narratives.length === 0) return;
+    const target = narratives.find((n) => String(n.narrative_id) === String(revisionId));
+    if (target) setViewNarrative(target);
+  }, [revisionId, narratives]);
+
+  const canEdit = (status) => status === 'draft' || status === 'revision';
+
+  const handleConsultNarrative = (narrative) => {
+    const narrativeDate = new Date(narrative.narrative_date).toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric',
+    });
+    navigate(`/student/messages?narrative=${narrative.narrative_id}&date=${encodeURIComponent(narrativeDate)}`);
+  };
+
+  const stats = {
+    total:    narratives.length,
+    approved: narratives.filter((n) => n.status === 'approved').length,
+    pending:  narratives.filter((n) => n.status === 'submitted').length,
+    revision: narratives.filter((n) => n.status === 'revision').length,
+  };
+
+  return (
+    <div
+      className="min-h-screen font-sans"
+      style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-50)), rgb(var(--primary-100) / 0.4), rgb(var(--primary-50)))` }}
+    >
+      <NarrativeModal
+        narrative={viewNarrative}
+        onClose={() => setViewNarrative(null)}
+        onConsult={() => { handleConsultNarrative(viewNarrative); setViewNarrative(null); }}
+      />
+
+      {/* ── Header ── */}
+      <div
+        className="bg-white shadow-sm"
+        style={{ borderBottom: `1px solid rgb(var(--primary-100))` }}
+      >
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center gap-3 mb-1.5">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md"
+              style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-500)), rgb(var(--primary-600)))` }}
+            >
+              <BookOpen className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Narratives History</h1>
+          </div>
+          <p className="text-slate-500 text-sm ml-13">
+            Review your daily OJT narrative submissions and coordinator feedback.
+          </p>
+        </div>
+      </div>
+
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+
+        {/* ── Stats Row ── */}
+        {!loading && narratives.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { label: 'Total Entries', value: stats.total,    usePrimary: false, tw: { bg: 'bg-white', text: 'text-slate-700', border: 'border-slate-200' } },
+              { label: 'Approved',      value: stats.approved, usePrimary: true  },
+              { label: 'Under Review',  value: stats.pending,  usePrimary: true  },
+              { label: 'For Revision',  value: stats.revision, usePrimary: false, tw: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' } },
+            ].map((stat) => (
+              stat.usePrimary ? (
+                <div
+                  key={stat.label}
+                  className="rounded-xl px-4 py-3 text-center shadow-sm"
+                  style={{
+                    backgroundColor: `rgb(var(--primary-50))`,
+                    border: `1px solid rgb(var(--primary-200))`,
+                  }}
+                >
+                  <p className="text-2xl font-bold" style={{ color: `rgb(var(--primary-700))` }}>{stat.value}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">{stat.label}</p>
+                </div>
+              ) : (
+                <div key={stat.label} className={`${stat.tw.bg} border ${stat.tw.border} rounded-xl px-4 py-3 text-center shadow-sm`}>
+                  <p className={`text-2xl font-bold ${stat.tw.text}`}>{stat.value}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 font-medium">{stat.label}</p>
+                </div>
+              )
+            ))}
+          </div>
+        )}
+
+        {/* ── Info Banner ── */}
+        <div
+          className="bg-white rounded-xl p-4 flex items-start gap-3 shadow-sm"
+          style={{ border: `1px solid rgb(var(--primary-200))` }}
+        >
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+            style={{ backgroundColor: `rgb(var(--primary-100))` }}
+          >
+            <AlertCircle className="w-4 h-4" style={{ color: `rgb(var(--primary-600))` }} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-slate-700">Read-Only View</p>
+            <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+              Approved and submitted narratives are view-only. You may edit entries marked as{' '}
+              <span className="font-medium text-slate-600">Draft</span> or{' '}
+              <span className="font-medium text-amber-600">Revision</span>.
+            </p>
+          </div>
+        </div>
+
+        {/* ── Table Card ── */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+
+          {/* Desktop header row */}
+          <div className="hidden sm:grid grid-cols-[1fr_140px_1fr_220px] gap-4 px-6 py-3.5 bg-slate-50 border-b border-slate-200">
+            {[
+              { label: 'Date',                icon: <Calendar className="w-3.5 h-3.5" /> },
+              { label: 'Status',              icon: null },
+              { label: 'Coordinator Remarks', icon: <MessageSquare className="w-3.5 h-3.5" /> },
+              { label: 'Action',              icon: null, right: true },
+            ].map(({ label, icon, right }) => (
+              <span
+                key={label}
+                className={`text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 ${right ? 'justify-end' : ''}`}
+              >
+                {icon}{label}
+              </span>
+            ))}
+          </div>
+
+          {loading && <div>{[...Array(4)].map((_, i) => <SkeletonRow key={i} />)}</div>}
+
+          {!loading && narratives.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+              <div
+                className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: `linear-gradient(to bottom right, rgb(var(--primary-100)), rgb(var(--primary-50)))` }}
+              >
+                <Inbox className="w-8 h-8" style={{ color: `rgb(var(--primary-400))` }} />
+              </div>
+              <h3 className="text-base font-semibold text-slate-700 mb-1">No narratives yet</h3>
+              <p className="text-sm text-slate-400 max-w-xs">
+                You haven't submitted any narratives yet. Start logging your OJT experiences daily.
+              </p>
+            </div>
+          )}
+
+          {!loading && narratives.map((narrative) => {
+            const date       = formatDate(narrative.narrative_date);
+            const isHovered  = hoveredId === narrative.narrative_id;
+            const editable   = canEdit(narrative.status);
+            const isRevision = narrative.status === 'revision';
+            const config     = statusConfig[narrative.status] || statusConfig.draft;
+
+            const dateIconStyle = config.inlineStyle
+              ? { backgroundColor: `rgb(var(--primary-50))`, borderColor: `rgb(var(--primary-200))` }
+              : {};
+            const dateIconTextClass = config.inlineStyle ? '' : `${config.text}`;
+            const dateIconTextStyle = config.inlineStyle ? { color: `rgb(var(--primary-700))` } : {};
+
+            return (
+              <div
+                key={narrative.narrative_id}
+                className={`group border-b border-slate-100 last:border-b-0 transition-colors duration-150
+                  ${isRevision ? 'border-l-4 border-l-amber-400' : ''}
+                  ${isHovered  ? 'bg-slate-50/80' : 'bg-white'}`}
+                onMouseEnter={() => setHoveredId(narrative.narrative_id)}
+                onMouseLeave={() => setHoveredId(null)}
+              >
+                {/* ── Desktop Row ── */}
+                <div className="hidden sm:grid grid-cols-[1fr_140px_1fr_220px] gap-4 items-center px-6 py-4">
+
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-11 h-11 rounded-xl flex flex-col items-center justify-center shrink-0 border ${!config.inlineStyle ? `${config.border} ${config.bg}` : ''}`}
+                      style={dateIconStyle}
+                    >
+                      <span className={`text-[10px] font-bold uppercase tracking-wider leading-tight ${dateIconTextClass}`} style={dateIconTextStyle}>
+                        {date.short.split(' ')[0]}
+                      </span>
+                      <span className={`text-base font-bold leading-tight ${dateIconTextClass}`} style={dateIconTextStyle}>
+                        {date.short.split(' ')[1]}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-800">{date.full.split(',').slice(0, 2).join(',')}</p>
+                      <p className="text-xs text-slate-400">{date.year}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <StatusBadge status={narrative.status} />
+                    {isRevision && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-blue-600 font-semibold bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full w-fit">
+                        <MessageSquare className="w-2.5 h-2.5" />
+                        Discussion Available
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="min-w-0 space-y-1.5">
+                    {narrative.coordinator_remarks?.trim() ? (
+                      <div className="flex items-start gap-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+                        <p className="text-sm text-slate-600 truncate">{narrative.coordinator_remarks}</p>
+                      </div>
+                    ) : isRevision ? (
+                      <p className="text-xs text-amber-600 italic">
+                        Coordinator requested revision. Please consult the coordinator for clarification.
+                      </p>
+                    ) : (
+                      <span className="text-xs text-slate-300 italic">No remarks</span>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end gap-2 flex-wrap">
+                    {isRevision && (
+                      <button
+                        onClick={() => handleConsultNarrative(narrative)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 text-xs rounded-lg font-semibold transition-colors duration-150"
+                      >
+                        <MessageSquare className="w-3 h-3" /> Consult
+                      </button>
+                    )}
+                    <button
+                      onClick={() => exportNarrative(narrative)}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-all duration-150 shadow-sm"
+                    >
+                      <FileCheck className="w-3.5 h-3.5" /> Export
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (editable) {
+                          navigate(`/student/narrative?revision=${narrative.narrative_id}`, {
+                            state: { narrativeId: narrative.narrative_id },
+                          });
+                        } else {
+                          setViewNarrative(narrative);
+                        }
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm text-white
+                        ${editable ? 'bg-amber-500 hover:bg-amber-600 hover:shadow-amber-200 hover:shadow-md' : ''}`}
+                      style={!editable ? { backgroundColor: `rgb(var(--primary-500))` } : {}}
+                      onMouseEnter={e => { if (!editable) e.currentTarget.style.backgroundColor = `rgb(var(--primary-600))`; }}
+                      onMouseLeave={e => { if (!editable) e.currentTarget.style.backgroundColor = `rgb(var(--primary-500))`; }}
+                    >
+                      {editable
+                        ? <><Edit3 className="w-3.5 h-3.5" /> Edit</>
+                        : <><Eye   className="w-3.5 h-3.5" /> View</>
+                      }
+                    </button>
+                  </div>
+                </div>
+
+                {/* ── Mobile Row ── */}
+                <div className="sm:hidden p-4">
+                  <div
+                    className="cursor-pointer"
+                    onClick={() => {
+                      if (editable) {
+                        navigate(`/student/narrative?revision=${narrative.narrative_id}`, {
+                          state: { narrativeId: narrative.narrative_id },
+                        });
+                      } else {
+                        setViewNarrative(narrative);
+                      }
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex flex-col items-center justify-center shrink-0 border ${!config.inlineStyle ? `${config.border} ${config.bg}` : ''}`}
+                          style={dateIconStyle}
+                        >
+                          <span className={`text-[9px] font-bold uppercase leading-tight ${dateIconTextClass}`} style={dateIconTextStyle}>
+                            {date.short.split(' ')[0]}
+                          </span>
+                          <span className={`text-sm font-bold leading-tight ${dateIconTextClass}`} style={dateIconTextStyle}>
+                            {date.short.split(' ')[1]}
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-slate-800">{date.full.split(',').slice(0, 2).join(',')}</p>
+                          <StatusBadge status={narrative.status} />
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400 mt-1 shrink-0" />
+                    </div>
+
+                    {narrative.coordinator_remarks?.trim() ? (
+                      <div className="ml-13 flex items-start gap-1.5 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mt-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+                        <p className="text-xs text-amber-700">{narrative.coordinator_remarks}</p>
+                      </div>
+                    ) : isRevision ? (
+                      <div className="ml-13 mt-2 px-3 py-2 bg-amber-50 border border-amber-100 rounded-lg">
+                        <p className="text-xs text-amber-700 italic">
+                          Coordinator requested revision. Please consult the coordinator for clarification.
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {isRevision && (
+                    <div className="mt-3 space-y-2">
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-start gap-2">
+                        <MessageSquare className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" />
+                        <p className="text-xs text-blue-800">
+                          This narrative requires revision. You may continue the discussion in the Consultation Hub.
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleConsultNarrative(narrative)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-700 text-xs rounded-lg font-semibold transition-colors duration-150"
+                        >
+                          <MessageSquare className="w-3 h-3" /> Consult
+                        </button>
+                        <button
+                          onClick={() => exportNarrative(narrative)}
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 text-xs rounded-lg font-semibold transition-colors duration-150"
+                        >
+                          <FileCheck className="w-3 h-3" /> Export
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!isRevision && (
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); exportNarrative(narrative); }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 text-xs rounded-lg font-semibold transition-colors duration-150"
+                      >
+                        <FileCheck className="w-3 h-3" /> Export
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {!loading && narratives.length > 0 && (
+          <p className="text-xs text-center text-slate-400 pb-4">
+            Showing {narratives.length}{' '}
+            {narratives.length === 1 ? 'entry' : 'entries'} · Updated in real-time
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default NarrativesHistory;
