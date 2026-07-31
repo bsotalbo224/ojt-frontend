@@ -60,17 +60,17 @@ const CoordinatorDashboard = () => {
   };
 
   // ── Early Attendance loader ────────────────────────────────────────────────
+  // getPendingEarlyAttendance() already returns the pending request array
+  // directly from the backend (already filtered to pending only), so we
+  // just use it as-is rather than reading res.data or re-filtering.
   const fetchPendingEarlyAttendance = async () => {
     try {
       setEarlyLoading(true);
-      const res = await getPendingEarlyAttendance();
-      setPendingEarlyRequests(
-        (res.data || []).filter(
-          request => request.early_status === 'pending'
-        )
-      );
+      const data = await getPendingEarlyAttendance();
+      setPendingEarlyRequests(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error('Failed to load early attendance requests', err);
+      setPendingEarlyRequests([]);
     } finally {
       setEarlyLoading(false);
     }
@@ -82,7 +82,8 @@ const CoordinatorDashboard = () => {
     fetchPendingEarlyAttendance();
   }, []);
 
-  // Academic year switch listener
+  // Academic year switch listener — refreshes both dashboard stats and
+  // pending early attendance requests.
   useEffect(() => {
     const handleAcademicYearChange = () => {
       loadData();
@@ -91,6 +92,19 @@ const CoordinatorDashboard = () => {
     window.addEventListener('academicYearChanged', handleAcademicYearChange);
     return () => {
       window.removeEventListener('academicYearChanged', handleAcademicYearChange);
+    };
+  }, []);
+
+  // Early attendance update listener — fired by CoordinatorAttendance.jsx
+  // after a successful approve/reject. Only refreshes the pending early
+  // attendance notification state, not the entire dashboard.
+  useEffect(() => {
+    const handleEarlyAttendanceUpdated = () => {
+      fetchPendingEarlyAttendance();
+    };
+    window.addEventListener('earlyAttendanceUpdated', handleEarlyAttendanceUpdated);
+    return () => {
+      window.removeEventListener('earlyAttendanceUpdated', handleEarlyAttendanceUpdated);
     };
   }, []);
 
@@ -283,6 +297,11 @@ const CoordinatorDashboard = () => {
         </div>
 
         {/* ── Early Attendance Alert Card ── */}
+        {/* pendingEarlyRequests is the single source of truth — no local flag
+            is used to show/hide this card. It appears whenever there are
+            pending requests and disappears automatically once the backend
+            reports none remaining (via initial load, academic year switch,
+            or the earlyAttendanceUpdated event). */}
         {earlyLoading ? (
           <div
             className="bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3"

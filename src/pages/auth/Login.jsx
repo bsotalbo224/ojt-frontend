@@ -26,6 +26,10 @@ export default function Login() {
   const submitHandler = async (e) => {
     e.preventDefault();
 
+    // Ignore additional submit attempts while a login request is
+    // already in progress (e.g. rapid double-clicks or Enter presses).
+    if (loading) return;
+
     setError("");
     setLoading(true);
 
@@ -121,11 +125,12 @@ export default function Login() {
                 </div>
                 <input
                   type="email"
-                  className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-green-600 focus:ring-4 focus:ring-green-100 transition-all text-gray-800 placeholder:text-gray-400"
+                  className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-green-600 focus:ring-4 focus:ring-green-100 transition-all text-gray-800 placeholder:text-gray-400 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:border-gray-200"
                   placeholder="Enter your email"
                   value={email}
                   onChange={handleEmailChange}
                   autoComplete="email"
+                  disabled={loading}
                 />
               </div>
             </div>
@@ -140,16 +145,18 @@ export default function Login() {
                 </div>
                 <input
                   type={showPassword ? "text" : "password"}
-                  className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-green-600 focus:ring-4 focus:ring-green-100 transition-all text-gray-800 placeholder:text-gray-400"
+                  className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-green-600 focus:ring-4 focus:ring-green-100 transition-all text-gray-800 placeholder:text-gray-400 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:border-gray-200"
                   placeholder="Enter your password"
                   value={password}
                   onChange={handlePasswordChange}
                   autoComplete="current-password"
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
+                  disabled={loading}
+                  className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 disabled:text-gray-300 disabled:hover:text-gray-300 disabled:cursor-not-allowed"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
@@ -159,7 +166,16 @@ export default function Login() {
             <div className="flex justify-end mb-6">
               <Link
                 to="/forgot-password"
-                className="text-sm text-green-600 hover:text-green-800 font-semibold transition-colors"
+                onClick={(e) => {
+                  if (loading) e.preventDefault();
+                }}
+                aria-disabled={loading}
+                tabIndex={loading ? -1 : undefined}
+                className={
+                  loading
+                    ? "text-sm text-gray-400 font-semibold cursor-not-allowed pointer-events-none"
+                    : "text-sm text-green-600 hover:text-green-800 font-semibold transition-colors"
+                }
               >
                 Forgot Password?
               </Link>

@@ -1237,6 +1237,10 @@ const CoordinatorAttendance = () => {
       await approveEarlyAttendance(attendanceId);
       await Promise.all([loadAttendance(), fetchPendingEarlyRequests()]);
       setSuccessMessage('Early attendance approved successfully.');
+      // Notify other pages (e.g. CoordinatorDashboard) that the pending
+      // early attendance count has changed. Only dispatched after the
+      // approval request succeeds.
+      window.dispatchEvent(new CustomEvent('earlyAttendanceUpdated'));
     } catch (err) {
       console.error('Approve failed', err);
       setActionError('Failed to approve early attendance request.');
@@ -1252,6 +1256,10 @@ const CoordinatorAttendance = () => {
       await rejectEarlyAttendance(attendanceId);
       await Promise.all([loadAttendance(), fetchPendingEarlyRequests()]);
       setSuccessMessage('Early attendance rejected successfully.');
+      // Notify other pages (e.g. CoordinatorDashboard) that the pending
+      // early attendance count has changed. Only dispatched after the
+      // rejection request succeeds.
+      window.dispatchEvent(new CustomEvent('earlyAttendanceUpdated'));
     } catch (err) {
       console.error('Reject failed', err);
       setActionError('Failed to reject early attendance request.');
