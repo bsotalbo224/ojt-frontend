@@ -1,0 +1,29 @@
+/* Header icon badge */
+.narrative-icon-badge {
+  background: linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)));
+}
+
+/* Paper selector */
+.narrative-paper-select:focus {
+  box-shadow: 0 0 0 2px rgb(var(--p400));
+}
+
+/* Save button */
+.narrative-save-btn {
+  border: 2px solid rgb(var(--p400));
+  color: rgb(var(--p700));
+}
+.narrative-save-btn:hover:not(:disabled) {
+  background-color: rgb(var(--p50));
+  border-color: rgb(var(--p500));
+  color: rgb(var(--p800));
+}
+
+/* Submit button */
+.narrative-submit-btn {
+  background: linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)));
+  box-shadow: 0 4px 14px rgb(var(--p500) / 0.3);
+}
+.narrative-submit-btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom right, rgb(var(--p600)), rgb(var(--p700)));
+}

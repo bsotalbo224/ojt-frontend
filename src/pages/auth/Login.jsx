@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Eye, EyeOff, Mail, Lock, AlertCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate, Link } from "react-router-dom";
@@ -13,6 +13,32 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  const emailInputRef = useRef(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Auto-focus the email field on first load, but only if it's empty —
+  // never steal focus on later re-renders.
+  useEffect(() => {
+    if (!email) {
+      emailInputRef.current?.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Return focus to the email field whenever a login error appears, so
+  // the user can immediately correct their credentials.
+  useEffect(() => {
+    if (error) {
+      emailInputRef.current?.focus();
+    }
+  }, [error]);
+
   const handleEmailChange = (e) => {
     setEmail(e.target.value);
     if (error) setError("");
@@ -26,8 +52,8 @@ export default function Login() {
   const submitHandler = async (e) => {
     e.preventDefault();
 
-    // Ignore additional submit attempts while a login request is
-    // already in progress (e.g. rapid double-clicks or Enter presses).
+    // Guard against double clicks, repeated Enter presses, or any other
+    // rapid repeated submissions while a request is already in flight.
     if (loading) return;
 
     setError("");
@@ -38,7 +64,6 @@ export default function Login() {
 
       if (!result || !result.success) {
         setError(result?.message || "Invalid email or password");
-        setLoading(false);
         return;
       }
 
@@ -66,9 +91,14 @@ export default function Login() {
       }
     } catch (err) {
       setError(err.message || "Invalid email or password");
+    } finally {
+      // Only touch state if we're still mounted — navigation on success
+      // may have already unmounted this component, and updating state
+      // on an unmounted component would trigger a React warning.
+      if (isMountedRef.current) {
+        setLoading(false);
+      }
     }
-
-    setLoading(false);
   };
 
   return (
@@ -97,7 +127,12 @@ export default function Login() {
             </p>
           </div>
 
-          <form onSubmit={submitHandler} className="px-8 pt-5 pb-10">
+          <form
+            onSubmit={submitHandler}
+            className="px-8 pt-5 pb-10"
+            aria-busy={loading}
+            noValidate
+          >
 
             <div className="mb-6 text-center">
               <h2 className="text-2xl font-bold text-gray-800 mb-1">
@@ -109,14 +144,17 @@ export default function Login() {
             </div>
 
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+              <div
+                className="bg-red-50 border border-red-200 rounded-2xl p-4 mb-6 flex items-start gap-3"
+                role="alert"
+              >
                 <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 shrink-0" />
                 <p className="text-sm text-red-700 font-medium">{error}</p>
               </div>
             )}
 
             <div className="mb-5">
-              <label className="block text-sm font-bold text-gray-700 mb-2">
+              <label htmlFor="login-email" className="block text-sm font-bold text-gray-700 mb-2">
                 Email Address
               </label>
               <div className="relative">
@@ -124,6 +162,8 @@ export default function Login() {
                   <Mail className="w-5 h-5 text-gray-400" />
                 </div>
                 <input
+                  id="login-email"
+                  ref={emailInputRef}
                   type="email"
                   className="w-full pl-12 pr-4 py-3.5 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-green-600 focus:ring-4 focus:ring-green-100 transition-all text-gray-800 placeholder:text-gray-400 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:border-gray-200"
                   placeholder="Enter your email"
@@ -131,12 +171,15 @@ export default function Login() {
                   onChange={handleEmailChange}
                   autoComplete="email"
                   disabled={loading}
+                  aria-label="Email Address"
+                  aria-disabled={loading}
+                  aria-invalid={!!error}
                 />
               </div>
             </div>
 
             <div className="mb-3">
-              <label className="block text-sm font-bold text-gray-700 mb-2">
+              <label htmlFor="login-password" className="block text-sm font-bold text-gray-700 mb-2">
                 Password
               </label>
               <div className="relative">
@@ -144,6 +187,7 @@ export default function Login() {
                   <Lock className="w-5 h-5 text-gray-400" />
                 </div>
                 <input
+                  id="login-password"
                   type={showPassword ? "text" : "password"}
                   className="w-full pl-12 pr-12 py-3.5 border-2 border-gray-200 rounded-2xl focus:outline-none focus:border-green-600 focus:ring-4 focus:ring-green-100 transition-all text-gray-800 placeholder:text-gray-400 disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed disabled:border-gray-200"
                   placeholder="Enter your password"
@@ -151,11 +195,17 @@ export default function Login() {
                   onChange={handlePasswordChange}
                   autoComplete="current-password"
                   disabled={loading}
+                  aria-label="Password"
+                  aria-disabled={loading}
+                  aria-invalid={!!error}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   disabled={loading}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  aria-disabled={loading}
                   className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600 disabled:text-gray-300 disabled:hover:text-gray-300 disabled:cursor-not-allowed"
                 >
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -170,6 +220,7 @@ export default function Login() {
                   if (loading) e.preventDefault();
                 }}
                 aria-disabled={loading}
+                aria-label="Forgot Password"
                 tabIndex={loading ? -1 : undefined}
                 className={
                   loading
@@ -184,7 +235,13 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-linear-to-r from-green-600 to-green-700 text-white font-bold py-4 rounded-2xl hover:from-green-700 hover:to-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] disabled:transform-none"
+              aria-disabled={loading}
+              aria-busy={loading}
+              className={`w-full bg-linear-to-r from-green-600 to-green-700 text-white font-bold py-4 rounded-2xl shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
+                loading
+                  ? ""
+                  : "hover:from-green-700 hover:to-green-800 hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+              }`}
             >
               {loading ? (
                 <div className="flex items-center justify-center gap-2">

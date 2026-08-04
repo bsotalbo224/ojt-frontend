@@ -1,0 +1,113 @@
+/* Shared styles for the editor component family. */
+
+/* ConfirmModal */
+.cm-confirm-btn {
+  background: linear-gradient(to bottom right, rgb(var(--p500)), rgb(var(--p600)));
+  box-shadow: 0 4px 14px rgb(var(--p500) / 0.3);
+}
+.cm-confirm-btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom right, rgb(var(--p600)), rgb(var(--p700)));
+}
+
+/* AttachmentUploader */
+.au-dropzone {
+  border-color: rgb(var(--p200) / 0.8);
+  background-color: white;
+}
+.au-dropzone:hover,
+.au-dropzone:focus-visible {
+  border-color: rgb(var(--p300));
+  background-color: rgb(var(--p50) / 0.4);
+}
+.au-dropzone.dragging {
+  border-color: rgb(var(--p400));
+  background-color: rgb(var(--p50));
+}
+.au-card {
+  animation: au-card-in 150ms ease-out;
+}
+.au-card.removing {
+  opacity: 0;
+  transform: scale(0.97);
+  transition: opacity 150ms ease-in, transform 150ms ease-in;
+}
+
+/* Toolbar */
+.tb-btn:not(:disabled):not(.tb-btn-active):hover,
+.tb-upload-label:hover {
+  background-color: rgb(var(--p50));
+  color: rgb(var(--p700));
+  border-color: rgb(var(--p200));
+}
+
+/* ProseMirror */
+.nc-editor .ProseMirror {
+  outline: none;
+  font-family: 'Georgia', 'Times New Roman', serif;
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: #1e293b;
+  min-height: 560px;
+  padding: 52px 64px;
+}
+.nc-editor .ProseMirror::after {
+  content: "";
+  display: table;
+  clear: both;
+}
+.nc-editor .ProseMirror h1 {
+  font-family: 'Georgia', serif;
+  font-size: 21px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 12px;
+  border-bottom: 2px solid rgb(var(--p100));
+  padding-bottom: 8px;
+  clear: both;
+  letter-spacing: 0.01em;
+}
+.nc-editor .ProseMirror h2 {
+  font-family: 'Georgia', serif;
+  font-size: 16.5px;
+  font-weight: 700;
+  color: rgb(var(--p800));
+  margin: 24px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgb(var(--p200));
+}
+.nc-editor .ProseMirror p {
+  margin-bottom: 14px;
+  text-align: justify;
+  overflow: hidden;
+}
+.nc-editor .ProseMirror ul {
+  padding-left: 24px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.nc-editor .ProseMirror li {
+  margin-bottom: 6px;
+}
+.nc-editor .ProseMirror strong {
+  color: #0f172a;
+}
+.nc-editor .ProseMirror em {
+  color: #374151;
+}
+@media (max-width: 640px) {
+  .nc-editor .ProseMirror {
+    padding: 28px 20px;
+  }
+}
+
+/* Animations */
+@keyframes au-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
