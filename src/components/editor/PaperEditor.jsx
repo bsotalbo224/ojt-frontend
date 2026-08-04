@@ -25,7 +25,7 @@ import {
   DEFAULT_IMAGE_WIDTH,
   MAX_IMAGE_UPLOAD_BYTES,
   FLOAT_WRAPPER_STYLES,
-} from "./editorConstants";
+} from "./EditorConstants";
 
 import "./editor.css";
 

@@ -1,7 +1,7 @@
 import { memo } from "react";
 import { ArrowLeft, FileText, ChevronDown } from "lucide-react";
 import StatusBadge from "../editor/StatusBadge";
-import { PAPER_SIZES } from "../editor/editorConstants";
+import { PAPER_SIZES } from "../editor/EditorConstants";
 import { formatLastSaved } from "../../utils/narrativeUtils";
 
 const NarrativeHeader = ({
