@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { getConversations } from "../../api/messages";
+import { getConversations } from "../../api/message";
 import socket from "../../socket";
 import {
   LayoutDashboard,
