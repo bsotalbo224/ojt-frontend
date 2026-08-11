@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Bell, CheckCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getNotifications, markAsRead } from "../../api/notifications";
+import socket from "../../socket";
 
 const relativeTime = (dateStr) => {
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
@@ -14,28 +15,176 @@ const relativeTime = (dateStr) => {
 
 const TABS = ["All", "Unread"];
 
+// This page owns ONLY "notification:new" — the normal application
+// notification system. It never listens for "message:new" or
+// "receive_message" (the separate consultation/message system used by
+// Sidebar.jsx/MessagePage.jsx/ChatWindow.jsx).
+const NOTIFICATION_EVENT = "notification:new";
+
+// Returns a comparable timestamp for a notification's created_at, or null
+// if it's missing/unparseable. Never invents a value — callers treat null
+// as "unknown," not as "oldest" or "newest."
+const getCreatedAtTime = (n) => {
+  if (!n?.created_at) return null;
+  const t = new Date(n.created_at).getTime();
+  return Number.isNaN(t) ? null : t;
+};
+
+// Orders notifications newest-first using the actual created_at field,
+// not source (Socket.IO vs API vs local) as a recency proxy. Notifications
+// with a missing/unparseable created_at are never assigned a fabricated
+// timestamp; they simply sink after every notification with a known time,
+// while keeping their existing relative order among themselves and among
+// other unknown-time entries (Array.prototype.sort is stable), so nothing
+// jumps around unpredictably from a value we don't actually have.
+const sortByCreatedAtDesc = (list) => {
+  return [...list].sort((a, b) => {
+    const ta = getCreatedAtTime(a);
+    const tb = getCreatedAtTime(b);
+    if (ta == null && tb == null) return 0;
+    if (ta == null) return 1;
+    if (tb == null) return -1;
+    return tb - ta;
+  });
+};
+
+// Merges a fresh API response into current state without dropping a
+// realtime notification the API response doesn't yet know about (e.g. a
+// poll that started before "notification:new" arrived, and only resolves
+// after). notif_id is the sole identity used, per the backend payload;
+// anything in `previous` whose notif_id already appears in `incoming` is
+// dropped in favor of the API's (authoritative, more complete) version of
+// that same notification — this also covers case 20, where Socket.IO and
+// API deliver the same notif_id with different representations. The
+// combined list is then sorted by created_at so ordering reflects actual
+// notification time rather than which source produced each entry.
+const mergeNotificationLists = (previous, incoming) => {
+  const incomingIds = new Set(
+    incoming.filter((n) => n?.notif_id != null).map((n) => n.notif_id)
+  );
+
+  const onlyLocal = previous.filter(
+    (n) => n?.notif_id != null && !incomingIds.has(n.notif_id)
+  );
+
+  return sortByCreatedAtDesc([...onlyLocal, ...incoming]);
+};
+
 const NotificationsPage = () => {
   const [notifications, setNotifications] = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [activeTab,     setActiveTab]     = useState("All");
   const navigate = useNavigate();
 
+  // Distinguishes the true initial load from background refreshes (5s poll,
+  // academicYearChanged) so those don't flash the full-list spinner over
+  // already-visible notifications.
+  const hasLoadedRef = useRef(false);
+
+  // Monotonically increasing id per fetchNotifications() call. A response
+  // only writes to state if it's still the most recently *issued* request
+  // — the same "ignore stale response" pattern already used elsewhere in
+  // this codebase (MessagePage.jsx's latestRequestIdRef). This guards
+  // against an older, slower request overwriting a newer one regardless of
+  // which happens to resolve first.
+  const latestRequestIdRef = useRef(0);
+
+  // True while any fetchNotifications() call is in flight. Used only to
+  // stop the polling interval from firing a redundant, overlapping request
+  // on top of one that's already running (e.g. a slow initial load still
+  // pending when the first 5s tick fires). academicYearChanged is
+  // deliberately NOT gated by this — a year change is meaningful new
+  // intent that should still fire immediately; latestRequestIdRef above is
+  // what keeps that safe even if it overlaps an existing in-flight fetch.
+  const isFetchingRef = useRef(false);
+
+  // notif_ids this client has itself confirmed read via a successful
+  // markAsRead() call. Used to stop a stale GET response — one that was
+  // in flight before that markAsRead() resolved, and therefore still
+  // carries is_read: 0 — from reverting the notification back to unread
+  // when merged. See the fetchNotifications patch step below.
+  const locallyReadIdsRef = useRef(new Set());
+
+  // Set false on unmount. A fetch that resolves after the component is
+  // gone must not call setState — request-id checks alone don't cover
+  // this, since a request can still be the "latest" at the moment
+  // NotificationsPage unmounts.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
+    const requestId = ++latestRequestIdRef.current;
+    const isInitialLoad = !hasLoadedRef.current;
+    isFetchingRef.current = true;
+
     try {
-      setLoading(true);
+      if (isInitialLoad && isMountedRef.current) setLoading(true);
+
       const res = await getNotifications();
-      if (res.data?.success) setNotifications(res.data.notifications || []);
+
+      // A newer request has been issued since this one started — discard
+      // this response entirely rather than let older data overwrite
+      // whatever the newer (possibly already-resolved) request wrote.
+      if (requestId !== latestRequestIdRef.current) return;
+      if (!isMountedRef.current) return;
+
+      if (res.data?.success) {
+        const fetched = res.data.notifications || [];
+
+        // Never let a response older than a confirmed local read revert
+        // that notification back to unread — only the is_read field is
+        // touched; everything else from the API response is kept as-is.
+        const patchedFetched = fetched.map((n) =>
+          n?.notif_id != null && !n.is_read && locallyReadIdsRef.current.has(n.notif_id)
+            ? { ...n, is_read: 1 }
+            : n
+        );
+
+        // Merge instead of replace: prevents a realtime notification added
+        // via handleIncomingNotification while this request was in flight
+        // from being wiped out by a now-stale response that predates it.
+        setNotifications((prev) => mergeNotificationLists(prev, patchedFetched));
+      }
+      // A missing/unsuccessful response body intentionally leaves
+      // `notifications` untouched — no reason to clear a valid list over it.
     } catch (err) {
       console.error("Failed to fetch notifications:", err);
+      // Preserve whatever is currently displayed; do not reset to [].
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestIdRef.current) {
+        if (isInitialLoad) {
+          if (isMountedRef.current) setLoading(false);
+          hasLoadedRef.current = true;
+        }
+        isFetchingRef.current = false;
+      }
     }
   }, []);
 
   useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
 
+  // Fallback polling, preserved as-is. The API remains the source of truth
+  // for persisted notifications — this keeps the list in sync even if a
+  // socket event is missed (e.g. the shared socket wasn't connected yet,
+  // see the reconnect/connection-lifecycle note below). Left at its
+  // existing 5s interval rather than changed/removed: nothing in this
+  // codebase's existing architecture demonstrates it's safe to widen or
+  // drop, and the task calls for the smallest safe change here — only
+  // TopBar.jsx/Sidebar.jsx (not modified by this change) were previously
+  // established as having a documented poll-interval precedent.
+  //
+  // isFetchingRef guard: skips this tick if a fetch (initial, poll, or
+  // academicYearChanged) is still in flight, so the interval can't pile a
+  // redundant duplicate request on top of a slow one still running.
   useEffect(() => {
-    const interval = setInterval(fetchNotifications, 5000);
+    const interval = setInterval(() => {
+      if (isFetchingRef.current) return;
+      fetchNotifications();
+    }, 5000);
     return () => clearInterval(interval);
   }, [fetchNotifications]);
 
@@ -49,10 +198,62 @@ const NotificationsPage = () => {
     };
   }, [fetchNotifications]);
 
+  // Handles a "notification:new" event from the existing shared socket
+  // module (the same `import socket from "../../socket"` singleton already
+  // used by Sidebar.jsx/MessagePage.jsx — no second connection, no new
+  // context). Prepends the notification so it's visible immediately,
+  // without waiting for the next poll.
+  //
+  // Dedup: notif_id is the only identifier used, per the backend payload.
+  // If a notification with the same notif_id is already in state — because
+  // fetchNotifications() (initial load, poll, or academicYearChanged) already
+  // picked it up before this event arrived, or because the same event was
+  // delivered twice (reconnect replay) — it's skipped rather than added
+  // again. If notif_id is missing from the payload, no id is fabricated;
+  // the notification is simply not added via the socket path (it will
+  // still appear on the next successful fetchNotifications() poll once the
+  // backend assigns/persists it, so nothing is silently lost — it's just
+  // not shown instantly in that one edge case).
+  const handleIncomingNotification = useCallback((notification) => {
+    if (!notification || notification.notif_id == null) return;
+
+    setNotifications((prev) => {
+      if (prev.some((n) => n.notif_id === notification.notif_id)) {
+        return prev;
+      }
+      return sortByCreatedAtDesc([notification, ...prev]);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    socket.on(NOTIFICATION_EVENT, handleIncomingNotification);
+
+    return () => {
+      socket.off(NOTIFICATION_EVENT, handleIncomingNotification);
+    };
+  }, [handleIncomingNotification]);
+
   const handleClick = async (notif) => {
     try {
       if (!notif.is_read) {
-        await markAsRead(notif.notif_id);
+        const res = await markAsRead(notif.notif_id);
+
+        // A thrown error already skips this block via the catch below.
+        // This additionally covers an API that responds 200 with an
+        // explicit success: false body (the same envelope shape
+        // getNotifications() already checks above) — in that case the
+        // request didn't actually fail, but it also didn't succeed, so
+        // the UI must not claim the notification is read. If the
+        // response has no success field at all, treat it as success, to
+        // match this endpoint's previously-existing behavior.
+        if (res?.data?.success === false) {
+          console.error("markAsRead did not succeed:", res.data);
+          return;
+        }
+
+        locallyReadIdsRef.current.add(notif.notif_id);
         setNotifications((prev) =>
           prev.map((n) => n.notif_id === notif.notif_id ? { ...n, is_read: 1 } : n)
         );

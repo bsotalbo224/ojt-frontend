@@ -100,6 +100,28 @@ export default function MessagesPage() {
     selectedConversationRef.current = selectedConversation;
   }, [selectedConversation]);
 
+  // Exposes which conversation is currently open to other parts of the app
+  // (Sidebar's Consultation unread badge) via a window CustomEvent. No new
+  // Context/store — MessagePage's own state and architecture are otherwise
+  // unchanged. Fires on every selectedConversation change, including
+  // A -> B (single update) and back-to-null via handleBack.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("activeConversationChanged", {
+        detail: { conversationId: selectedConversation?.conversation_id ?? null },
+      })
+    );
+  }, [selectedConversation]);
+
+  // Let listeners know no conversation is open once this page unmounts.
+  useEffect(() => {
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("activeConversationChanged", { detail: { conversationId: null } })
+      );
+    };
+  }, []);
+
   const revokeObjectUrl = useCallback((url) => {
     if (url && objectUrlsRef.current.has(url)) {
       URL.revokeObjectURL(url);

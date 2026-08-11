@@ -1,10 +1,31 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Menu, Bell, User, Settings, LogOut, ChevronRight } from "lucide-react";
 import { getNotifications, getUnreadCount, markAsRead } from "../../api/notifications";
 import { useAuth } from "../../context/AuthContext";
+import { useSocket } from "../../context/SocketContext";
 import Avatar from "../ui/Avatar";
 import AcademicYearSelector from "../ui/AcademicYearSelector";
+
+const NOTIFICATION_EVENT = "notification:new";
+const POLL_INTERVAL_MS = 15000; // fallback only — Socket.IO is the primary source
+
+// Centralized frontend notification type constants. Must stay in sync with
+// the backend's NotificationTypes — add new types here instead of
+// hardcoding notification type strings throughout the component.
+const NotificationTypes = Object.freeze({
+  SYSTEM: "system",
+  ACCOUNT: "account",
+  ATTENDANCE: "attendance",
+  DAILY_LOG: "daily_log",
+  NARRATIVE: "narrative",
+  FEEDBACK: "feedback",
+  PROGRESS: "progress",
+  PLACEMENT: "placement",
+  CONSULTATION: "consultation",
+  EVALUATION: "evaluation",
+  REMINDER: "reminder",
+});
 
 const relativeTime = (dateStr) => {
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
@@ -17,7 +38,10 @@ const relativeTime = (dateStr) => {
 
 const TopBar = ({ onMenuClick }) => {
   const { user } = useAuth();
-  const [unread, setUnread] = useState(0);
+  const { socket } = useSocket();
+  const navigate = useNavigate();
+
+  const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -26,9 +50,15 @@ const TopBar = ({ onMenuClick }) => {
   const notifRef = useRef(null);
   const profileRef = useRef(null);
   const notifOpenRef = useRef(notifOpen);
-  const navigate = useNavigate();
+  // Tracks whether notifications have already been fetched during the
+  // current session, so re-opening the dropdown doesn't refetch unless the
+  // cache was explicitly invalidated (e.g. academic year change).
+  const notificationsLoadedRef = useRef(false);
 
-  const fullName = `${user?.f_name || ""} ${user?.l_name || ""}`.trim();
+  const fullName = useMemo(
+    () => `${user?.f_name || ""} ${user?.l_name || ""}`.trim(),
+    [user?.f_name, user?.l_name]
+  );
 
   const canSeeAcademicYear = user?.role === "admin" || user?.role === "coordinator";
 
@@ -43,72 +73,149 @@ const TopBar = ({ onMenuClick }) => {
     navigate(`/${role}${cleanPath}`);
   }, [user, navigate]);
 
-  const loadUnread = useCallback(() => {
-    getUnreadCount()
-      .then((res) => { if (res.data?.success) setUnread(res.data.count || 0); })
-      .catch(() => {});
+  const loadUnreadCount = useCallback(async () => {
+    try {
+      const res = await getUnreadCount();
+      if (res.data?.success) {
+        setUnreadCount(res.data.count || 0);
+      }
+    } catch (err) {
+      console.error("TopBar: failed to load unread notification count:", err);
+    }
   }, []);
 
-  const fetchDropdownNotifications = useCallback(async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       setNotifLoading(true);
       const res = await getNotifications();
       if (res.data?.success) {
         const unreadList = (res.data.notifications || []).filter((n) => !n.is_read);
         setNotifications(unreadList);
+        notificationsLoadedRef.current = true;
       }
     } catch (err) {
-      console.error("Failed to fetch notifications:", err);
+      console.error("TopBar: failed to load notifications:", err);
     } finally {
       setNotifLoading(false);
     }
   }, []);
 
-  // Keep ref in sync so the academicYearChanged handler can read current value
-  useEffect(() => {
-    notifOpenRef.current = notifOpen;
-  }, [notifOpen]);
+  // Forces the next loadNotifications() call to hit the API again, e.g.
+  // after an academic year change where cached notifications are stale.
+  const invalidateNotificationsCache = useCallback(() => {
+    notificationsLoadedRef.current = false;
+  }, []);
 
-  // Initial unread load + polling interval
-  useEffect(() => {
-    loadUnread();
-    const interval = setInterval(loadUnread, 15000);
-    return () => clearInterval(interval);
-  }, [loadUnread]);
+  const handleIncomingNotification = useCallback((notification) => {
+    if (!notification || !notification.notif_id) return;
 
-  // Listen for academic year changes
-  useEffect(() => {
-    const handleAcademicYearChanged = () => {
-      loadUnread();
-      if (notifOpenRef.current) {
-        fetchDropdownNotifications();
+    setNotifications((prev) => {
+      if (prev.some((n) => n.notif_id === notification.notif_id)) {
+        return prev;
       }
-    };
-    window.addEventListener("academicYearChanged", handleAcademicYearChanged);
-    return () => {
-      window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
-    };
-  }, [loadUnread, fetchDropdownNotifications]);
+      return [notification, ...prev];
+    });
+
+    setUnreadCount((prev) => prev + 1);
+  }, []);
+
+  const markNotificationAsRead = useCallback(async (notifId) => {
+    try {
+      await markAsRead(notifId);
+      setNotifications((prev) => prev.filter((n) => n.notif_id !== notifId));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      return true;
+    } catch (err) {
+      console.error("TopBar: failed to mark notification as read:", err);
+      return false;
+    }
+  }, []);
+
+  const handleNotificationClick = useCallback(async (notification) => {
+    try {
+      if (!notification.is_read) {
+        await markNotificationAsRead(notification.notif_id);
+      }
+
+      setNotifOpen(false);
+
+      if (notification.type === NotificationTypes.ACCOUNT) {
+        return;
+      }
+
+      safeNavigate(notification.link || "/notifications");
+    } catch (err) {
+      console.error("TopBar: failed to handle notification click:", err);
+    }
+  }, [markNotificationAsRead, safeNavigate]);
 
   const closeAll = useCallback(() => {
     setNotifOpen(false);
     setProfileOpen(false);
   }, []);
 
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("token");
+    window.location.href = "/";
+  }, []);
+
+  const toggleNotif = useCallback(() => {
+    setNotifOpen((prev) => {
+      const opening = !prev;
+      if (opening && !notificationsLoadedRef.current) {
+        loadNotifications();
+      }
+      return opening;
+    });
+    setProfileOpen(false);
+  }, [loadNotifications]);
+
+  const toggleProfile = useCallback(() => {
+    setProfileOpen((prev) => !prev);
+    setNotifOpen(false);
+  }, []);
+
+  useEffect(() => {
+    notifOpenRef.current = notifOpen;
+  }, [notifOpen]);
+
+  useEffect(() => {
+    loadUnreadCount();
+    const intervalId = setInterval(loadUnreadCount, POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [loadUnreadCount]);
+
+  useEffect(() => {
+    const handleAcademicYearChanged = () => {
+      loadUnreadCount();
+      invalidateNotificationsCache();
+      if (notifOpenRef.current) {
+        loadNotifications();
+      }
+    };
+
+    window.addEventListener("academicYearChanged", handleAcademicYearChanged);
+    return () => {
+      window.removeEventListener("academicYearChanged", handleAcademicYearChanged);
+    };
+  }, [loadUnreadCount, loadNotifications, invalidateNotificationsCache]);
+
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (
-        notifRef.current && !notifRef.current.contains(e.target) &&
-        profileRef.current && !profileRef.current.contains(e.target)
-      ) {
-        closeAll();
-      } else if (notifRef.current && !notifRef.current.contains(e.target)) {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
         setNotifOpen(false);
-      } else if (profileRef.current && !profileRef.current.contains(e.target)) {
+      }
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
         setProfileOpen(false);
       }
     };
-    const handleKeyDown = (e) => { if (e.key === "Escape") closeAll(); };
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        closeAll();
+      }
+    };
+
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -117,41 +224,15 @@ const TopBar = ({ onMenuClick }) => {
     };
   }, [closeAll]);
 
-  const toggleNotif = () => {
-    const opening = !notifOpen;
-    setNotifOpen(opening);
-    setProfileOpen(false);
-    if (opening) fetchDropdownNotifications();
-  };
+  useEffect(() => {
+    if (!socket) return undefined;
 
-  const toggleProfile = () => {
-    setProfileOpen((prev) => !prev);
-    setNotifOpen(false);
-  };
+    socket.on(NOTIFICATION_EVENT, handleIncomingNotification);
 
-  const handleNotifClick = async (notif) => {
-    try {
-      if (!notif.is_read) {
-        await markAsRead(notif.notif_id);
-        setNotifications((prev) => prev.filter((n) => n.notif_id !== notif.notif_id));
-        setUnread((prev) => Math.max(0, prev - 1));
-      }
-      setNotifOpen(false);
-      if (notif.type === "account_created") return;
-      if (notif.link) {
-        safeNavigate(notif.link);
-      } else {
-        safeNavigate("/notifications");
-      }
-    } catch (err) {
-      console.error("Notification click error:", err);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    window.location.href = "/";
-  };
+    return () => {
+      socket.off(NOTIFICATION_EVENT, handleIncomingNotification);
+    };
+  }, [socket, handleIncomingNotification]);
 
   return (
     <div className="sticky top-0 z-40 bg-white border-b border-gray-200">
@@ -181,12 +262,12 @@ const TopBar = ({ onMenuClick }) => {
               className="relative p-2 text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
             >
               <Bell size={22} />
-              {unread > 0 && (
+              {unreadCount > 0 && (
                 <span
                   style={{ backgroundColor: `rgb(var(--primary))` }}
                   className="absolute top-1.5 right-1.5 min-w-4.5 h-4.5 px-1 text-[10px] flex items-center justify-center text-white rounded-full border-2 border-white"
                 >
-                  {unread > 99 ? "99+" : unread}
+                  {unreadCount > 99 ? "99+" : unreadCount}
                 </span>
               )}
             </button>
@@ -204,12 +285,12 @@ const TopBar = ({ onMenuClick }) => {
                     <Bell size={15} className="text-white" />
                     <span className="text-sm font-semibold text-white">Notifications</span>
                   </div>
-                  {unread > 0 && (
+                  {unreadCount > 0 && (
                     <span
                       style={{ color: `rgb(var(--primary-text))` }}
                       className="bg-white text-xs font-bold px-2 py-0.5 rounded-full"
                     >
-                      {unread} new
+                      {unreadCount} new
                     </span>
                   )}
                 </div>
@@ -239,7 +320,7 @@ const TopBar = ({ onMenuClick }) => {
                       {notifications.map((notif, idx) => (
                         <li key={notif.notif_id} className={idx !== 0 ? "border-t border-gray-50" : ""}>
                           <button
-                            onClick={() => handleNotifClick(notif)}
+                            onClick={() => handleNotificationClick(notif)}
                             className="w-full text-left flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
                           >
                             <span

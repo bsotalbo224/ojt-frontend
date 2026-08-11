@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { getNotifications } from "../../api/notifications";
+import { getConversations } from "../../api/messages";
+import socket from "../../socket";
 import {
   LayoutDashboard,
   FileText,
@@ -27,6 +28,22 @@ import {
 const FALLBACK_LOGO  = "/images/spc-logo.png";
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 const FALLBACK_LABEL = "San Pablo Colleges";
+
+// Sidebar owns ONLY the Consultation unread badge. All system notifications
+// (attendance, daily log, narrative, evaluation, placement, progress,
+// feedback, reminder, system) are handled exclusively by TopBar's
+// notification bell — this component never touches the notifications API.
+//
+// Event name confirmed against MessagesPage.jsx/ChatWindow.jsx: the app
+// broadcasts new messages as "receive_message" (not "message:new"). There
+// is no "message:read" (or equivalent unread-count) socket event anywhere
+// in the messaging code — reading a conversation happens via a plain REST
+// call with no matching broadcast — so no such listener is registered here.
+// Sidebar instead relies on polling + the visibility-change refresh below
+// to catch up on read-state changes.
+const MESSAGE_EVENT_NEW = "receive_message";
+const MESSAGE_POLL_INTERVAL_MS = 30000; // fallback only — Socket.IO is primary
+const ACTIVE_CONVERSATION_EVENT = "activeConversationChanged";
 
 function resolveLogoUrl(logo) {
   if (!logo) return null;
@@ -60,6 +77,29 @@ function preloadImage(url) {
   });
 }
 
+// Renders the unread consultation badge. Identical markup/styling to the
+// original inline collapsed/expanded blocks — extracted only to remove
+// duplication, not to change appearance or behavior. Returns null when
+// there's nothing to show (count === null), so callers never render an
+// empty badge.
+const UnreadBadge = ({ count, collapsed }) => {
+  if (count === null || count === undefined) return null;
+
+  if (collapsed) {
+    return (
+      <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] px-1.5 rounded-full">
+        {count}
+      </span>
+    );
+  }
+
+  return (
+    <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full shadow">
+      {count}
+    </span>
+  );
+};
+
 const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,7 +107,7 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
   const [activeItem,    setActiveItem]    = useState(location.pathname);
   const [isCollapsed,   setIsCollapsed]   = useState(false);
   const [openDropdowns, setOpenDropdowns] = useState({});
-  const [unreadCount,   setUnreadCount]   = useState(0);
+  const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [isMobile,      setIsMobile]      = useState(window.innerWidth < 768);
 
   const [currentUser, setCurrentUser] = useState(() => {
@@ -136,23 +176,127 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  useEffect(() => { loadUnread(); }, []);
-  useEffect(() => {
-    const interval = setInterval(loadUnread, 30000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const loadUnread = async () => {
+  // Sums unread_count across every conversation returned by the messaging
+  // API — the same shape already used to render conversation previews, so
+  // no new backend endpoint is introduced here. Always clamped to >= 0.
+  const loadMessageUnreadCount = useCallback(async () => {
     try {
-      const res = await getNotifications();
-      if (res.data.success) {
-        const unread = res.data.notifications.filter((n) => !n.is_read).length;
-        setUnreadCount(unread);
+      const res = await getConversations();
+      if (res.data?.success) {
+        const conversations = res.data.conversations || [];
+        const total = conversations.reduce(
+          (sum, conversation) => sum + (conversation.unread_count || 0),
+          0
+        );
+        setMessageUnreadCount(Math.max(0, total));
       }
     } catch (err) {
-      console.error("Unread notif error:", err);
+      console.error("[Sidebar] Failed to load consultation unread count:", err);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadMessageUnreadCount();
+    const intervalId = setInterval(loadMessageUnreadCount, MESSAGE_POLL_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, [loadMessageUnreadCount]);
+
+  // Refresh once whenever the tab regains focus/visibility, so a badge
+  // left stale while the tab was backgrounded catches up immediately
+  // without increasing the polling frequency.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        loadMessageUnreadCount();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [loadMessageUnreadCount]);
+
+  // Tracks the conversation id currently open in MessagePage.jsx, sourced
+  // from the "activeConversationChanged" window event MessagePage.jsx
+  // dispatches whenever its selectedConversation state changes (including
+  // A -> B and back to null via handleBack/unmount). A ref, not state,
+  // since it's only read inside the socket handler below and shouldn't
+  // itself trigger re-renders.
+  const activeConversationIdRef = useRef(null);
+
+  // message_ids already counted toward messageUnreadCount, so a duplicate
+  // "receive_message" delivery for the same message can never increment
+  // twice. Unbounded for the component's lifetime — acceptable here since
+  // it only ever stores small integer/string ids, unlike ChatWindow's
+  // equivalent set which is cleared per-conversation on identity change.
+  const countedMessageIdsRef = useRef(new Set());
+
+  useEffect(() => {
+    const handleActiveConversationChanged = (event) => {
+      activeConversationIdRef.current = event?.detail?.conversationId ?? null;
+    };
+
+    window.addEventListener(ACTIVE_CONVERSATION_EVENT, handleActiveConversationChanged);
+    return () => {
+      window.removeEventListener(ACTIVE_CONVERSATION_EVENT, handleActiveConversationChanged);
+    };
+  }, []);
+
+  // Handles a "receive_message" event (confirmed field names: sender_id,
+  // conversation_id — see MessagesPage.jsx's own handleReceiveMessage and
+  // ChatWindow.jsx's onReceive, both of which read the same two fields):
+  //   - payload missing a conversation id -> don't guess, resync instead
+  //   - already counted (see countedMessageIdsRef below) -> skip, avoids
+  //     double-counting a message delivered more than once over the socket
+  //     (reconnect replay, multi-room delivery, etc.) — mirrors the same
+  //     guard ChatWindow.jsx already uses for its own unread tracking
+  //   - sent by the current user          -> never unread for them
+  //   - belongs to the conversation currently open in MessagePage.jsx
+  //     (activeConversationIdRef.current) -> already being seen, skip
+  //   - anything else                     -> genuinely unread, +1
+  //
+  // NOTE: the optimistic +1 below is intentionally never additive with
+  // loadMessageUnreadCount()'s poll/visibility refresh — that path always
+  // *replaces* messageUnreadCount with the DB-computed total rather than
+  // adding to it, so it can only resync to ground truth, never compound.
+  const handleIncomingMessage = useCallback((message) => {
+    if (!message) return;
+
+    if (message.conversation_id === undefined || message.conversation_id === null) {
+      loadMessageUnreadCount();
+      return;
+    }
+
+    if (message.message_id != null) {
+      if (countedMessageIdsRef.current.has(message.message_id)) return;
+      countedMessageIdsRef.current.add(message.message_id);
+    }
+
+    if (currentUser?.user_id && String(message.sender_id) === String(currentUser.user_id)) {
+      return;
+    }
+
+    const activeConversationId = activeConversationIdRef.current;
+    if (
+      activeConversationId !== null &&
+      String(message.conversation_id) === String(activeConversationId)
+    ) {
+      return;
+    }
+
+    setMessageUnreadCount((prev) => Math.max(0, prev + 1));
+  }, [currentUser?.user_id, loadMessageUnreadCount]);
+
+  useEffect(() => {
+    if (!socket) return undefined;
+
+    socket.on(MESSAGE_EVENT_NEW, handleIncomingMessage);
+
+    return () => {
+      socket.off(MESSAGE_EVENT_NEW, handleIncomingMessage);
+    };
+  }, [handleIncomingMessage]);
 
   useEffect(() => {
     setActiveItem(location.pathname);
@@ -171,7 +315,10 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
     activeRole === "coordinator" ? "Coordinator"   :
                                    "Student";
 
-  const menuConfig = {
+  // Static menu definitions — recreated only if this component ever needs
+  // to vary them by a prop/state dependency (none today), so the empty
+  // dependency array is intentional.
+  const menuConfig = useMemo(() => ({
     student: [
       { path: "/student/dashboard",  label: "Dashboard",        icon: LayoutDashboard },
       { path: "/student/attendance", label: "Attendance (DTR)", icon: Calendar        },
@@ -200,7 +347,7 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
       { path: "/coordinator/attendance", label: "Attendance",            icon: Calendar        },
       { path: "/coordinator/evaluation",  label: "Evaluation", icon: ClipboardList   },
     ],
-  };
+  }), []);
 
   const menuItems = menuConfig[activeRole] || [];
 
@@ -326,6 +473,10 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
               const isActive       = isParentActive(item);
               const dropKey        = item.label.toLowerCase().replace(/\s+/g, "");
               const isDropdownOpen = openDropdowns[dropKey];
+              const isConsultation = item.label === "Consultation";
+              const displayUnread  = isConsultation && messageUnreadCount > 0
+                ? (messageUnreadCount > 99 ? "99+" : messageUnreadCount)
+                : null;
 
               return (
                 <li key={item.path}>
@@ -352,16 +503,7 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
                     <Icon className={`w-5 h-5 ${showLabels ? "mr-3" : ""}`} />
                     {showLabels && <span>{item.label}</span>}
 
-                    {item.label === "Notifications" && unreadCount > 0 && !showLabels && (
-                      <span className="absolute top-2 right-2 bg-red-500 text-white text-[10px] px-1.5 rounded-full">
-                        {unreadCount}
-                      </span>
-                    )}
-                    {item.label === "Notifications" && unreadCount > 0 && showLabels && (
-                      <span className="ml-auto bg-red-500 text-white text-xs px-2 py-0.5 rounded-full shadow">
-                        {unreadCount}
-                      </span>
-                    )}
+                    <UnreadBadge count={displayUnread} collapsed={!showLabels} />
 
                     {showLabels && item.hasDropdown && activeRole === "coordinator" && (
                       <ChevronDown
@@ -370,7 +512,7 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
                         }`}
                       />
                     )}
-                    {showLabels && !item.hasDropdown && isActive && (
+                    {showLabels && !item.hasDropdown && !isConsultation && isActive && (
                       <div
                         style={{ backgroundColor: "rgb(var(--primary-text))" }}
                         className="ml-auto w-1.5 h-1.5 rounded-full"
