@@ -68,6 +68,17 @@ const buildAttachmentPreviewText = (attachments) => {
   return `${atts[0].attachment_name || "Attachment"} (+${atts.length - 1})`;
 };
 
+// Mirrors the backend's own conversations ordering (ORDER BY
+// COALESCE(lm.created_at, c.created_at) DESC) so a live incoming message
+// moves its conversation to the top the same way a fresh fetch would,
+// instead of leaving array order frozen until the next fetchConversations().
+const sortConversationsByLastMessage = (list) =>
+  [...list].sort((a, b) => {
+    const ta = a.last_message_time ? new Date(a.last_message_time).getTime() : 0;
+    const tb = b.last_message_time ? new Date(b.last_message_time).getTime() : 0;
+    return tb - ta;
+  });
+
 export default function MessagesPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
 
@@ -137,6 +148,15 @@ export default function MessagesPage() {
   }, []);
 
   // Socket
+  // NOTE: `socket` is the single app-wide shared singleton (src/socket.js),
+  // the same instance Sidebar.jsx/TopBar.jsx/NotificationsPage.jsx import
+  // directly for their own listeners. This effect must never disconnect it
+  // on unmount — doing so previously tore down real-time delivery for every
+  // other component sharing that connection (Sidebar's consultation badge,
+  // TopBar's notification bell) the moment the user navigated away from
+  // Messages, silently degrading them to polling-only until something else
+  // happened to reconnect it. Only this component's own "online_users"
+  // listener is cleaned up here; the connection itself is left alone.
   useEffect(() => {
     if (!currentUser?.user_id) return;
     if (!socket.connected) socket.connect();
@@ -144,11 +164,17 @@ export default function MessagesPage() {
     socket.on("online_users", setOnlineUsers);
     return () => {
       socket.off("online_users", setOnlineUsers);
-      socket.disconnect();
     };
   }, [currentUser?.user_id]);
 
-  // Receive
+  // Receive: renders the actual chat message into the active ChatWindow.
+  // Only reaches clients that joined this conversation's Socket.IO room
+  // via join_conversation (see handleSelectConversation below) -- which
+  // only happens once a conversation is selected. That's exactly why this
+  // handler no longer touches `conversations` state: a conversation the
+  // user hasn't opened yet, or a brand-new one, would never update the
+  // sidebar this way. That job now belongs entirely to conversation_updated
+  // below, delivered via the user's own room instead of the conversation's.
   useEffect(() => {
     const handleReceiveMessage = (incomingMsg) => {
       const activeConversation = selectedConversationRef.current;
@@ -205,26 +231,102 @@ export default function MessagesPage() {
           senderId:  incomingMsg.sender_id,
         });
       }
-
-      setConversations((prev) =>
-        safeArray(prev).map((c) => {
-          if (String(c.conversation_id) !== String(incomingMsg.conversation_id)) return c;
-          const isActive =
-            activeConversation &&
-            String(c.conversation_id) === String(activeConversation.conversation_id);
-          return {
-            ...c,
-            last_message:      incomingMsg.message || buildAttachmentPreviewText(incomingMsg.attachments),
-            last_message_time: incomingMsg.sent_at ?? incomingMsg.created_at,
-            unread_count:      isActive || isOwnMessage ? 0 : (c.unread_count ?? 0) + 1,
-          };
-        })
-      );
     };
 
     socket.on("receive_message", handleReceiveMessage);
     return () => socket.off("receive_message", handleReceiveMessage);
   }, [currentUser?.user_id, revokeObjectUrl]);
+
+  // Conversation list / sidebar sync. Delivered via the user's own
+  // "user_<id>" room (joined once on mount via socket.emit("join", ...)
+  // above, regardless of which conversation, if any, is currently open),
+  // so this fires for every conversation the user is part of -- including
+  // ones not currently joined via join_conversation and conversations
+  // brand-new to this client.
+  useEffect(() => {
+    const handleConversationUpdated = (payload) => {
+      if (!payload || payload.conversation_id == null) return;
+
+      const activeConversation = selectedConversationRef.current;
+      const isOwnMessage = String(payload.sender_id) === String(currentUser?.user_id);
+      const isActive =
+        activeConversation &&
+        String(activeConversation.conversation_id) === String(payload.conversation_id);
+
+      const previewText = payload.message || buildAttachmentPreviewText(payload.attachments);
+      const timestamp = payload.sent_at ?? payload.created_at;
+
+      setConversations((prev) => {
+        const list = safeArray(prev);
+
+        const existingIdx = list.findIndex(
+          (c) => c.conversation_id != null && String(c.conversation_id) === String(payload.conversation_id)
+        );
+
+        let next;
+
+        if (existingIdx !== -1) {
+          next = list.map((c, idx) =>
+            idx === existingIdx
+              ? {
+                  ...c,
+                  last_message:      previewText,
+                  last_message_time: timestamp,
+                  unread_count:      isActive || isOwnMessage ? 0 : (c.unread_count ?? 0) + 1,
+                }
+              : c
+          );
+        } else {
+          // A person this user hasn't messaged before shows up as a
+          // contact placeholder (conversation_id: null) via
+          // mergeConversationsAndContacts. Promote that placeholder to a
+          // real conversation instead of adding a second row for the same
+          // person -- mirrors ensureConversation()'s own placeholder-update
+          // pattern elsewhere in this file.
+          const placeholderIdx = !payload.is_group
+            ? list.findIndex(
+                (c) => c.conversation_id == null && String(c.user_id) === String(payload.user_id)
+              )
+            : -1;
+
+          if (placeholderIdx !== -1) {
+            next = list.map((c, idx) =>
+              idx === placeholderIdx
+                ? {
+                    ...c,
+                    conversation_id:    payload.conversation_id,
+                    last_message:       previewText,
+                    last_message_time:  timestamp,
+                    unread_count:       isActive || isOwnMessage ? 0 : (c.unread_count ?? 0) + 1,
+                  }
+                : c
+            );
+          } else {
+            const newEntry = {
+              conversation_id:    payload.conversation_id,
+              is_group:           !!payload.is_group,
+              name:               payload.name,
+              member_count:       payload.member_count,
+              user_id:            payload.user_id ?? null,
+              f_name:             payload.f_name ?? null,
+              l_name:             payload.l_name ?? null,
+              photo:              payload.photo ?? null,
+              role:               payload.role ?? null,
+              last_message:       previewText,
+              last_message_time:  timestamp,
+              unread_count:       isActive || isOwnMessage ? 0 : 1,
+            };
+            next = [newEntry, ...list];
+          }
+        }
+
+        return sortConversationsByLastMessage(next);
+      });
+    };
+
+    socket.on("conversation_updated", handleConversationUpdated);
+    return () => socket.off("conversation_updated", handleConversationUpdated);
+  }, [currentUser?.user_id]);
 
   // Read receipts
   useEffect(() => {
