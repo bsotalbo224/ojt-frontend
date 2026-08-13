@@ -245,6 +245,9 @@ export default function MessagesPage() {
   // brand-new to this client.
   useEffect(() => {
     const handleConversationUpdated = (payload) => {
+      // TEMP DIAGNOSTIC — remove once ConversationList real-time refresh is confirmed fixed.
+      console.log("[conversation_updated RECEIVED]", payload);
+
       if (!payload || payload.conversation_id == null) return;
 
       const activeConversation = selectedConversationRef.current;
@@ -255,6 +258,17 @@ export default function MessagesPage() {
 
       const previewText = payload.message || buildAttachmentPreviewText(payload.attachments);
       const timestamp = payload.sent_at ?? payload.created_at;
+
+      // payload.unread_count is the DB-authoritative count from
+      // MessageModel.getConversationForMember() (via getConversations()'s own
+      // query). It's the source of truth for other-user messages; a fallback
+      // to local +1 math is kept only in case a payload is ever missing it.
+      const resolveUnreadCount = (fallbackCurrent) => {
+        if (isActive || isOwnMessage) return 0;
+        return typeof payload.unread_count === "number"
+          ? payload.unread_count
+          : (fallbackCurrent ?? 0) + 1;
+      };
 
       setConversations((prev) => {
         const list = safeArray(prev);
@@ -272,7 +286,7 @@ export default function MessagesPage() {
                   ...c,
                   last_message:      previewText,
                   last_message_time: timestamp,
-                  unread_count:      isActive || isOwnMessage ? 0 : (c.unread_count ?? 0) + 1,
+                  unread_count:      resolveUnreadCount(c.unread_count),
                 }
               : c
           );
@@ -297,7 +311,7 @@ export default function MessagesPage() {
                     conversation_id:    payload.conversation_id,
                     last_message:       previewText,
                     last_message_time:  timestamp,
-                    unread_count:       isActive || isOwnMessage ? 0 : (c.unread_count ?? 0) + 1,
+                    unread_count:       resolveUnreadCount(c.unread_count),
                   }
                 : c
             );
@@ -314,7 +328,7 @@ export default function MessagesPage() {
               role:               payload.role ?? null,
               last_message:       previewText,
               last_message_time:  timestamp,
-              unread_count:       isActive || isOwnMessage ? 0 : 1,
+              unread_count:       resolveUnreadCount(0),
             };
             next = [newEntry, ...list];
           }
