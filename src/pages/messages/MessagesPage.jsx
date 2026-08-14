@@ -421,8 +421,24 @@ export default function MessagesPage() {
           String(c.conversation_id) === String(conversationId) ? { ...c, unread_count: 0 } : c
         )
       );
+
+      // Notify Sidebar only AFTER the server confirms the messages have
+      // been marked as read. Sidebar owns a separate messageUnreadCount
+      // state (summed across ALL conversations, for the nav badge) that
+      // this component has no direct handle on -- this event is the only
+      // link between the two, deliberately distinct from
+      // "activeConversationChanged" (which only tracks selection, not
+      // read-state) so the two concerns can't get conflated.
+      window.dispatchEvent(
+        new CustomEvent("conversationRead", {
+          detail: { conversationId },
+        })
+      );
     } catch (err) {
       console.error("Failed to mark messages as read:", err);
+      // Deliberately no dispatch here -- a failed PUT means the DB still
+      // has this conversation as unread, so Sidebar's badge must not be
+      // told otherwise.
     }
   }, []);
 

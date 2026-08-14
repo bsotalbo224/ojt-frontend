@@ -36,14 +36,17 @@ const FALLBACK_LABEL = "San Pablo Colleges";
 //
 // Event name confirmed against MessagesPage.jsx/ChatWindow.jsx: the app
 // broadcasts new messages as "receive_message" (not "message:new"). There
-// is no "message:read" (or equivalent unread-count) socket event anywhere
-// in the messaging code — reading a conversation happens via a plain REST
-// call with no matching broadcast — so no such listener is registered here.
-// Sidebar instead relies on polling + the visibility-change refresh below
-// to catch up on read-state changes.
+// is no Socket.IO event for read-state changes -- reading a conversation
+// happens via a plain REST call (PUT /messages/conversations/:id/read).
+// MessagesPage.jsx bridges that gap with a "conversationRead" window
+// CustomEvent, dispatched only once that REST call succeeds -- see the
+// listener below. Polling + the visibility-change refresh remain in place
+// purely as a fallback safety net (e.g. reads that happen from some other
+// tab/device), not as the primary read-state sync path anymore.
 const MESSAGE_EVENT_NEW = "receive_message";
-const MESSAGE_POLL_INTERVAL_MS = 30000; // fallback only — Socket.IO is primary
+const MESSAGE_POLL_INTERVAL_MS = 30000; // fallback only — Socket.IO/events are primary
 const ACTIVE_CONVERSATION_EVENT = "activeConversationChanged";
+const CONVERSATION_READ_EVENT = "conversationRead";
 
 function resolveLogoUrl(logo) {
   if (!logo) return null;
@@ -179,6 +182,12 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
   // Sums unread_count across every conversation returned by the messaging
   // API — the same shape already used to render conversation previews, so
   // no new backend endpoint is introduced here. Always clamped to >= 0.
+  // This is the single source of truth for messageUnreadCount: every path
+  // that resyncs the badge (initial load, polling, visibility change, and
+  // the conversationRead listener below) calls this and REPLACES the
+  // count wholesale from the DB, rather than adjusting it by hand — so a
+  // conversation with 5 unread messages correctly drops the total by 5,
+  // not 1, the moment it's opened and read.
   const loadMessageUnreadCount = useCallback(async () => {
     try {
       const res = await getConversations();
@@ -214,6 +223,30 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [loadMessageUnreadCount]);
+
+  // Fires when MessagesPage.jsx successfully marks a conversation as read
+  // (PUT /messages/conversations/:id/read already confirmed by the
+  // server -- see the dispatch site in MessagesPage.jsx's markRead()).
+  // Deliberately a SEPARATE event from "activeConversationChanged": that
+  // one only tracks which conversation is currently open/selected, and
+  // fires on selection changes that have nothing to do with the DB read
+  // state (e.g. selecting a brand-new, still-unread conversation). Mixing
+  // the two would either clear the badge too early (before the read API
+  // call actually succeeds) or miss updates from a conversation that was
+  // read without ever becoming "active" in this tab. Calling
+  // loadMessageUnreadCount() here re-fetches the DB-authoritative total
+  // rather than decrementing a local counter, so multiple unread messages
+  // in the just-read conversation are all accounted for correctly.
+  useEffect(() => {
+    const handleConversationRead = () => {
+      loadMessageUnreadCount();
+    };
+
+    window.addEventListener(CONVERSATION_READ_EVENT, handleConversationRead);
+    return () => {
+      window.removeEventListener(CONVERSATION_READ_EVENT, handleConversationRead);
     };
   }, [loadMessageUnreadCount]);
 
@@ -257,9 +290,10 @@ const Sidebar = ({ role = "coordinator", user, isOpen, setIsOpen }) => {
   //   - anything else                     -> genuinely unread, +1
   //
   // NOTE: the optimistic +1 below is intentionally never additive with
-  // loadMessageUnreadCount()'s poll/visibility refresh — that path always
-  // *replaces* messageUnreadCount with the DB-computed total rather than
-  // adding to it, so it can only resync to ground truth, never compound.
+  // loadMessageUnreadCount()'s poll/visibility/conversationRead refresh --
+  // those paths always *replace* messageUnreadCount with the DB-computed
+  // total rather than adding to it, so it can only resync to ground
+  // truth, never compound.
   const handleIncomingMessage = useCallback((message) => {
     if (!message) return;
 
