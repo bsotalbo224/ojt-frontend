@@ -5,6 +5,7 @@ import api from "../../api/axios";
 import { useAuth } from "../../context/AuthContext";
 import ConversationList from "../../components/messages/ConversationList";
 import ChatWindow from "../../components/messages/ChatWindow";
+import { showBrowserNotification } from "../../utils/browserNotifications";
 
 const safeArray = (value) => (Array.isArray(value) ? value : []);
 
@@ -79,6 +80,13 @@ const sortConversationsByLastMessage = (list) =>
     return tb - ta;
   });
 
+// Resolves a display name for a browser notification's sender.
+const resolveSenderName = (incomingMsg, conv) =>
+  incomingMsg.sender_name ||
+  [incomingMsg.sender_f_name, incomingMsg.sender_l_name].filter(Boolean).join(" ") ||
+  (conv ? [conv.f_name, conv.l_name].filter(Boolean).join(" ") : "") ||
+  "New message";
+
 export default function MessagesPage() {
   const { user: currentUser, loading: authLoading } = useAuth();
 
@@ -100,6 +108,9 @@ export default function MessagesPage() {
   const selectedConversationRef = useRef(null);
   const latestRequestIdRef      = useRef(0);
   const objectUrlsRef           = useRef(new Set());
+  // Mirrors `conversations` state for the receive_message handler, so
+  // that effect doesn't need `conversations` in its dependency array.
+  const conversationsRef        = useRef([]);
 
   const location = useLocation();
 
@@ -110,6 +121,10 @@ export default function MessagesPage() {
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
   }, [selectedConversation]);
+
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
 
   // Exposes which conversation is currently open to other parts of the app
   // (Sidebar's Consultation unread badge) via a window CustomEvent. No new
@@ -230,6 +245,37 @@ export default function MessagesPage() {
           messageId: incomingMsg.message_id,
           senderId:  incomingMsg.sender_id,
         });
+      }
+
+      // Native browser notification for messages outside the active conversation.
+      try {
+        const belongsToActiveConversation =
+          activeConversation &&
+          activeConversation.conversation_id != null &&
+          String(incomingMsg.conversation_id) === String(activeConversation.conversation_id);
+
+        if (!isOwnMessage && !belongsToActiveConversation) {
+          const conv = conversationsRef.current.find(
+            (c) =>
+              c.conversation_id != null &&
+              String(c.conversation_id) === String(incomingMsg.conversation_id)
+          );
+
+          const bodyText = incomingMsg.message?.trim()
+            ? incomingMsg.message
+            : incomingAttachmentCount > 0
+              ? "Sent an attachment"
+              : "";
+
+          showBrowserNotification({
+            title: resolveSenderName(incomingMsg, conv),
+            body: bodyText,
+            data: { conversationId: incomingMsg.conversation_id },
+            onClick: () => {},
+          });
+        }
+      } catch (err) {
+        console.error("[MessagesPage] Browser notification failed:", err);
       }
     };
 
